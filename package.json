@@ -1,0 +1,23 @@
+{
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@fontsource/roboto": "^5.2.10",
+    "@mui/icons-material": "^9.0.1",
+    "@mui/material": "^9.0.1",
+    "@mui/styled-engine-sc": "^9.0.1",
+    "@supabase/supabase-js": "^2.108.1",
+    "lucide-react": "^1.17.0",
+    "react-router-dom": "^6.30.3",
+    "styled-components": "^6.4.2"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.2",
+    "vite": "^8.0.13"
+  }
+}
