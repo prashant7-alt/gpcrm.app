@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import theme from '../theme'
@@ -119,29 +120,29 @@ export default function Reports() {
       label: 'New This Month',
       value: newThisMonth,
       sub:   'Applicants',
-      color: theme.primary,
-      border: theme.primary,
+      color: 'black',
+   
     },
     {
       label: 'Conversions',
       value: conversions,
       sub:   'Lead → Abroad',
-      color: '#7c3aed',
-      border: '#7c3aed',
+      color: 'black',
+  
     },
     {
       label: 'Month Revenue',
       value: `Rs${monthRevenue.toLocaleString()}`,
-      sub:   'NPR',
-      color: '#7c3aed',
-      border: '#7c3aed',
+     
+      color: 'black',
+     
     },
     {
       label: 'Visa Approvals',
       value: visaApprovals,
       sub:   'This month',
-      color: '#0891b2',
-      border: '#0891b2',
+      color: 'black',
+     
     },
   ]
 
@@ -232,14 +233,14 @@ export default function Reports() {
             color: theme.textDark,
             margin: 0,
           }}>
-            Reports & Analytics
+           
           </h1>
           <p style={{
             fontSize: 13,
             color: theme.textLight,
             marginTop: 4,
           }}>
-            Business intelligence for Global Pathway
+            
           </p>
         </div>
 
@@ -258,7 +259,7 @@ export default function Reports() {
             alignItems: 'center',
             gap: 6,
           }}>
-            📥 Export All
+             Export All
           </button>
           <button style={{
             padding: '8px 16px',
@@ -273,7 +274,7 @@ export default function Reports() {
             alignItems: 'center',
             gap: 6,
           }}>
-            🖨️ Print Report
+             Print Report
           </button>
         </div>
       </div>
@@ -343,7 +344,7 @@ export default function Reports() {
             gap: 8,
             marginBottom: 20,
           }}>
-            <span style={{ fontSize: 16 }}>🔽</span>
+            <span style={{ fontSize: 16 }}></span>
             <span style={{
               fontSize: 15,
               fontWeight: 700,
@@ -412,7 +413,7 @@ export default function Reports() {
             gap: 8,
             marginBottom: 20,
           }}>
-            <span style={{ fontSize: 16 }}>🔀</span>
+            <span style={{ fontSize: 16 }}></span>
             <span style={{
               fontSize: 15,
               fontWeight: 700,
@@ -519,7 +520,7 @@ export default function Reports() {
             gap: 8,
             marginBottom: 6,
           }}>
-            <span style={{ fontSize: 16 }}>📊</span>
+            <span style={{ fontSize: 16 }}></span>
             <span style={{
               fontSize: 15,
               fontWeight: 700,
@@ -653,7 +654,7 @@ export default function Reports() {
             gap: 8,
             marginBottom: 20,
           }}>
-            <span style={{ fontSize: 16 }}>🏆</span>
+            <span style={{ fontSize: 16 }}></span>
             <span style={{
               fontSize: 15,
               fontWeight: 700,

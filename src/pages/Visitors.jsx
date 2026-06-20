@@ -99,7 +99,7 @@ export default function Visitors() {
     { label: 'Today',      value: todayCount, icon: '', iconBg: '#dcfce709', color: 'black', },
     { label: 'This Week',  value: thisWeek,   icon: '', iconBg: '#dbeafe00', color: 'black', },
     { label: 'This Month', value: thisMonth,  icon: '', iconBg: '#fef9c300', color: 'black',},
-    { label: 'Follow-ups', value: followUps,  icon: '', iconBg: '#fee2e200', color: 'black' },
+    { label: 'Follow-ups', value: followUps,  icon: '', iconBg: '#fee2e200', color: 'black',},
   ]
 
   const filtered = visitors.filter(v => {
@@ -124,10 +124,10 @@ export default function Visitors() {
             fontSize: 20, fontWeight: 700,
             color: theme.textDark, margin: 0,
           }}>
-            Visitor Log
+    
           </h1>
           <p style={{ fontSize: 13, color: theme.textLight, marginTop: 4 }}>
-            Walk-in visitor tracking
+          
           </p>
         </div>
 
@@ -139,7 +139,7 @@ export default function Visitors() {
             borderRadius: 8, fontSize: 13,
             color: theme.textMid, cursor: 'pointer',
           }}>
-            📤 Export
+             Export
           </button>
 
           {/* this button now opens the modal */}
@@ -162,12 +162,12 @@ export default function Visitors() {
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(4, 1fr)',
-        gap: 14, marginBottom: 20,
+        gap: 100, marginBottom: 20,
       }}>
         {stats.map(s => (
           <div key={s.label} style={{
             background: theme.cardBg,
-            border: `1px solid ${theme.border}`,
+            border: `6px solid ${theme.border}`,
             borderTop: `3px solid ${s.top}`,
             borderRadius: 10, padding: 16,
             display: 'flex', alignItems: 'center', gap: 14,
@@ -210,7 +210,7 @@ export default function Visitors() {
             border: `1px solid ${theme.border}`,
             borderRadius: 8, padding: '8px 14px', maxWidth: 380,
           }}>
-            <span style={{ color: theme.textMuted }}>🔍</span>
+            <span style={{ color: theme.textMuted }}></span>
             <input
               placeholder="Search visitors..."
               value={search}
@@ -299,7 +299,7 @@ export default function Visitors() {
             color: theme.textLight,
           }}>
             <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.3 }}>
-              👥
+              
             </div>
             <div style={{
               fontSize: 15, fontWeight: 600,
@@ -368,8 +368,7 @@ export default function Visitors() {
                 background: theme.primaryLight,
                 border: 'none', borderRadius: 6,
                 fontSize: 12, fontWeight: 600,
-                color: theme.primaryText, cursor: 'pointer',
-              }}>
+                color: theme.primary, cursor: 'pointer',}}>
                 View
               </button>
               <button style={{
@@ -377,9 +376,9 @@ export default function Visitors() {
                 background: theme.pageBg,
                 border: `1px solid ${theme.border}`,
                 borderRadius: 6, fontSize: 12,
-                color: theme.textMid, cursor: 'pointer',
+                color: theme.textDark, cursor: 'pointer',
               }}>
-                ✏️
+                edit
               </button>
             </div>
           </div>

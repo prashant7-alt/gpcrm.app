@@ -116,10 +116,10 @@ export default function Staff() {
             color: theme.textDark,
             margin: 0,
           }}>
-            Staff
+       
           </h1>
           <p style={{ fontSize: 13, color: theme.textLight, marginTop: 4 }}>
-            {staff.length} team member{staff.length !== 1 ? 's' : ''}
+          
           </p>
         </div>
 
@@ -135,7 +135,7 @@ export default function Staff() {
             padding: '7px 14px',
             width: 220,
           }}>
-            <span style={{ color: theme.textMuted, fontSize: 13 }}>🔍</span>
+            <span style={{ color: theme.textMuted, fontSize: 13 }}></span>
             <input
               placeholder="Search staff..."
               value={search}
@@ -236,11 +236,7 @@ export default function Staff() {
               flexDirection: 'column',
             }}>
 
-              {/* colored top bar */}
-              <div style={{
-                height: 6,
-                background: avatarColor(s.name),
-              }}/>
+             
 
               {/* card body */}
               <div style={{
@@ -308,7 +304,7 @@ export default function Staff() {
                     fontSize: 12,
                     color: theme.textMid,
                   }}>
-                    <span style={{ fontSize: 14, width: 18, textAlign: 'center' }}>📧</span>
+                    <span style={{ fontSize: 14, width: 18, textAlign: 'center' }}></span>
                     <span style={{
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
@@ -325,7 +321,7 @@ export default function Staff() {
                     fontSize: 12,
                     color: theme.textMid,
                   }}>
-                    <span style={{ fontSize: 14, width: 18, textAlign: 'center' }}>📱</span>
+                    <span style={{ fontSize: 14, width: 18, textAlign: 'center' }}></span>
                     {s.phone || '—'}
                   </div>
                   {s.joined && (
@@ -336,7 +332,7 @@ export default function Staff() {
                       fontSize: 12,
                       color: theme.textLight,
                     }}>
-                      <span style={{ fontSize: 14, width: 18, textAlign: 'center' }}>📅</span>
+                      <span style={{ fontSize: 14, width: 18, textAlign: 'center' }}></span>
                       Joined {new Date(s.joined).toLocaleDateString('en-US', {
                         month: 'short', year: 'numeric'
                       })}
@@ -374,7 +370,7 @@ export default function Staff() {
                     e.currentTarget.style.background = '#fff5f5'
                 }}
               >
-                {deleting === s.id ? 'Removing...' : '🗑️ Remove'}
+                {deleting === s.id ? 'Removing...' : ' Remove'}
               </button>
 
             </div>

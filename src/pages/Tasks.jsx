@@ -174,10 +174,10 @@ export default function Tasks() {
       }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 700, color: theme.textDark, margin: 0 }}>
-            Tasks
+       
           </h1>
           <p style={{ fontSize: 13, color: theme.textLight, marginTop: 4 }}>
-            Track team tasks and follow-ups
+           
           </p>
         </div>
         <button
@@ -242,7 +242,7 @@ export default function Tasks() {
           background: theme.cardBg, border: `1px solid ${theme.border}`,
           borderRadius: 8, padding: '8px 14px', flex: 1,
         }}>
-          <span style={{ color: theme.textMuted }}>🔍</span>
+          <span style={{ color: theme.textMuted }}></span>
           <input
             placeholder="Search tasks, client, or assignee..."
             value={search}

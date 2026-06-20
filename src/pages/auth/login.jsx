@@ -117,7 +117,13 @@ export default function Login() {
             width: 52, height: 52, borderRadius: 14, background: brandColor,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 24, margin: '0 auto 10px', transition: 'background 0.3s',
-          }}>🌐</div>
+          }}>
+            <img
+          src="/src/assets/images/logo.png"
+          alt="Global Pathway Logo"
+          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+          />
+          </div>
           <div style={{ fontSize: 20, fontWeight: 700, color: '#111827' }}>Global Pathway</div>
           <div style={{ fontSize: 13, color: '#6b7280', marginTop: 3, marginBottom: 22 }}>Consultancy CRM</div>
         </div>
@@ -130,14 +136,14 @@ export default function Login() {
             background: view === 'admin' ? '#fff' : 'transparent',
             color:      view === 'admin' ? '#4F46E5' : '#6b7280',
             boxShadow:  view === 'admin' ? '0 1px 4px rgba(0,0,0,0.10)' : 'none',
-          }}>🔐 Admin</button>
+          }}>Admin</button>
           <button onClick={() => switchView('student')} style={{
             flex: 1, padding: '8px 0', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600,
             cursor: 'pointer', fontFamily: 'inherit',
             background: view === 'student' ? '#fff' : 'transparent',
             color:      view === 'student' ? '#16a34a' : '#6b7280',
             boxShadow:  view === 'student' ? '0 1px 4px rgba(0,0,0,0.10)' : 'none',
-          }}>🎓 Student</button>
+          }}> Student</button>
         </div>
 
         <div style={{ padding: '0 28px 28px' }}>
@@ -146,14 +152,14 @@ export default function Login() {
               background: '#fef2f2', border: '1px solid #fca5a5', color: '#b91c1c',
               padding: '9px 12px', borderRadius: 8, fontSize: 13, marginBottom: 16,
               display: 'flex', alignItems: 'center', gap: 7,
-            }}>⚠️ {error}</div>
+            }}> {error}</div>
           )}
           {success && (
             <div style={{
               background: '#f0fdf4', border: '1px solid #86efac', color: '#15803d',
               padding: '9px 12px', borderRadius: 8, fontSize: 13, marginBottom: 16,
               display: 'flex', alignItems: 'center', gap: 7,
-            }}>✅ {success}</div>
+            }}> {success}</div>
           )}
 
           {/* ADMIN */}
@@ -173,14 +179,14 @@ export default function Login() {
                   <button type="button" onClick={() => setShowPass(!showPass)} style={{
                     position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
                     background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#9ca3af',
-                  }}>{showPass ? '🙈' : '👁️'}</button>
+                  }}>{showPass ? '🙈' : '👁 ️'}</button>
                 </div>
               </div>
               <button type="submit" disabled={loading} style={{
                 width: '100%', padding: '11px', background: loading ? '#9ca3af' : '#4F46E5',
                 border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, color: '#fff',
                 cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-              }}>{loading ? 'Signing in...' : '🔐 Sign in as Admin'}</button>
+              }}>{loading ? 'Signing in...' : ' Sign in as Admin'}</button>
             </form>
           )}
 
@@ -201,16 +207,16 @@ export default function Login() {
                   <button type="button" onClick={() => setShowPass(!showPass)} style={{
                     position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
                     background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#9ca3af',
-                  }}>{showPass ? '🙈' : '👁️'}</button>
+                  }}>{showPass ? '🙈' : '👁 ️'}</button>
                 </div>
               </div>
               <button type="submit" disabled={loading} style={{
                 width: '100%', padding: '11px', background: loading ? '#9ca3af' : '#16a34a',
                 border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, color: '#fff',
                 cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-              }}>{loading ? 'Signing in...' : '🎓 Sign in as Student'}</button>
+              }}>{loading ? 'Signing in...' : ' Sign in as Student'}</button>
               <div style={{ textAlign: 'center', marginTop: 16, fontSize: 12, color: '#9ca3af' }}>
-                Use your email and phone number as password.
+              
               </div>
             </form>
           )}

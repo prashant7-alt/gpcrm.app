@@ -1,9 +1,11 @@
 * {
-  margin: 0;
+  margin: 5;
   padding: 0;
   box-sizing: border-box;
+  color: #793434;
 }
 
 body {
   font-family: 'Segoe UI', Arial, sans-serif;
+  color: #793434;
 }

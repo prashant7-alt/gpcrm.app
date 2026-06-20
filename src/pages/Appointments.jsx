@@ -147,13 +147,13 @@ export default function Appointments() {
             fontSize: 20, fontWeight: 700,
             color: theme.textDark, margin: 0,
           }}>
-            Appointments
+         
           </h1>
           <p style={{
             fontSize: 13, color: theme.textLight,
             marginTop: 4,
           }}>
-            Manage student appointment requests
+            
           </p>
         </div>
         <button
@@ -210,7 +210,7 @@ export default function Appointments() {
         marginBottom: 16,
         maxWidth: 380,
       }}>
-        <span style={{ color: theme.textMuted }}>🔍</span>
+        <span style={{ color: theme.textMuted }}></span>
         <input
           placeholder="Search by student name..."
           value={search}
@@ -226,7 +226,7 @@ export default function Appointments() {
       {/* table */}
       <div style={{
         background: theme.cardBg,
-        border: `1px solid ${theme.border}`,
+        border: `3px solid ${theme.border}`,
         borderRadius: 10,
         overflow: 'hidden',
       }}>
@@ -237,7 +237,7 @@ export default function Appointments() {
           gridTemplateColumns: '2fr 1.5fr 1.5fr 1fr 1.5fr 2fr',
           padding: '10px 16px',
           background: theme.pageBg,
-          borderBottom: `1px solid ${theme.border}`,
+          borderBottom: `3px solid ${theme.border}`,
         }}>
           {['Student','Type','Date & Time','Status','Note','Actions'].map(h => (
             <span key={h} style={{
@@ -262,7 +262,7 @@ export default function Appointments() {
             padding: 60, textAlign: 'center',
             color: theme.textLight,
           }}>
-            <div style={{ fontSize: 40, marginBottom: 10 }}>📅</div>
+            <div style={{ fontSize: 40, marginBottom: 10 }}></div>
             <div style={{ fontSize: 14, fontWeight: 600, color: theme.textMid }}>
               No appointments found
             </div>
@@ -275,7 +275,7 @@ export default function Appointments() {
             gridTemplateColumns: '2fr 1.5fr 1.5fr 1fr 1.5fr 2fr',
             padding: '13px 16px',
             borderBottom: i < filtered.length - 1
-              ? `1px solid ${theme.border}` : 'none',
+              ? `3px solid ${theme.border}` : 'none',
             alignItems: 'center',
           }}
             onMouseEnter={e =>
@@ -353,7 +353,7 @@ export default function Appointments() {
                       color: '#15803d', cursor: 'pointer',
                     }}
                   >
-                    ✅ Accept
+                     Accept
                   </button>
                   <button
                     onClick={() => rejectAppointment(a.id)}
@@ -365,7 +365,7 @@ export default function Appointments() {
                       color: '#b91c1c', cursor: 'pointer',
                     }}
                   >
-                    ❌ Reject
+                     Reject
                   </button>
                 </>
               )}
@@ -382,7 +382,7 @@ export default function Appointments() {
                     color: '#1d4ed8', cursor: 'pointer',
                   }}
                 >
-                  ✔️ Complete
+                   Complete
                 </button>
               )}
 
@@ -393,13 +393,13 @@ export default function Appointments() {
                   style={{
                     padding: '5px 10px',
                     background: theme.pageBg,
-                    border: `1px solid ${theme.border}`,
+                    border: `3px solid ${theme.border}`,
                     borderRadius: 6,
                     fontSize: 12, color: theme.textMid,
                     cursor: 'pointer',
                   }}
                 >
-                  📅 Reschedule
+                  Reschedule
                 </button>
               )}
             </div>
@@ -412,7 +412,7 @@ export default function Appointments() {
       {rescheduleId && (
         <div style={{
           position: 'fixed', inset: 0,
-          background: 'rgba(0,0,0,0.4)',
+          background: 'rgba(75, 40, 40, 0.4)',
           display: 'flex', alignItems: 'center',
           justifyContent: 'center', zIndex: 200,
         }}>

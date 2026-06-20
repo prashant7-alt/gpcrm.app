@@ -1,14 +1,21 @@
+import { useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 
+// layout components (admin side)
 import Navbar  from './components/Navbar/Navbar'
-import Sidebar from './components/Sidebar/Sidebar'
 
+// auth page — note lowercase 'login' to match the actual filename
 import Login from './pages/auth/login'
 
+// student portal pages — each one already includes StudentLayout internally
 import StudentDashboard    from './pages/student/StudentDashboard'
 import StudentAppointments from './pages/student/StudentAppointments'
 import StudentProfile      from './pages/student/StudentProfile'
+import StudentVisaStatus   from './pages/student/StudentVisaStatus'
+import StudentDocuments    from './pages/student/StudentDocuments'
+import StudentPayments     from './pages/student/StudentPayments'
 
+// admin pages
 import Dashboard    from './pages/Dashboard'
 import Applications from './pages/Applications'
 import Students     from './pages/Students'
@@ -21,20 +28,33 @@ import Appointments from './pages/Appointments'
 import Tasks        from './pages/Tasks'
 import Settings     from './pages/Settings'
 
+// keep this in sync with SIDEBAR_WIDTH in Navbar.jsx
+const SIDEBAR_WIDTH = 230
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin layout — navbar + push sidebar (content shifts right, no overlay)
+// ─────────────────────────────────────────────────────────────────────────────
 function Layout({ children }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+
   return (
-    <div style={{ display: 'flex', background: '#f9fafb', minHeight: '100vh' }}>
-      <Sidebar />
-      <div style={{ flex: 1, marginLeft: 220 }}>
-        <Navbar />
-        <main style={{ marginTop: 64, padding: '24px 28px 100px' }}>
-          {children}
-        </main>
-      </div>
+    <div style={{ background: '#f9fafb', minHeight: '100vh' }}>
+      <Navbar menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
+      <main style={{
+        marginTop: 64,
+        marginLeft: menuOpen ? SIDEBAR_WIDTH : 0,
+        padding: 24,
+        transition: 'margin-left 0.22s cubic-bezier(0.4,0,0.2,1)',
+      }}>
+        {children}
+      </main>
     </div>
   )
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AdminRoute — only lets admin role through, otherwise redirect
+// ─────────────────────────────────────────────────────────────────────────────
 function AdminRoute({ children }) {
   const profile = JSON.parse(localStorage.getItem('profile') || '{}')
   if (!profile.id) return <Navigate to="/login" replace />
@@ -42,6 +62,9 @@ function AdminRoute({ children }) {
   return children
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// StudentRoute — only lets student role through, otherwise redirect
+// ─────────────────────────────────────────────────────────────────────────────
 function StudentRoute({ children }) {
   const profile = JSON.parse(localStorage.getItem('profile') || '{}')
   if (!profile.id) return <Navigate to="/login" replace />
@@ -49,14 +72,17 @@ function StudentRoute({ children }) {
   return children
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
 
+        {/* public login page */}
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<Navigate to="/login" replace />} />
 
+        {/* ── student routes — each page brings its own sidebar layout ── */}
         <Route path="/student/dashboard" element={
           <StudentRoute><StudentDashboard /></StudentRoute>
         } />
@@ -66,7 +92,17 @@ export default function App() {
         <Route path="/student/profile" element={
           <StudentRoute><StudentProfile /></StudentRoute>
         } />
+        <Route path="/student/visa-status" element={
+          <StudentRoute><StudentVisaStatus /></StudentRoute>
+        } />
+        <Route path="/student/documents" element={
+          <StudentRoute><StudentDocuments /></StudentRoute>
+        } />
+        <Route path="/student/payments" element={
+          <StudentRoute><StudentPayments /></StudentRoute>
+        } />
 
+        {/* ── admin routes — wrapped in shared Layout (navbar + push sidebar) ── */}
         <Route path="/dashboard" element={
           <AdminRoute><Layout><Dashboard /></Layout></AdminRoute>
         } />
@@ -101,6 +137,7 @@ export default function App() {
           <AdminRoute><Layout><Settings /></Layout></AdminRoute>
         } />
 
+        {/* unknown routes go back to login */}
         <Route path="*" element={<Navigate to="/login" replace />} />
 
       </Routes>

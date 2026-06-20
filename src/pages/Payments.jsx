@@ -79,34 +79,32 @@ export default function Payments() {
     {
       label:  'Total Collected',
       value:  `Rs ${totalCollected.toLocaleString()}`,
-      icon:   '💰',
-      iconBg: theme.primaryLight,
-      color:  theme.primaryText,
-      top:    theme.primary,
+     
+      color:  theme.primaryblack,
+     
     },
     {
       label:  'This Month',
       value:  `Rs ${thisMonth.toLocaleString()}`,
-      icon:   '📅',
-      iconBg: theme.blueLight,
-      color:  theme.blue,
-      top:    theme.blue,
+      
+      
+      color:  theme.black,
     },
     {
       label:  'Pending',
       value:  `Rs ${totalPending.toLocaleString()}`,
-      icon:   '⏳',
-      iconBg: theme.yellowLight,
+    
+     
       color:  theme.yellow,
       top:    theme.yellow,
     },
     {
       label:  'Overdue',
       value:  `Rs ${totalOverdue.toLocaleString()}`,
-      icon:   '❗',
-      iconBg: theme.redLight,
-      color:  theme.red,
-      top:    theme.red,
+  
+     
+      color:  theme.daark,
+    
     },
   ]
 
@@ -168,14 +166,14 @@ export default function Payments() {
             color: theme.textDark,
             margin: 0,
           }}>
-            Payments
+        
           </h1>
           <p style={{
             fontSize: 13,
             color: theme.textLight,
             marginTop: 4,
           }}>
-            {payments.length} total transactions
+        
           </p>
         </div>
 
@@ -193,7 +191,7 @@ export default function Payments() {
             alignItems: 'center',
             gap: 6,
           }}>
-            📤 Export
+             Export
           </button>
           <button
             onClick={() => setShowModal(true)}
@@ -286,7 +284,7 @@ export default function Payments() {
           padding: '8px 14px',
           flex: 1,
         }}>
-          <span style={{ color: theme.textMuted }}>🔍</span>
+          <span style={{ color: theme.textMuted }}></span>
           <input
             placeholder="Search by student name..."
             value={search}
@@ -387,7 +385,7 @@ export default function Payments() {
             textAlign: 'center',
             color: theme.textLight,
           }}>
-            <div style={{ fontSize: 40, marginBottom: 10, opacity: 0.3 }}>💳</div>
+            <div style={{ fontSize: 40, marginBottom: 10, opacity: 0.3 }}></div>
             <div style={{ fontSize: 14, fontWeight: 600, color: theme.textMid }}>
               No payments found
             </div>
@@ -456,10 +454,10 @@ export default function Payments() {
               gap: 4,
             }}>
               {/* little icon depending on method */}
-              {p.method === 'Cash'   && '💵'}
-              {p.method === 'eSewa'  && '📱'}
-              {p.method === 'Bank'   && '🏦'}
-              {p.method === 'Khalti' && '📲'}
+              {p.method === 'Cash'   && ''}
+              {p.method === 'eSewa'  && ''}
+              {p.method === 'Bank'   && ''}
+              {p.method === 'Khalti' && ''}
               {' '}{p.method || '—'}
             </div>
 
@@ -514,7 +512,7 @@ export default function Payments() {
                 color: theme.textMid,
                 cursor: 'pointer',
               }}>
-                ✏️
+                  View
               </button>
             </div>
 

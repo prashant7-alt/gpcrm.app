@@ -139,7 +139,7 @@ export default function Documents() {
             padding: '8px 14px',
             maxWidth: 380,
           }}>
-            <span style={{ color: theme.textMuted }}>🔍</span>
+            <span style={{ color: theme.textMuted }}></span>
             <input
               placeholder="Search students..."
               value={search}
@@ -190,7 +190,7 @@ export default function Documents() {
             textAlign: 'center',
             color: theme.textLight,
           }}>
-            <div style={{ fontSize: 36, marginBottom: 10 }}>📁</div>
+            <div style={{ fontSize: 36, marginBottom: 10 }}></div>
             <div style={{
               fontSize: 14,
               fontWeight: 600,
@@ -295,7 +295,7 @@ export default function Documents() {
                 gap: 5,
               }}
             >
-              📂 Open Documents
+               Open Documents
             </button>
           </div>
         ))}
@@ -369,12 +369,12 @@ export default function Documents() {
                   )}
                   {selected.phone && (
                     <span style={{ fontSize: 12, color: theme.textLight }}>
-                      📞 {selected.phone}
+                       {selected.phone}
                     </span>
                   )}
                   {selected.country && (
                     <span style={{ fontSize: 12, color: theme.textLight }}>
-                      ✈️ {selected.country}
+                       {selected.country}
                     </span>
                   )}
                 </div>
@@ -389,7 +389,7 @@ export default function Documents() {
                   color: theme.textMid,
                   cursor: 'pointer',
                 }}>
-                  🧾 Invoices
+                   Invoices
                 </button>
                 <button
                   onClick={() => setSelected(null)}
@@ -420,10 +420,10 @@ export default function Documents() {
               gap: 0,
             }}>
               {[
-                { label: 'Counselor',          sub: 'Counseling Status',  icon: '👤', done: true  },
-                { label: 'Document Uploader',  sub: 'Document Status',    icon: '📄', done: false },
-                { label: 'Application Status', sub: 'Application Status', icon: '📋', done: false },
-                { label: 'Visa Officer',       sub: 'Visa Status',        icon: '🛂', done: false },
+                { label: 'Counselor',          sub: 'Counseling Status',  icon: '', done: true  },
+                { label: 'Document Uploader',  sub: 'Document Status',    icon: '', done: false },
+                { label: 'Application Status', sub: 'Application Status', icon: '', done: false },
+                { label: 'Visa Officer',       sub: 'Visa Status',        icon: '', done: false },
               ].map((step, i, arr) => (
                 <div key={step.label} style={{
                   display: 'flex',
@@ -533,7 +533,7 @@ export default function Documents() {
                       color: theme.textMuted,
                       flexShrink: 0,
                     }}>
-                      📄
+                      
                     </span>
                     <span style={{
                       flex: 1,
@@ -554,7 +554,7 @@ export default function Documents() {
                       alignItems: 'center',
                       gap: 4,
                     }}>
-                      ⬆️ UPLOAD
+                      ⬆UPLOAD
                     </button>
                     <input
                       type="checkbox"
@@ -577,8 +577,8 @@ export default function Documents() {
                       }}
                     >
                       {docStatus[doc] === 'uploaded'
-                        ? <><span>✅</span> Done</>
-                        : <><span>❌</span> Missing</>
+                        ? <><span></span> Done</>
+                        : <><span></span> Missing</>
                       }
                     </div>
                   </div>

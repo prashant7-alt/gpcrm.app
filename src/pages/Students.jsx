@@ -4,14 +4,14 @@ import theme from '../theme'
 import BottomButtons from '../components/BottomButtons'
 
 const countries = [
-  { name: 'Korea',     flag: '🇰🇷' },
-  { name: 'Australia', flag: '🇦🇺' },
-  { name: 'Japan',     flag: '🇯🇵' },
-  { name: 'UK',        flag: '🇬🇧' },
-  { name: 'USA',       flag: '🇺🇸' },
-  { name: 'Canada',    flag: '🇨🇦' },
-  { name: 'Finland',   flag: '🇫🇮' },
-  { name: 'Others', flag: '🌍' },
+  { name: '',     flag: 'Korea' },
+  { name: '', flag: 'Australia' },
+  { name: '',     flag: 'Japan' },
+  { name: '',        flag: 'UK' },
+  { name: '',       flag: 'USA' },
+  { name: '',    flag: 'Canada' },
+  { name: '',   flag: '🇫🇮' },
+  { name: '', flag: 'Others' },
 ]
 
 const feeColor = (status) => {
@@ -73,14 +73,14 @@ export default function Students() {
             color: theme.textDark,
             margin: 0,
           }}>
-            Students
+          
           </h1>
           <p style={{
             fontSize: 13,
             color: theme.textLight,
             marginTop: 4,
           }}>
-            Auto-populated from applicants with Class or Abroad stage
+           
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
@@ -115,7 +115,7 @@ export default function Students() {
             color: theme.textMid,
             cursor: 'pointer',
           }}>
-            📤 Export
+             Export
           </button>
         </div>
       </div>
@@ -158,7 +158,7 @@ export default function Students() {
             <div style={{
               fontSize: 20,
               fontWeight: 800,
-              color: theme.primary,
+              color: theme.black,
               marginBottom: 2,
             }}>
               {countByCountry(c.name)}
@@ -210,7 +210,7 @@ export default function Students() {
             textAlign: 'center',
             color: theme.textLight,
           }}>
-            <div style={{ fontSize: 40, marginBottom: 10 }}>🎓</div>
+            <div style={{ fontSize: 40, marginBottom: 10 }}></div>
             <div style={{
               fontSize: 14,
               fontWeight: 600,
@@ -295,7 +295,7 @@ export default function Students() {
                 color: '#fff',
                 cursor: 'pointer',
               }}>
-                👤 View
+                 View
               </button>
             </div>
           </div>
