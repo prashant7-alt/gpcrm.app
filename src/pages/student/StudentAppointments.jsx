@@ -123,7 +123,7 @@ export default function StudentAppointments() {
               My Appointments
             </h1>
             <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
-              Book and track your appointments
+            
             </p>
           </div>
 
