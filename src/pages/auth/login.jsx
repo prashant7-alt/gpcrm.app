@@ -65,7 +65,7 @@ export default function Login() {
       }}>
 
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <div style={{ fontSize: 44 }}>🌐</div>
+          <div style={{ fontSize: 44 }}></div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: '#111827', marginTop: 8 }}>
             Global Pathway
           </h1>
@@ -134,7 +134,7 @@ export default function Login() {
                   fontSize: 16, cursor: 'pointer', color: '#9ca3af',
                 }}
               >
-                {showPass ? '🙈' : '👁'}
+                {showPass ? '👁' : '👁'}
               </button>
             </div>
           </div>
