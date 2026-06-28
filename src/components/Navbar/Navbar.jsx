@@ -3,10 +3,6 @@ import { useLocation, useNavigate, NavLink } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import theme from '../../theme'
 
-// ─────────────────────────────────────────────────────────────
-// MENU DEFINITIONS — admin sees everything, staff sees limited
-// ─────────────────────────────────────────────────────────────
-
 const adminMenu = [
   { section: 'Overview',   links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
   { section: 'Pipeline',   links: [{ to: '/applications', label: 'Applications' }, { to: '/students', label: 'Students' }, { to: '/visitors', label: 'Visitors' }] },
@@ -16,33 +12,23 @@ const adminMenu = [
   { section: 'System',     links: [{ to: '/settings',     label: 'Settings'     }] },
 ]
 
-// staff cannot see Staff, Reports, Settings
 const staffMenu = [
   { section: 'Overview',   links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
   { section: 'Pipeline',   links: [{ to: '/applications', label: 'Applications' }, { to: '/students', label: 'Students' }, { to: '/visitors', label: 'Visitors' }] },
   { section: 'Operations', links: [{ to: '/appointments', label: 'Appointments' }, { to: '/tasks',    label: 'Tasks'    }] },
   { section: 'Finance',    links: [{ to: '/payments',     label: 'Payments'     }] },
-  { section: 'Documents',  links: [{ to: '/documents',    label: 'Documents'    }] },
+  { section: 'Documents',  links: [{ to: '/documents',    label: 'Documents'    }, { to: '/chat',     label: 'Chat'     }] },
 ]
-
-// ─────────────────────────────────────────────────────────────
-// PAGE TITLE LOOKUP
-// ─────────────────────────────────────────────────────────────
 
 const PAGE_LABELS = {
   dashboard: 'Dashboard', applications: 'Applicants', students: 'Students',
   visitors: 'Visitors',   appointments: 'Appointments', tasks: 'Tasks',
   documents: 'Documents', payments: 'Payments', staff: 'Staff',
-  reports: 'Reports',     settings: 'Settings',
+  reports: 'Reports',     settings: 'Settings', chat: 'Chat',
 }
 
 const PAGE_SUB = {}
-
 const SIDEBAR_WIDTH = 230
-
-// ─────────────────────────────────────────────────────────────
-// COMPONENT
-// ─────────────────────────────────────────────────────────────
 
 export default function Navbar({ menuOpen, setMenuOpen }) {
 
@@ -51,31 +37,22 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
   const drawerRef    = useRef(null)
   const toggleBtnRef = useRef(null)
 
-  // get logged in profile from localStorage
   const profile  = JSON.parse(localStorage.getItem('profile') || '{}')
   const isAdmin  = profile.role === 'admin'
   const isStaff  = profile.role === 'staff'
 
-  // pick the right menu based on role
   const menu = isAdmin ? adminMenu : staffMenu
 
   const key      = location.pathname.replace('/', '').toLowerCase()
   const title    = PAGE_LABELS[key] || 'Dashboard'
   const subtitle = PAGE_SUB[key] || ''
 
-  // display name — use profile name or fall back to role label
   const displayName = profile.name || (isAdmin ? 'Admin' : isStaff ? 'Staff' : 'User')
   const roleLabel   = isAdmin ? 'Administrator' : isStaff ? 'Staff Member' : 'User'
 
-  // initials for avatar
   const initials = displayName
-    .split(' ')
-    .map(w => w[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
+    .split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
 
-  // click outside closes sidebar
   useEffect(() => {
     function handleClick(e) {
       if (
@@ -98,7 +75,6 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
 
   return (
     <>
-      {/* ── TOP NAVBAR ── */}
       <header style={{
         height: 64,
         background: '#fff',
@@ -108,8 +84,6 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
         zIndex: 200,
         boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
       }}>
-
-        {/* hamburger button */}
         <button
           ref={toggleBtnRef}
           onClick={() => setMenuOpen(v => !v)}
@@ -136,7 +110,6 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
           ))}
         </button>
 
-        {/* logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           <img src="/src/assets/images/logo.png" alt="Logo"
             style={{ width: 79, height: 90, borderRadius: 8, objectFit: 'contain' }} />
@@ -146,10 +119,8 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
           </div>
         </div>
 
-        {/* divider */}
         <div style={{ width: 1, height: 32, background: '#e5e7eb', flexShrink: 0 }} />
 
-        {/* page title */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 30, fontWeight: 700, color: '#0f327dcf', lineHeight: 1.2 }}>
             {title}
@@ -157,7 +128,6 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
           {subtitle && <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>{subtitle}</div>}
         </div>
 
-        {/* user avatar — shows role label */}
         <div
           onClick={() => isAdmin && navigate('/settings')}
           style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: isAdmin ? 'pointer' : 'default' }}
@@ -177,11 +147,9 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
         </div>
       </header>
 
-      {/* ── SIDEBAR DRAWER ── */}
       <nav ref={drawerRef} style={{
         position: 'fixed',
-        top: 64,
-        left: 0,
+        top: 64, left: 0,
         width: SIDEBAR_WIDTH,
         height: 'calc(100vh - 64px)',
         background: theme.sidebarBg || '#4f373723',
@@ -192,8 +160,6 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
         transition: 'transform 0.22s cubic-bezier(0.4,0,0.2,1)',
         overflow: 'hidden',
       }}>
-
-        {/* role badge at top of sidebar */}
         <div style={{
           padding: '10px 14px 6px',
           borderBottom: `1px solid ${theme.border || '#e5e7eb'}`,
@@ -208,7 +174,6 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
           </span>
         </div>
 
-        {/* scrollable menu */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '6px 10px' }}>
           {menu.map(group => (
             <div key={group.section}>
@@ -220,7 +185,6 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
               }}>
                 {group.section}
               </div>
-
               {group.links.map(link => (
                 <NavLink key={link.to} to={link.to}
                   style={({ isActive }) => ({
@@ -240,7 +204,6 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
           ))}
         </div>
 
-        {/* logout button at bottom */}
         <div style={{ borderTop: `1px solid ${theme.border || '#e5e7eb'}`, padding: '10px 10px 14px' }}>
           <button
             onClick={handleLogout}

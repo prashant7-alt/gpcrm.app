@@ -1,21 +1,18 @@
 import { useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 
-// layout components (admin side)
 import Navbar  from './components/Navbar/Navbar'
 
-// auth page
 import Login from './pages/auth/login'
 
-// student portal pages
 import StudentDashboard    from './pages/student/StudentDashboard'
 import StudentAppointments from './pages/student/StudentAppointments'
 import StudentProfile      from './pages/student/StudentProfile'
 import StudentVisaStatus   from './pages/student/StudentVisaStatus'
 import StudentDocuments    from './pages/student/StudentDocuments'
 import StudentPayments     from './pages/student/StudentPayments'
+import StudentChat         from './pages/student/StudentChat'
 
-// admin pages
 import Dashboard    from './pages/Dashboard'
 import Applications from './pages/Applications'
 import Students     from './pages/Students'
@@ -27,12 +24,10 @@ import Reports      from './pages/Reports'
 import Appointments from './pages/Appointments'
 import Tasks        from './pages/Tasks'
 import Settings     from './pages/Settings'
+import StaffChat    from './pages/StaffChat'
 
 const SIDEBAR_WIDTH = 230
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Layout — your original layout, untouched
-// ─────────────────────────────────────────────────────────────────────────────
 function Layout({ children }) {
   const [menuOpen, setMenuOpen] = useState(false)
   return (
@@ -50,9 +45,7 @@ function Layout({ children }) {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// AdminRoute — admin only
-// ─────────────────────────────────────────────────────────────────────────────
+// Admin only
 function AdminRoute({ children }) {
   const profile = JSON.parse(localStorage.getItem('profile') || '{}')
   if (!profile.id) return <Navigate to="/login" replace />
@@ -60,32 +53,31 @@ function AdminRoute({ children }) {
   return children
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// AdminOrStaffRoute — both admin and staff can access
-// ─────────────────────────────────────────────────────────────────────────────
+// Admin + Staff
 function AdminOrStaffRoute({ children }) {
   const profile = JSON.parse(localStorage.getItem('profile') || '{}')
   if (!profile.id) return <Navigate to="/login" replace />
   if (profile.role === 'student') return <Navigate to="/student/dashboard" replace />
-  if (profile.role !== 'admin' && profile.role !== 'staff') {
-    return <Navigate to="/login" replace />
-  }
+  if (profile.role !== 'admin' && profile.role !== 'staff') return <Navigate to="/login" replace />
   return children
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// StudentRoute — student only
-// ─────────────────────────────────────────────────────────────────────────────
+// Staff only — admin cannot access
+function StaffOnlyRoute({ children }) {
+  const profile = JSON.parse(localStorage.getItem('profile') || '{}')
+  if (!profile.id) return <Navigate to="/login" replace />
+  if (profile.role !== 'staff') return <Navigate to="/dashboard" replace />
+  return children
+}
+
+// Student only
 function StudentRoute({ children }) {
   const profile = JSON.parse(localStorage.getItem('profile') || '{}')
   if (!profile.id) return <Navigate to="/login" replace />
-  if (profile.role === 'admin' || profile.role === 'staff') {
-    return <Navigate to="/dashboard" replace />
-  }
+  if (profile.role === 'admin' || profile.role === 'staff') return <Navigate to="/dashboard" replace />
   return children
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 export default function App() {
   return (
     <BrowserRouter>
@@ -114,6 +106,9 @@ export default function App() {
         <Route path="/student/payments" element={
           <StudentRoute><StudentPayments /></StudentRoute>
         } />
+        <Route path="/student/chat" element={
+          <StudentRoute><StudentChat /></StudentRoute>
+        } />
 
         {/* ── admin + staff shared routes ── */}
         <Route path="/dashboard" element={
@@ -139,6 +134,11 @@ export default function App() {
         } />
         <Route path="/tasks" element={
           <AdminOrStaffRoute><Layout><Tasks /></Layout></AdminOrStaffRoute>
+        } />
+
+        {/* ── staff only route ── */}
+        <Route path="/chat" element={
+          <StaffOnlyRoute><Layout><StaffChat /></Layout></StaffOnlyRoute>
         } />
 
         {/* ── admin only routes ── */}
