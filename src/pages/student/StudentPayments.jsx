@@ -14,7 +14,7 @@ const QR_SRC = '/qr.png'   // ← Place qr.png in your /public folder
 
 const METHOD_OPTIONS = ['SUPABASE FOR TEST', 'eSewa', 'Khalti', 'Bank Transfer']
 const TYPE_OPTIONS   = [
-  'Consultation Fee', 'Application Fee', 'Visa Fee',
+  'SUPABASE FOR TEST Fee', 'Application Fee', 'Visa Fee',
   'Document Fee', 'College Fee', 'Other',
 ]
 const QR_METHODS = ['eSewa', 'Khalti', 'Bank Transfer']
