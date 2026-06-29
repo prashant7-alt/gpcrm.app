@@ -101,7 +101,7 @@ export default function StudentPayments() {
       setQrLoadError(false)   // reset QR error state for new modal open
       setStep(2)
     } else {
-      alert('✅ Payment request submitted! The admin will confirm it shortly.')
+      alert('✅ Thank you for testing!')
       resetModal()
       load()
     }
