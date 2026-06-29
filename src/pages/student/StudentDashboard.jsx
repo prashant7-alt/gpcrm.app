@@ -110,8 +110,7 @@ export default function StudentDashboard() {
         {/* .split(' ')[0] → takes only the first name, e.g. "Ram Sharma" → "Ram" */}
       </h1>
       <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 24 }}>
-        Here is your application status and updates
-      </p>
+Test checck pls      </p>
 
 
       {/* ── 3 STAT CARDS ──────────────────────────────────── */}
