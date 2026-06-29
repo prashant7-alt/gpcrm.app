@@ -12,7 +12,7 @@ import StudentLayout from './StudentLayout'
 // ─────────────────────────────────────────────────────────────────────────────
 const QR_SRC = '/qr.png'   // ← Place qr.png in your /public folder
 
-const METHOD_OPTIONS = ['Cash', 'eSewa', 'Khalti', 'Bank Transfer']
+const METHOD_OPTIONS = ['SUPABASE FOR TEST', 'eSewa', 'Khalti', 'Bank Transfer']
 const TYPE_OPTIONS   = [
   'Consultation Fee', 'Application Fee', 'Visa Fee',
   'Document Fee', 'College Fee', 'Other',
