@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import theme from '../theme'
-import { sendPaymentConfirmedEmail } from '../emailService'  // ← NEW
+import { sendPaymentConfirmedEmail } from '../emailService'
 
 const PAYMENT_TYPES = [
   'All Types',
@@ -12,6 +12,233 @@ const PAYMENT_TYPES = [
   'Document Fee',
   'Other',
 ]
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NEW: generates a short, human-friendly receipt number from the payment id
+// e.g. id "bf87ec4b-e22f-46d2..." → "GP-BF87EC4B"
+// Deterministic — same payment always produces the same receipt number
+// ─────────────────────────────────────────────────────────────────────────────
+function receiptNumber(payment) {
+  const idPart = (payment.id || '').replace(/-/g, '').slice(0, 8).toUpperCase()
+  return `GP-${idPart}`
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NEW: builds the full printable receipt HTML as a string.
+// Kept as a plain string (not JSX) because it's injected into a brand-new
+// browser window via document.write — that window has no React tree of its own.
+// ─────────────────────────────────────────────────────────────────────────────
+function buildReceiptHTML(payment) {
+  const rcpt   = receiptNumber(payment)
+  const amount = Number(payment.amount || 0).toLocaleString()
+  const date   = payment.paid_at
+    ? new Date(payment.paid_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    : payment.date || new Date(payment.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  const time = payment.paid_at
+    ? new Date(payment.paid_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    : ''
+  const ref = payment.txn_ref || payment.reference || '—'
+
+  // Escape any HTML special characters in user-entered text fields
+  const esc = (str) => String(str || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Receipt ${rcpt}</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #f4f4f5;
+    padding: 40px 20px;
+    color: #18181b;
+  }
+  .sheet {
+    max-width: 620px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+  .band {
+    height: 6px;
+    background: linear-gradient(90deg, #1a56db 0%, #16a34a 100%);
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 32px 36px 24px;
+    border-bottom: 1px solid #e4e4e7;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-mark {
+    width: 46px; height: 46px; border-radius: 12px;
+    background: #1a56db;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 800; font-size: 18px;
+    flex-shrink: 0;
+  }
+  .brand-name { font-size: 16px; font-weight: 800; color: #18181b; letter-spacing: -0.01em; }
+  .brand-sub  { font-size: 11.5px; color: #71717a; margin-top: 2px; }
+  .receipt-tag {
+    text-align: right;
+  }
+  .receipt-tag .label {
+    font-size: 10.5px; font-weight: 700; color: #a1a1aa;
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .receipt-tag .num {
+    font-size: 17px; font-weight: 800; color: #18181b;
+    margin-top: 3px; font-variant-numeric: tabular-nums;
+  }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    margin-top: 8px;
+    padding: 3px 11px; border-radius: 20px;
+    background: #dcfce7; color: #15803d;
+    font-size: 11px; font-weight: 700;
+  }
+  .body { padding: 30px 36px 8px; }
+  .amount-block {
+    text-align: center;
+    padding: 22px 0 26px;
+    border-bottom: 1px dashed #d4d4d8;
+    margin-bottom: 22px;
+  }
+  .amount-block .label {
+    font-size: 11px; color: #a1a1aa; text-transform: uppercase;
+    letter-spacing: 0.08em; font-weight: 700;
+  }
+  .amount-block .value {
+    font-size: 38px; font-weight: 800; color: #18181b;
+    margin-top: 6px; letter-spacing: -0.02em;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px 24px;
+    margin-bottom: 28px;
+  }
+  .field .label {
+    font-size: 10.5px; font-weight: 700; color: #a1a1aa;
+    text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;
+  }
+  .field .value {
+    font-size: 14px; font-weight: 600; color: #18181b;
+  }
+  .field .value.muted { font-weight: 400; color: #52525b; }
+  .note-box {
+    background: #fafafa; border: 1px solid #e4e4e7; border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 24px; font-size: 12.5px; color: #52525b;
+  }
+  .footer {
+    padding: 22px 36px 32px;
+    border-top: 1px solid #e4e4e7;
+    text-align: center;
+  }
+  .footer .thanks { font-size: 13px; font-weight: 700; color: #18181b; margin-bottom: 4px; }
+  .footer .small { font-size: 11px; color: #a1a1aa; line-height: 1.6; }
+  .actions { max-width: 620px; margin: 18px auto 0; display: flex; gap: 10px; justify-content: flex-end; }
+  .actions button {
+    padding: 9px 20px; border-radius: 8px; font-size: 13px; font-weight: 600;
+    cursor: pointer; font-family: inherit; border: none;
+  }
+  .btn-print { background: #1a56db; color: #fff; }
+  .btn-close { background: #f4f4f5; color: #52525b; border: 1px solid #e4e4e7; }
+
+  @media print {
+    body { background: #fff; padding: 0; }
+    .sheet { box-shadow: none; border-radius: 0; max-width: 100%; }
+    .actions { display: none; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="sheet">
+    <div class="band"></div>
+
+    <div class="header">
+      <div class="brand">
+        <div class="brand-mark">GP</div>
+        <div>
+          <div class="brand-name">Global Pathway</div>
+          <div class="brand-sub">Consultancy CRM</div>
+        </div>
+      </div>
+      <div class="receipt-tag">
+        <div class="label">Receipt No.</div>
+        <div class="num">${esc(rcpt)}</div>
+        <div class="status-pill">✓ Paid</div>
+      </div>
+    </div>
+
+    <div class="body">
+
+      <div class="amount-block">
+        <div class="label">Amount Received</div>
+        <div class="value">Rs ${esc(amount)}</div>
+      </div>
+
+      <div class="grid">
+        <div class="field">
+          <div class="label">Received From</div>
+          <div class="value">${esc(payment.student_name)}</div>
+        </div>
+        <div class="field">
+          <div class="label">Payment Type</div>
+          <div class="value">${esc(payment.type || 'Payment')}</div>
+        </div>
+        <div class="field">
+          <div class="label">Payment Method</div>
+          <div class="value">${esc(payment.method || '—')}</div>
+        </div>
+        <div class="field">
+          <div class="label">Date${time ? ' &amp; Time' : ''}</div>
+          <div class="value">${esc(date)}${time ? ` <span class="muted">· ${esc(time)}</span>` : ''}</div>
+        </div>
+        <div class="field">
+          <div class="label">Transaction Reference</div>
+          <div class="value muted">${esc(ref)}</div>
+        </div>
+        <div class="field">
+          <div class="label">Student Email</div>
+          <div class="value muted">${esc(payment.student_email || '—')}</div>
+        </div>
+      </div>
+
+      ${payment.note ? `
+      <div class="note-box">
+        <strong style="color:#18181b;">Note:</strong> ${esc(payment.note)}
+      </div>` : ''}
+
+    </div>
+
+    <div class="footer">
+      <div class="thanks">Thank you for your payment</div>
+      <div class="small">
+        This is a system-generated receipt from Global Pathway Consultancy CRM.<br/>
+        For any queries regarding this payment, please contact your counselor.
+      </div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn-close" onclick="window.close()">Close</button>
+    <button class="btn-print" onclick="window.print()">🖨 Print Receipt</button>
+  </div>
+
+</body>
+</html>
+  `
+}
 
 export default function Payments() {
 
@@ -103,15 +330,18 @@ export default function Payments() {
   // ── MARK AS PAID + SEND EMAIL ─────────────────────────────
   async function markPaid(id) {
     // Step 1: update status in Supabase
+    // NEW: also stamp paid_at here for cash/manual confirmations
+    // (eSewa payments already get paid_at set by the Edge Function)
+    const payment = payments.find(p => p.id === id)
     const { error } = await supabase
       .from('payments')
-      .update({ status: 'paid' })
+      .update({
+        status:  'paid',
+        paid_at: payment?.paid_at || new Date().toISOString(),
+      })
       .eq('id', id)
 
     if (error) { alert('Could not update: ' + error.message); return }
-
-    // Step 2: find the full payment row to get student details
-    const payment = payments.find(p => p.id === id)
 
     // Step 3: find student email from profiles table using student_name
     if (payment) {
@@ -144,6 +374,23 @@ export default function Payments() {
     }
 
     loadPayments()
+  }
+  // ─────────────────────────────────────────────────────────
+
+  // ── NEW: PRINT RECEIPT ────────────────────────────────────
+  // Opens a brand-new browser window/tab containing only the receipt
+  // (no sidebar/navbar), pre-styled for print, with a Print button.
+  function printReceipt(payment) {
+    const html = buildReceiptHTML(payment)
+    const win  = window.open('', '_blank', 'width=720,height=900')
+    if (!win) {
+      alert('Please allow pop-ups for this site to print receipts.')
+      return
+    }
+    win.document.open()
+    win.document.write(html)
+    win.document.close()
+    win.focus()
   }
   // ─────────────────────────────────────────────────────────
 
@@ -203,7 +450,7 @@ export default function Payments() {
 
       {/* ── payments table ── */}
       <div style={{ background: theme.cardBg, border: `1px solid ${theme.border}`, borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1.5fr 1fr 1.2fr 1fr 1.5fr', padding: '10px 16px', background: theme.pageBg, borderBottom: `1px solid ${theme.border}` }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1.5fr 1fr 1.2fr 1fr 1.8fr', padding: '10px 16px', background: theme.pageBg, borderBottom: `1px solid ${theme.border}` }}>
           {['Student', 'Amount', 'Type', 'Method', 'Status', 'Date', 'Actions'].map(h => (
             <span key={h} style={{ fontSize: 11, fontWeight: 600, color: theme.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</span>
           ))}
@@ -222,7 +469,7 @@ export default function Payments() {
         {filtered.map((p, i) => (
           <div
             key={p.id}
-            style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1.5fr 1fr 1.2fr 1fr 1.5fr', padding: '13px 16px', borderBottom: i < filtered.length - 1 ? `1px solid ${theme.border}` : 'none', alignItems: 'center' }}
+            style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1.5fr 1fr 1.2fr 1fr 1.8fr', padding: '13px 16px', borderBottom: i < filtered.length - 1 ? `1px solid ${theme.border}` : 'none', alignItems: 'center' }}
             onMouseEnter={e => e.currentTarget.style.background = theme.pageBg}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
           >
@@ -244,7 +491,7 @@ export default function Payments() {
             <div style={{ fontSize: 12, color: theme.textLight }}>
               {p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}
             </div>
-            <div style={{ display: 'flex', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {p.status !== 'paid' && (
                 <button
                   onClick={() => markPaid(p.id)}
@@ -255,10 +502,27 @@ export default function Payments() {
               )}
               {/* show green tick when paid */}
               {p.status === 'paid' && (
-                <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
+                <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
                   ✅ Paid
                 </span>
               )}
+
+              {/* NEW: Receipt button — only shown once a payment is actually paid,
+                  since you can't issue a receipt for money you haven't received */}
+              {p.status === 'paid' && (
+                <button
+                  onClick={() => printReceipt(p)}
+                  style={{
+                    padding: '5px 10px', background: '#eff6ff',
+                    border: '1px solid #bfdbfe', borderRadius: 6,
+                    fontSize: 12, fontWeight: 600, color: '#1d4ed8', cursor: 'pointer',
+                    fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4,
+                  }}
+                >
+                  🖨 Receipt
+                </button>
+              )}
+
               <button style={{ padding: '5px 10px', background: theme.pageBg, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, color: theme.textMid, cursor: 'pointer' }}>
                 View
               </button>

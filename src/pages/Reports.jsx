@@ -783,67 +783,9 @@ export default function Reports() {
 
       </div>
 
-      {/* ── floating action buttons at bottom ────────────────────────────── */}
-      {/* same pattern across all pages for consistency */}
-      <div style={{
-        position: 'fixed',
-        bottom: 24,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        display: 'flex',
-        gap: 10,
-        zIndex: 50,
-      }}>
-        <button style={{
-          padding: '10px 22px',
-          background: theme.primary,
-          border: 'none',
-          borderRadius: 24,
-          fontSize: 13,
-          fontWeight: 600,
-          color: '#fff',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
-        }}>
-          👤 Applicant
-        </button>
-        <button style={{
-          padding: '10px 22px',
-          background: '#2563eb',
-          border: 'none',
-          borderRadius: 24,
-          fontSize: 13,
-          fontWeight: 600,
-          color: '#fff',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
-        }}>
-          + Task
-        </button>
-        <button style={{
-          padding: '10px 22px',
-          background: '#f59e0b',
-          border: 'none',
-          borderRadius: 24,
-          fontSize: 13,
-          fontWeight: 600,
-          color: '#fff',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
-        }}>
-          Rs Payment
-        </button>
+      
       </div>
 
-    </div>
+    
   )
 }

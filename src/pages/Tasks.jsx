@@ -2,240 +2,270 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import theme from '../theme'
 
-const PRIORITIES = ['Low', 'Medium', 'High', 'Urgent']
-const STATUSES   = ['To Do', 'In Progress', 'Done']
-
-const priorityStyle = (p) => {
-  if (p === 'Urgent') return { bg: '#fee2e2', color: '#b91c1c' }
-  if (p === 'High')   return { bg: '#fef9c3', color: '#a16207' }
-  if (p === 'Medium') return { bg: '#dbeafe', color: '#1d4ed8' }
-  return                     { bg: '#f3f4f6', color: '#6b7280' }
+const PRIORITIES = {
+  High:   { bg: '#fee2e2', color: '#dc2626', dot: '#dc2626' },
+  Medium: { bg: '#fef9c3', color: '#ca8a04', dot: '#ca8a04' },
+  Low:    { bg: '#dcfce7', color: '#16a34a', dot: '#16a34a' },
 }
 
-const statusColor = (s) => {
-  if (s === 'Done')        return '#16a34a'
-  if (s === 'In Progress') return '#2563eb'
-  return                          '#9ca3af'
+const STATUSES = {
+  'pending':     { label: 'To Do',       bg: '#f3f4f6', color: '#6b7280', dot: '#9ca3af' },
+  'in_progress': { label: 'In Progress', bg: '#dbeafe', color: '#1d4ed8', dot: '#2563eb' },
+  'completed':   { label: 'Done',        bg: '#dcfce7', color: '#15803d', dot: '#16a34a' },
+}
+
+const inputStyle = {
+  width: '100%', padding: '9px 12px',
+  border: '1px solid #e5e7eb', borderRadius: 8,
+  fontSize: 13, color: '#111827', outline: 'none',
+  fontFamily: 'inherit', boxSizing: 'border-box', background: '#f9fafb',
+}
+
+const labelStyle = {
+  display: 'block', fontSize: 11, fontWeight: 600,
+  color: '#6b7280', textTransform: 'uppercase',
+  letterSpacing: '0.05em', marginBottom: 5,
+}
+
+function Avatar({ name, size = 28 }) {
+  const initials = name
+    ? name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+    : '?'
+  const colors = ['#16a34a','#2563eb','#7c3aed','#db2777','#ea580c','#0891b2']
+  const bg = colors[(name?.charCodeAt(0) || 0) % colors.length]
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: '50%',
+      background: bg, color: '#fff',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: size * 0.38, fontWeight: 700, flexShrink: 0,
+    }}>
+      {initials}
+    </div>
+  )
+}
+
+function dueDateInfo(dateStr, status) {
+  if (!dateStr) return { label: null, color: '#9ca3af' }
+  if (status === 'completed') return {
+    label: new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    color: '#9ca3af',
+  }
+  const today = new Date(); today.setHours(0,0,0,0)
+  const due   = new Date(dateStr); due.setHours(0,0,0,0)
+  const diff  = Math.round((due - today) / 86400000)
+  if (diff < 0)  return { label: `${Math.abs(diff)}d overdue`, color: '#dc2626' }
+  if (diff === 0) return { label: 'Due today',    color: '#ca8a04' }
+  if (diff === 1) return { label: 'Due tomorrow', color: '#ca8a04' }
+  return {
+    label: new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    color: '#6b7280',
+  }
 }
 
 export default function Tasks() {
 
-  const profile = JSON.parse(localStorage.getItem('profile') || '{}')
-  const isAdmin = profile.role === 'admin'
+  const [tasks,    setTasks]    = useState([])
+  const [staff,    setStaff]    = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [search,   setSearch]   = useState('')
+  const [assignee, setAssignee] = useState('All')
+  const [priority, setPriority] = useState('All')
+  const [showAdd,  setShowAdd]  = useState(false)
+  const [editTask, setEditTask] = useState(null)
+  const [saving,   setSaving]   = useState(false)
+  const [deleting, setDeleting] = useState(null)
 
-  const [tasks,      setTasks]      = useState([])
-  const [staffList,  setStaffList]  = useState([])
-  const [loading,    setLoading]    = useState(true)
-  const [showModal,  setShowModal]  = useState(false)
-  const [editTask,   setEditTask]   = useState(null)
-  const [search,     setSearch]     = useState('')
-  const [filterAssignee, setFilterAssignee] = useState('All')
-  const [filterStatus,   setFilterStatus]   = useState('All')
+  const emptyForm = {
+    title: '', description: '', assigned_to: '',
+    due_date: '', priority: 'Medium', status: 'pending', related_to: '',
+  }
+  const [form, setForm] = useState(emptyForm)
 
-  const [form, setForm] = useState({
-    title:       '',
-    description: '',
-    assigned_to: '',
-    priority:    'Medium',
-    due_date:    '',
-    status:      'To Do',
-  })
-
-  useEffect(() => {
-    load()
-    loadStaff()
-  }, [])
+  useEffect(() => { load() }, [])
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase
-      .from('tasks')
-      .select('*')
-      .order('created_at', { ascending: false })
-    setTasks(data || [])
+    const [{ data: t }, { data: s }] = await Promise.all([
+      supabase.from('tasks').select('*').order('created_at', { ascending: false }),
+      supabase.from('staff').select('id, name, role').order('name'),
+    ])
+    setTasks(t || [])
+    setStaff(s || [])
     setLoading(false)
   }
 
-  // fetch staff from profiles table where role = staff or admin
-  async function loadStaff() {
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, name, role')
-      .in('role', ['admin', 'staff'])
-      .order('name')
-    setStaffList(data || [])
-  }
-
-  const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }))
+  const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
 
   function openAdd() {
+    setForm(emptyForm)
     setEditTask(null)
-    setForm({
-      title:       '',
-      description: '',
-      assigned_to: '',
-      priority:    'Medium',
-      due_date:    '',
-      status:      'To Do',
-    })
-    setShowModal(true)
+    setShowAdd(true)
   }
 
   function openEdit(task) {
-    setEditTask(task)
     setForm({
       title:       task.title       || '',
-      description: task.description || '',
+      description: task.notes       || '',
       assigned_to: task.assigned_to || '',
-      priority:    task.priority    || 'Medium',
       due_date:    task.due_date    || '',
-      status:      task.status      || 'To Do',
+      priority:    task.priority    || 'Medium',
+      status:      task.status      || 'pending',
+      related_to:  task.related_to  || '',
     })
-    setShowModal(true)
+    setEditTask(task)
+    setShowAdd(true)
   }
 
   async function saveTask() {
-    if (!form.title.trim()) {
-      alert('Task title is required')
-      return
+    if (!form.title.trim()) return alert('Task title is required')
+    setSaving(true)
+
+    const payload = {
+      title:       form.title.trim(),
+      notes:       form.description.trim() || null,
+      assigned_to: form.assigned_to        || null,
+      due_date:    form.due_date            || null,
+      priority:    form.priority,
+      status:      form.status,
+      related_to:  form.related_to.trim()  || null,
     }
 
     if (editTask) {
-      await supabase
-        .from('tasks')
-        .update({
-          title:       form.title.trim(),
-          description: form.description.trim(),
-          assigned_to: form.assigned_to,
-          priority:    form.priority,
-          due_date:    form.due_date || null,
-          status:      form.status,
-          updated_at:  new Date().toISOString(),
-        })
-        .eq('id', editTask.id)
+      await supabase.from('tasks').update(payload).eq('id', editTask.id)
     } else {
-      await supabase.from('tasks').insert({
-        title:       form.title.trim(),
-        description: form.description.trim(),
-        assigned_to: form.assigned_to,
-        priority:    form.priority,
-        due_date:    form.due_date || null,
-        status:      'To Do',
-        created_by:  profile.name || 'Admin',
-      })
+      await supabase.from('tasks').insert(payload)
     }
 
-    setShowModal(false)
+    setSaving(false)
+    setShowAdd(false)
     setEditTask(null)
     load()
   }
 
   async function deleteTask(id) {
     if (!window.confirm('Delete this task?')) return
+    setDeleting(id)
     await supabase.from('tasks').delete().eq('id', id)
+    setDeleting(null)
     load()
   }
 
-  async function quickStatus(task, newStatus) {
-    await supabase
-      .from('tasks')
-      .update({ status: newStatus })
-      .eq('id', task.id)
-    load()
+  async function changeStatus(task, newStatus) {
+    await supabase.from('tasks').update({ status: newStatus }).eq('id', task.id)
+    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: newStatus } : t))
   }
 
-  // filtering
+  // counts
+  const counts = {
+    pending:     tasks.filter(t => t.status === 'pending').length,
+    in_progress: tasks.filter(t => t.status === 'in_progress').length,
+    completed:   tasks.filter(t => t.status === 'completed').length,
+  }
+
+  const overdueCount = tasks.filter(t => {
+    if (t.status === 'completed' || !t.due_date) return false
+    const d = new Date(t.due_date); d.setHours(0,0,0,0)
+    const today = new Date(); today.setHours(0,0,0,0)
+    return d < today
+  }).length
+
+  // unique assignees from tasks
+  const assignees = ['All', ...new Set(tasks.map(t => t.assigned_to).filter(Boolean))]
+
+  // filter
   const filtered = tasks.filter(t => {
-    const matchSearch  = t.title?.toLowerCase().includes(search.toLowerCase())
-      || t.assigned_to?.toLowerCase().includes(search.toLowerCase())
-    const matchAssign  = filterAssignee === 'All' || t.assigned_to === filterAssignee
-    const matchStatus  = filterStatus   === 'All' || t.status === filterStatus
-    return matchSearch && matchAssign && matchStatus
+    const matchSearch = (
+      t.title?.toLowerCase().includes(search.toLowerCase()) ||
+      t.related_to?.toLowerCase().includes(search.toLowerCase()) ||
+      t.assigned_to?.toLowerCase().includes(search.toLowerCase())
+    )
+    const matchAssignee = assignee === 'All' || t.assigned_to === assignee
+    const matchPriority = priority === 'All' || t.priority === priority
+    return matchSearch && matchAssignee && matchPriority
   })
 
-  // counts per column for kanban
-  const countByStatus = (s) => tasks.filter(t => t.status === s).length
-
-  // is overdue
-  const isOverdue = (task) => {
-    if (!task.due_date || task.status === 'Done') return false
-    return new Date(task.due_date) < new Date()
+  // group by status
+  const grouped = {
+    pending:     filtered.filter(t => t.status === 'pending'),
+    in_progress: filtered.filter(t => t.status === 'in_progress'),
+    completed:   filtered.filter(t => t.status === 'completed'),
   }
 
-  // unique assignees for filter dropdown
-  const assignees = [...new Set(tasks.map(t => t.assigned_to).filter(Boolean))]
+  const statCards = [
+    { label: 'To Do',       value: counts.pending,     color: '#6b7280', bg: '#f3f4f6' },
+    { label: 'In Progress', value: counts.in_progress, color: '#2563eb', bg: '#dbeafe' },
+    { label: 'Done',        value: counts.completed,   color: '#16a34a', bg: '#dcfce7' },
+    { label: 'Overdue',     value: overdueCount,        color: '#dc2626', bg: '#fee2e2' },
+  ]
 
   return (
     <div style={{ fontFamily: "'Segoe UI', Arial, sans-serif" }}>
 
-      {/* ── header ── */}
+      {/* header */}
       <div style={{
         display: 'flex', justifyContent: 'space-between',
-        alignItems: 'flex-start', marginBottom: 20,
+        alignItems: 'flex-start', marginBottom: 24,
       }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: 0 }}>
-            Tasks
-          </h1>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: 0 }}>Tasks</h1>
           <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
             Assign and track tasks across your team
           </p>
         </div>
-        {isAdmin && (
-          <button
-            onClick={openAdd}
-            style={{
-              padding: '9px 20px',
-              background: theme.primary || '#16a34a',
-              border: 'none', borderRadius: 8,
-              fontSize: 13, fontWeight: 600, color: '#fff',
-              cursor: 'pointer', fontFamily: 'inherit',
-            }}
-          >
-            + Add Task
-          </button>
-        )}
+        <button onClick={openAdd} style={{
+          padding: '9px 18px', background: '#16a34a',
+          border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600,
+          color: '#fff', cursor: 'pointer', fontFamily: 'inherit',
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          + Add Task
+        </button>
       </div>
 
-      {/* ── stat cards ── */}
+      {/* stat cards */}
       <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: 12, marginBottom: 20,
+        display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+        gap: 12, marginBottom: 24,
       }}>
-        {STATUSES.map(s => (
-          <div key={s} style={{
+        {statCards.map(s => (
+          <div key={s.label} style={{
             background: '#fff', border: '1px solid #e5e7eb',
-            borderTop: `3px solid ${statusColor(s)}`,
-            borderRadius: 10, padding: '14px 18px',
-            display: 'flex', alignItems: 'center', gap: 12,
+            borderRadius: 10, padding: '16px 18px',
+            display: 'flex', alignItems: 'center', gap: 14,
           }}>
             <div style={{
-              width: 10, height: 10, borderRadius: '50%',
-              background: statusColor(s), flexShrink: 0,
-            }} />
+              width: 40, height: 40, borderRadius: 10,
+              background: s.bg,
+              display: 'flex', alignItems: 'center',
+              justifyContent: 'center', flexShrink: 0,
+            }}>
+              <div style={{
+                width: 12, height: 12, borderRadius: '50%', background: s.color,
+              }} />
+            </div>
             <div>
-              <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 500 }}>{s}</div>
-              <div style={{ fontSize: 24, fontWeight: 800, color: '#111827' }}>
-                {countByStatus(s)}
+              <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 500, marginBottom: 2 }}>
+                {s.label}
+              </div>
+              <div style={{ fontSize: 26, fontWeight: 800, color: s.color, lineHeight: 1 }}>
+                {s.value}
               </div>
             </div>
           </div>
         ))}
       </div>
 
-      {/* ── filters ── */}
-      <div style={{
-        display: 'flex', gap: 10, marginBottom: 18, flexWrap: 'wrap',
-      }}>
-        {/* search */}
+      {/* filters */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
+          flex: 1, display: 'flex', alignItems: 'center', gap: 8,
           background: '#fff', border: '1px solid #e5e7eb',
-          borderRadius: 8, padding: '8px 14px', flex: 1, minWidth: 200,
+          borderRadius: 8, padding: '8px 14px',
         }}>
-          <span style={{ color: '#9ca3af' }}>🔍</span>
+          <span style={{ color: '#9ca3af', fontSize: 15 }}>🔍</span>
           <input
-            placeholder="Search tasks..."
+            placeholder="Search tasks, client, or assignee..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             style={{
@@ -244,263 +274,241 @@ export default function Tasks() {
             }}
           />
         </div>
-
-        {/* filter by assignee */}
-        <select
-          value={filterAssignee}
-          onChange={e => setFilterAssignee(e.target.value)}
-          style={{
-            background: '#fff', border: '1px solid #e5e7eb',
-            borderRadius: 8, padding: '8px 14px',
-            fontSize: 13, color: '#374151', outline: 'none',
-            cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          <option value="All">All Assignees</option>
-          {assignees.map(a => (
-            <option key={a} value={a}>{a}</option>
-          ))}
+        <select value={assignee} onChange={e => setAssignee(e.target.value)} style={{
+          background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
+          padding: '8px 14px', fontSize: 13, color: '#374151', outline: 'none', cursor: 'pointer',
+        }}>
+          {assignees.map(a => <option key={a}>{a}</option>)}
         </select>
-
-        {/* filter by status */}
-        <select
-          value={filterStatus}
-          onChange={e => setFilterStatus(e.target.value)}
-          style={{
-            background: '#fff', border: '1px solid #e5e7eb',
-            borderRadius: 8, padding: '8px 14px',
-            fontSize: 13, color: '#374151', outline: 'none',
-            cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          <option value="All">All Statuses</option>
-          {STATUSES.map(s => <option key={s}>{s}</option>)}
+        <select value={priority} onChange={e => setPriority(e.target.value)} style={{
+          background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
+          padding: '8px 14px', fontSize: 13, color: '#374151', outline: 'none', cursor: 'pointer',
+        }}>
+          <option value="All">All Priority</option>
+          <option>High</option>
+          <option>Medium</option>
+          <option>Low</option>
         </select>
       </div>
 
-      {/* ── kanban board ── */}
+      {/* kanban columns */}
       {loading ? (
         <p style={{ color: '#6b7280', fontSize: 13 }}>Loading tasks...</p>
       ) : (
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: 16, alignItems: 'start',
+          gap: 16, alignItems: 'flex-start',
         }}>
-          {STATUSES.map(status => {
-            const columnTasks = filtered.filter(t => t.status === status)
+          {Object.entries(grouped).map(([statusKey, statusTasks]) => {
+            const s = STATUSES[statusKey]
             return (
-              <div key={status}>
+              <div key={statusKey}>
 
                 {/* column header */}
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 8,
-                  marginBottom: 10, padding: '0 4px',
+                  marginBottom: 12,
+                  padding: '10px 14px',
+                  background: '#fff',
+                  border: '1px solid #e5e7eb',
+                  borderTop: `3px solid ${s.dot}`,
+                  borderRadius: 10,
                 }}>
                   <div style={{
-                    width: 8, height: 8, borderRadius: '50%',
-                    background: statusColor(status),
+                    width: 10, height: 10, borderRadius: '50%', background: s.dot,
                   }} />
-                  <span style={{
-                    fontSize: 13, fontWeight: 700, color: '#374151',
-                  }}>
-                    {status}
+                  <span style={{ fontSize: 14, fontWeight: 700, color: '#111827', flex: 1 }}>
+                    {s.label}
                   </span>
                   <span style={{
-                    marginLeft: 'auto',
-                    background: '#f3f4f6', color: '#6b7280',
-                    fontSize: 11, fontWeight: 700,
+                    background: s.bg, color: s.color,
+                    fontSize: 12, fontWeight: 700,
                     padding: '2px 8px', borderRadius: 20,
                   }}>
-                    {columnTasks.length}
+                    {statusTasks.length}
                   </span>
                 </div>
 
                 {/* task cards */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-
-                  {columnTasks.length === 0 && (
+                  {statusTasks.length === 0 && (
                     <div style={{
-                      background: '#f9fafb',
-                      border: '2px dashed #e5e7eb',
-                      borderRadius: 10, padding: '30px 20px',
-                      textAlign: 'center', color: '#9ca3af', fontSize: 12,
+                      border: '2px dashed #e5e7eb', borderRadius: 10,
+                      padding: '28px 16px', textAlign: 'center',
+                      fontSize: 12, color: '#d1d5db',
                     }}>
                       Drop tasks here
                     </div>
                   )}
 
-                  {columnTasks.map(task => (
-                    <div
-                      key={task.id}
-                      style={{
-                        background: '#fff',
-                        border: `1px solid ${isOverdue(task) ? '#fca5a5' : '#e5e7eb'}`,
-                        borderLeft: `4px solid ${statusColor(task.status)}`,
-                        borderRadius: 10,
-                        padding: '14px 14px 12px',
-                        boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-                        transition: 'box-shadow 0.15s',
-                      }}
-                      onMouseEnter={e =>
-                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.10)'}
-                      onMouseLeave={e =>
-                        e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.06)'}
-                    >
-                      {/* overdue warning */}
-                      {isOverdue(task) && (
+                  {statusTasks.map(task => {
+                    const p    = PRIORITIES[task.priority] || PRIORITIES['Medium']
+                    const due  = dueDateInfo(task.due_date, task.status)
+                    const done = task.status === 'completed'
+
+                    return (
+                      <div
+                        key={task.id}
+                        style={{
+                          background: '#fff',
+                          border: '1px solid #e5e7eb',
+                          borderLeft: `4px solid ${p.dot}`,
+                          borderRadius: 10,
+                          padding: '14px 14px 12px',
+                          opacity: done ? 0.7 : 1,
+                        }}
+                      >
+                        {/* title + priority */}
                         <div style={{
-                          fontSize: 10, fontWeight: 700,
-                          color: '#b91c1c', marginBottom: 6,
-                          textTransform: 'uppercase', letterSpacing: '0.05em',
-                        }}>
-                          ⚠️ Overdue
-                        </div>
-                      )}
-
-                      {/* title */}
-                      <div style={{
-                        fontSize: 14, fontWeight: 600,
-                        color: '#111827', marginBottom: 6, lineHeight: 1.3,
-                      }}>
-                        {task.title}
-                      </div>
-
-                      {/* description */}
-                      {task.description && (
-                        <div style={{
-                          fontSize: 12, color: '#6b7280',
-                          marginBottom: 10, lineHeight: 1.4,
-                        }}>
-                          {task.description}
-                        </div>
-                      )}
-
-                      {/* priority badge */}
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-                        <span style={{
-                          padding: '2px 8px', borderRadius: 20,
-                          fontSize: 10, fontWeight: 700,
-                          background: priorityStyle(task.priority).bg,
-                          color:      priorityStyle(task.priority).color,
-                        }}>
-                          {task.priority}
-                        </span>
-
-                        {task.due_date && (
-                          <span style={{
-                            padding: '2px 8px', borderRadius: 20,
-                            fontSize: 10, fontWeight: 600,
-                            background: isOverdue(task) ? '#fee2e2' : '#f3f4f6',
-                            color:      isOverdue(task) ? '#b91c1c' : '#6b7280',
-                          }}>
-                            📅 {new Date(task.due_date).toLocaleDateString('en-GB', {
-                              day: '2-digit', month: 'short',
-                            })}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* assigned to */}
-                      {task.assigned_to && (
-                        <div style={{
-                          display: 'flex', alignItems: 'center', gap: 7,
-                          marginBottom: 12,
+                          display: 'flex', justifyContent: 'space-between',
+                          alignItems: 'flex-start', gap: 8, marginBottom: 6,
                         }}>
                           <div style={{
-                            width: 24, height: 24, borderRadius: '50%',
-                            background: theme.primary || '#16a34a',
-                            display: 'flex', alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: 10, fontWeight: 700, color: '#fff',
+                            fontSize: 13, fontWeight: 600, color: '#111827',
+                            textDecoration: done ? 'line-through' : 'none',
+                            flex: 1, lineHeight: 1.4,
+                          }}>
+                            {task.title}
+                          </div>
+                          <span style={{
+                            padding: '2px 8px', borderRadius: 20, fontSize: 11,
+                            fontWeight: 600, background: p.bg, color: p.color,
                             flexShrink: 0,
                           }}>
-                            {task.assigned_to.charAt(0).toUpperCase()}
-                          </div>
-                          <span style={{ fontSize: 12, color: '#374151', fontWeight: 500 }}>
-                            {task.assigned_to}
+                            {task.priority}
                           </span>
                         </div>
-                      )}
 
-                      {/* action buttons */}
-                      <div style={{
-                        display: 'flex', gap: 6,
-                        paddingTop: 10,
-                        borderTop: '1px solid #f3f4f6',
-                      }}>
-                        {/* quick status change */}
-                        {status !== 'In Progress' && (
-                          <button
-                            onClick={() => quickStatus(task, 'In Progress')}
-                            style={{
-                              flex: 1, padding: '5px 0',
-                              background: '#dbeafe', border: 'none',
-                              borderRadius: 6, fontSize: 11, fontWeight: 600,
-                              color: '#1d4ed8', cursor: 'pointer', fontFamily: 'inherit',
-                            }}
-                          >
-                            ▶ Start
-                          </button>
+                        {/* description */}
+                        {task.notes && (
+                          <div style={{
+                            fontSize: 12, color: '#6b7280', marginBottom: 8,
+                            lineHeight: 1.4, overflow: 'hidden',
+                            display: '-webkit-box', WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                          }}>
+                            {task.notes}
+                          </div>
                         )}
 
-                        {status !== 'Done' && (
-                          <button
-                            onClick={() => quickStatus(task, 'Done')}
-                            style={{
-                              flex: 1, padding: '5px 0',
-                              background: '#dcfce7', border: 'none',
-                              borderRadius: 6, fontSize: 11, fontWeight: 600,
-                              color: '#15803d', cursor: 'pointer', fontFamily: 'inherit',
-                            }}
-                          >
-                            ✓ Done
-                          </button>
+                        {/* related to */}
+                        {task.related_to && (
+                          <div style={{
+                            fontSize: 11, color: '#6b7280', marginBottom: 8,
+                            display: 'flex', alignItems: 'center', gap: 4,
+                          }}>
+                            <span>👤</span> {task.related_to}
+                          </div>
                         )}
 
-                        {status !== 'To Do' && (
-                          <button
-                            onClick={() => quickStatus(task, 'To Do')}
-                            style={{
-                              padding: '5px 10px',
-                              background: '#f3f4f6', border: 'none',
-                              borderRadius: 6, fontSize: 11, fontWeight: 600,
-                              color: '#6b7280', cursor: 'pointer', fontFamily: 'inherit',
-                            }}
-                          >
-                            ↩
-                          </button>
+                        {/* due date */}
+                        {due.label && (
+                          <div style={{
+                            fontSize: 11, fontWeight: 600,
+                            color: due.color, marginBottom: 10,
+                            display: 'flex', alignItems: 'center', gap: 4,
+                          }}>
+                            <span>🗓</span> {due.label}
+                          </div>
                         )}
 
-                        {isAdmin && (
-                          <>
+                        {/* assignee + actions row */}
+                        <div style={{
+                          display: 'flex', alignItems: 'center',
+                          justifyContent: 'space-between',
+                          borderTop: '1px solid #f3f4f6', paddingTop: 10, marginTop: 4,
+                        }}>
+                          {/* assignee avatar */}
+                          {task.assigned_to ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <Avatar name={task.assigned_to} size={24} />
+                              <span style={{ fontSize: 11, color: '#6b7280' }}>
+                                {task.assigned_to}
+                              </span>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: 11, color: '#d1d5db' }}>Unassigned</span>
+                          )}
+
+                          {/* action buttons */}
+                          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                            {/* status cycle buttons */}
+                            {task.status !== 'in_progress' && task.status !== 'completed' && (
+                              <button
+                                onClick={() => changeStatus(task, 'in_progress')}
+                                title="Start"
+                                style={{
+                                  padding: '4px 10px', background: '#dbeafe',
+                                  border: 'none', borderRadius: 6,
+                                  fontSize: 11, fontWeight: 600, color: '#1d4ed8',
+                                  cursor: 'pointer', fontFamily: 'inherit',
+                                }}
+                              >
+                                ▶ Start
+                              </button>
+                            )}
+                            {task.status === 'in_progress' && (
+                              <button
+                                onClick={() => changeStatus(task, 'completed')}
+                                title="Mark done"
+                                style={{
+                                  padding: '4px 10px', background: '#dcfce7',
+                                  border: 'none', borderRadius: 6,
+                                  fontSize: 11, fontWeight: 600, color: '#15803d',
+                                  cursor: 'pointer', fontFamily: 'inherit',
+                                }}
+                              >
+                                ✓ Done
+                              </button>
+                            )}
+                            {task.status === 'completed' && (
+                              <button
+                                onClick={() => changeStatus(task, 'pending')}
+                                title="Reopen"
+                                style={{
+                                  padding: '4px 10px', background: '#f3f4f6',
+                                  border: 'none', borderRadius: 6,
+                                  fontSize: 11, fontWeight: 600, color: '#6b7280',
+                                  cursor: 'pointer', fontFamily: 'inherit',
+                                }}
+                              >
+                                ↩ Reopen
+                              </button>
+                            )}
+
+                            {/* edit */}
                             <button
                               onClick={() => openEdit(task)}
                               style={{
-                                padding: '5px 10px',
-                                background: '#f3f4f6', border: 'none',
-                                borderRadius: 6, fontSize: 11,
-                                color: '#374151', cursor: 'pointer', fontFamily: 'inherit',
+                                width: 28, height: 28, background: '#f9fafb',
+                                border: '1px solid #e5e7eb', borderRadius: 6,
+                                fontSize: 13, cursor: 'pointer', display: 'flex',
+                                alignItems: 'center', justifyContent: 'center',
                               }}
                             >
                               ✏️
                             </button>
+
+                            {/* delete */}
                             <button
                               onClick={() => deleteTask(task.id)}
+                              disabled={deleting === task.id}
                               style={{
-                                padding: '5px 10px',
-                                background: '#fee2e2', border: 'none',
-                                borderRadius: 6, fontSize: 11,
-                                color: '#b91c1c', cursor: 'pointer', fontFamily: 'inherit',
+                                width: 28, height: 28, background: '#fff5f5',
+                                border: '1px solid #fecaca', borderRadius: 6,
+                                fontSize: 13, cursor: 'pointer', display: 'flex',
+                                alignItems: 'center', justifyContent: 'center',
+                                color: '#dc2626',
                               }}
                             >
                               🗑
                             </button>
-                          </>
-                        )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )
@@ -508,52 +516,43 @@ export default function Tasks() {
         </div>
       )}
 
-      {/* ════════════════════════════════════════════════════
-          MODAL — ADD / EDIT TASK
-          ════════════════════════════════════════════════════ */}
-      {showModal && (
-        <div style={{
-          position: 'fixed', inset: 0,
-          background: 'rgba(0,0,0,0.45)',
-          display: 'flex', alignItems: 'center',
-          justifyContent: 'center', zIndex: 300,
-        }}>
-          <div style={{
-            background: '#fff', borderRadius: 16,
-            padding: 28, width: 520,
-            boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-            maxHeight: '90vh', overflowY: 'auto',
-          }}>
-
+      {/* add / edit modal */}
+      {showAdd && (
+        <div
+          onClick={() => setShowAdd(false)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', border: '1px solid #e5e7eb',
+              borderRadius: 14, padding: 28, width: 480,
+              maxHeight: '90vh', overflowY: 'auto',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+            }}
+          >
             {/* modal header */}
             <div style={{
               display: 'flex', justifyContent: 'space-between',
               alignItems: 'center', marginBottom: 22,
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{
-                  width: 32, height: 32, borderRadius: 8,
-                  background: '#dcfce7',
-                  display: 'flex', alignItems: 'center',
-                  justifyContent: 'center', fontSize: 16,
-                }}>
-                  ✅
-                </div>
-                <h3 style={{ fontSize: 17, fontWeight: 700, color: '#111827', margin: 0 }}>
-                  {editTask ? 'Edit Task' : 'Add Task'}
-                </h3>
-              </div>
-              <button onClick={() => setShowModal(false)} style={{
-                background: 'none', border: 'none',
-                fontSize: 20, cursor: 'pointer', color: '#9ca3af',
-              }}>×</button>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: 0 }}>
+                {editTask ? 'Edit Task' : 'Add New Task'}
+              </h3>
+              <button onClick={() => setShowAdd(false)} style={{
+                background: 'none', border: 'none', fontSize: 20,
+                cursor: 'pointer', color: '#9ca3af',
+              }}>✕</button>
             </div>
 
-            {/* task title */}
-            <div style={{ marginBottom: 16 }}>
+            {/* title */}
+            <div style={{ marginBottom: 14 }}>
               <label style={labelStyle}>Task Title *</label>
               <input
-                placeholder="What needs to be done?"
+                placeholder="e.g. Follow up with Ram Sharma"
                 value={form.title}
                 onChange={e => set('title', e.target.value)}
                 autoFocus
@@ -562,51 +561,47 @@ export default function Tasks() {
             </div>
 
             {/* description */}
-            <div style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 14 }}>
               <label style={labelStyle}>Description</label>
               <textarea
-                placeholder="Details..."
+                placeholder="Additional details..."
                 value={form.description}
                 onChange={e => set('description', e.target.value)}
-                rows={3}
+                rows={2}
                 style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }}
               />
             </div>
 
-            {/* assigned to — fetched from real staff list */}
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle}>Assigned To</label>
+            {/* related to */}
+            <div style={{ marginBottom: 14 }}>
+              <label style={labelStyle}>Related To (Client / Applicant)</label>
+              <input
+                placeholder="e.g. Ram Sharma"
+                value={form.related_to}
+                onChange={e => set('related_to', e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+
+            {/* assign to staff dropdown */}
+            <div style={{ marginBottom: 14 }}>
+              <label style={labelStyle}>Assign To Staff</label>
               <select
                 value={form.assigned_to}
                 onChange={e => set('assigned_to', e.target.value)}
                 style={inputStyle}
               >
-                <option value="">Unassigned</option>
-                {staffList.map(s => (
+                <option value="">— Select staff member —</option>
+                {staff.map(s => (
                   <option key={s.id} value={s.name}>
                     {s.name} ({s.role})
                   </option>
                 ))}
               </select>
-              {staffList.length === 0 && (
-                <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 4 }}>
-                  ⚠️ No staff found — add staff members first from the Staff page.
-                </div>
-              )}
             </div>
 
-            {/* priority + due date */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-              <div>
-                <label style={labelStyle}>Priority</label>
-                <select
-                  value={form.priority}
-                  onChange={e => set('priority', e.target.value)}
-                  style={inputStyle}
-                >
-                  {PRIORITIES.map(p => <option key={p}>{p}</option>)}
-                </select>
-              </div>
+            {/* due date + priority */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
               <div>
                 <label style={labelStyle}>Due Date</label>
                 <input
@@ -616,60 +611,55 @@ export default function Tasks() {
                   style={inputStyle}
                 />
               </div>
+              <div>
+                <label style={labelStyle}>Priority</label>
+                <select
+                  value={form.priority}
+                  onChange={e => set('priority', e.target.value)}
+                  style={inputStyle}
+                >
+                  <option>High</option>
+                  <option>Medium</option>
+                  <option>Low</option>
+                </select>
+              </div>
             </div>
 
-            {/* status — only shown when editing */}
+            {/* status — only show when editing */}
             {editTask && (
-              <div style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom: 14 }}>
                 <label style={labelStyle}>Status</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {STATUSES.map(s => (
-                    <button
-                      key={s}
-                      onClick={() => set('status', s)}
-                      style={{
-                        flex: 1, padding: '9px 4px',
-                        borderRadius: 8, cursor: 'pointer',
-                        fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
-                        border: form.status === s
-                          ? `2px solid ${statusColor(s)}`
-                          : '2px solid #e5e7eb',
-                        background: form.status === s ? `${statusColor(s)}18` : '#f9fafb',
-                        color: form.status === s ? statusColor(s) : '#6b7280',
-                      }}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
+                <select
+                  value={form.status}
+                  onChange={e => set('status', e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="pending">To Do</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="completed">Done</option>
+                </select>
               </div>
             )}
 
-            {/* buttons */}
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
-              <button
-                onClick={() => setShowModal(false)}
-                style={{
-                  padding: '10px 20px',
-                  background: '#f9fafb', border: '1px solid #e5e7eb',
-                  borderRadius: 8, fontSize: 13, color: '#6b7280',
-                  cursor: 'pointer', fontFamily: 'inherit',
-                }}
-              >
+            {/* footer */}
+            <div style={{
+              display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 22,
+            }}>
+              <button onClick={() => setShowAdd(false)} style={{
+                padding: '9px 18px', background: '#f9fafb',
+                border: '1px solid #e5e7eb', borderRadius: 8,
+                fontSize: 13, color: '#6b7280', cursor: 'pointer', fontFamily: 'inherit',
+              }}>
                 Cancel
               </button>
-              <button
-                onClick={saveTask}
-                style={{
-                  padding: '10px 24px',
-                  background: theme.primary || '#16a34a',
-                  border: 'none', borderRadius: 8,
-                  fontSize: 13, fontWeight: 700, color: '#fff',
-                  cursor: 'pointer', fontFamily: 'inherit',
-                  display: 'flex', alignItems: 'center', gap: 6,
-                }}
-              >
-                💾 Save Task
+              <button onClick={saveTask} disabled={saving} style={{
+                padding: '9px 22px',
+                background: saving ? '#9ca3af' : '#16a34a',
+                border: 'none', borderRadius: 8,
+                fontSize: 13, fontWeight: 600, color: '#fff',
+                cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+              }}>
+                {saving ? 'Saving...' : editTask ? 'Save Changes' : 'Add Task'}
               </button>
             </div>
           </div>
@@ -678,17 +668,4 @@ export default function Tasks() {
 
     </div>
   )
-}
-
-const labelStyle = {
-  display: 'block', fontSize: 11, fontWeight: 600,
-  color: '#6b7280', textTransform: 'uppercase',
-  marginBottom: 6, letterSpacing: '0.04em',
-}
-
-const inputStyle = {
-  width: '100%', padding: '10px 12px',
-  border: '1px solid #d1d5db', borderRadius: 8,
-  fontSize: 13, color: '#111827', outline: 'none',
-  fontFamily: 'inherit', boxSizing: 'border-box', background: '#fff',
 }

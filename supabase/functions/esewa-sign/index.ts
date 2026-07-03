@@ -15,7 +15,8 @@ serve(async (req) => {
   try {
     const { total_amount, transaction_uuid, product_code } = await req.json()
 
-    const SECRET_KEY = Deno.env.get('ESEWA_SECRET_KEY') ?? '8gBm/:&EnhH.1/q'
+    // hardcoded directly — no env variable, no terminal special-character risk
+    const SECRET_KEY = '8gBm/:&EnhH.1/q'
 
     // eSewa requires signature of this exact string in this exact order
     const message = `total_amount=${total_amount},transaction_uuid=${transaction_uuid},product_code=${product_code}`

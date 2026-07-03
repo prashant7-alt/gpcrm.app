@@ -16,7 +16,6 @@ serve(async (req) => {
 
     const MERCHANT_CODE = Deno.env.get('ESEWA_MERCHANT_CODE') ?? 'EPAYTEST'
 
-    // Ask eSewa to confirm this transaction is real
     const verifyUrl =
       `https://rc-epay.esewa.com.np/api/epay/transaction/status/?` +
       `product_code=${MERCHANT_CODE}` +
@@ -37,18 +36,22 @@ serve(async (req) => {
         { auth: { persistSession: false } }
       )
 
+      // ── FIXED: do NOT auto-mark as 'paid' ──
+      // eSewa confirmed the transaction is real, but the admin
+      // must still click "Mark Paid" in the dashboard to finalize it.
+      // This lets staff cross-check the amount/student before confirming.
       await supabase
         .from('payments')
         .update({
-          status:  'paid',
-          method:  'eSewa',
-          txn_ref: transaction_uuid,
-          paid_at: new Date().toISOString(),
+          status:   'pending_verification', // ← was 'paid'
+          method:   'eSewa',
+          txn_ref:  transaction_uuid,
+          paid_at:  null,                    // ← only set when admin confirms
         })
         .eq('id', payment_id)
 
       return new Response(
-        JSON.stringify({ success: true, data }),
+        JSON.stringify({ success: true, data, status: 'pending_verification' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }

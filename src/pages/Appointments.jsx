@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import theme from '../theme'
 import BottomButtons from '../components/BottomButtons'
+import { advanceApplicantStage } from '../lib/pipelineStages' // adjust path if needed
 
 const statusStyle = (status) => {
   if (status === 'confirmed') return { bg: '#dcfce7', color: '#15803d' }
@@ -61,11 +62,26 @@ export default function Appointments() {
   }
 
   // ── MARK as completed ──
-  async function completeAppointment(id) {
+  // NEW: takes the full appointment object (not just id) so we know its
+  // type/student_email/student_name for the pipeline auto-advance below.
+  async function completeAppointment(appt) {
     await supabase
       .from('appointments')
       .update({ status: 'completed' })
-      .eq('id', id)
+      .eq('id', appt.id)
+
+    // Auto-advance the applicant to "Counseling" once their counseling
+    // session is marked complete. Only fires for that specific
+    // appointment type — completing a "Document Review" or other type
+    // won't touch the pipeline stage.
+    if (appt.type === 'Counseling Session') {
+      await advanceApplicantStage(
+        supabase,
+        { email: appt.student_email, name: appt.student_name },
+        'Counseling'
+      )
+    }
+
     load()
   }
 
@@ -373,7 +389,7 @@ export default function Appointments() {
               {/* show Complete only if confirmed */}
               {a.status === 'confirmed' && (
                 <button
-                  onClick={() => completeAppointment(a.id)}
+                  onClick={() => completeAppointment(a)}
                   style={{
                     padding: '5px 10px',
                     background: '#dbeafe',

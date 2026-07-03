@@ -1,197 +1,230 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import theme from '../theme'
-import BottomButtons from '../components/BottomButtons'
 
-const countries = [
-  { name: '',     flag: 'Korea' },
-  { name: '', flag: 'Australia' },
-  { name: '',     flag: 'Japan' },
-  { name: '',        flag: 'UK' },
-  { name: '',       flag: 'USA' },
-  { name: '',    flag: 'Canada' },
-  { name: '',   flag: '🇫🇮' },
-  { name: '', flag: 'Others' },
-]
+const COUNTRIES = ['Korea', 'Australia', 'Japan', 'UK', 'USA', 'Canada', 'Finland']
 
-const feeColor = (status) => {
-  if (status === 'Paid')    return { bg: '#dcfce7', color: '#15803d' }
-  if (status === 'Pending') return { bg: '#fef9c3', color: '#a16207' }
-  if (status === 'Overdue') return { bg: '#fee2e2', color: '#b91c1c' }
-  return { bg: '#f3f4f6', color: '#6b7280' }
+const stageStyle = (stage) => {
+  const map = {
+    'New':            { bg: '#dbeafe', color: '#1d4ed8' },
+    'Lead':           { bg: '#f3f4f6', color: '#6b7280' },
+    'Inquiring':      { bg: '#ede9fe', color: '#7c3aed' },
+    'Counseling':     { bg: '#fef9c3', color: '#a16207' },
+    'Documentation':  { bg: '#ffedd5', color: '#ea580c' },
+    'Applied':        { bg: '#dbeafe', color: '#2563eb' },
+    'Visa Process':   { bg: '#cffafe', color: '#0891b2' },
+    'Class/Enrolled': { bg: '#ede9fe', color: '#7c3aed' },
+    'Abroad':         { bg: '#dcfce7', color: '#15803d' },
+    'Approved':       { bg: '#dcfce7', color: '#15803d' },
+    'Rejected':       { bg: '#fee2e2', color: '#b91c1c' },
+  }
+  return map[stage] || { bg: '#f3f4f6', color: '#6b7280' }
 }
 
 export default function Students() {
 
-  const [students, setStudents] = useState([])
-  const [search,   setSearch]   = useState('')
-  const [country,  setCountry]  = useState('All')
-  const [loading,  setLoading]  = useState(true)
+  const [students,        setStudents]        = useState([])
+  const [loading,         setLoading]         = useState(true)
+  const [selectedCountry, setSelectedCountry] = useState(null)
+  const [countryFilter,   setCountryFilter]   = useState('All Countries')
+  const [search,          setSearch]          = useState('')
 
   useEffect(() => { load() }, [])
 
   async function load() {
+    setLoading(true)
+    // read from applicants table instead of students
     const { data } = await supabase
-      .from('students')
+      .from('applicants')
       .select('*')
       .order('created_at', { ascending: false })
     setStudents(data || [])
     setLoading(false)
   }
 
-  const countByCountry = (name) => {
-    if (name === 'Others') {
-      const known = countries
-        .filter(c => c.code !== 'OTHER')
-        .map(c => c.name)
-      return students.filter(s => !known.includes(s.country)).length
-    }
-    return students.filter(s => s.country === name).length
-  }
+  // count per country card
+  const countryCounts = {}
+  COUNTRIES.forEach(c => { countryCounts[c] = 0 })
+  countryCounts['Others'] = 0
+  students.forEach(s => {
+    const c = s.country || ''
+    if (COUNTRIES.includes(c)) countryCounts[c]++
+    else if (c) countryCounts['Others']++
+  })
 
+  // unique countries from actual data for dropdown
+  const uniqueCountries = ['All Countries', ...new Set(students.map(s => s.country).filter(Boolean))]
+
+  // filter
   const filtered = students.filter(s => {
-    const matchSearch = s.name?.toLowerCase()
-      .includes(search.toLowerCase())
-    const matchCountry = country === 'All' || s.country === country
+    const matchSearch = (
+      s.name?.toLowerCase().includes(search.toLowerCase()) ||
+      s.phone?.toLowerCase().includes(search.toLowerCase()) ||
+      s.email?.toLowerCase().includes(search.toLowerCase()) ||
+      s.country?.toLowerCase().includes(search.toLowerCase())
+    )
+    const matchCountry = selectedCountry
+      ? selectedCountry === 'Others'
+        ? !COUNTRIES.includes(s.country || '')
+        : s.country === selectedCountry
+      : countryFilter === 'All Countries'
+      ? true
+      : s.country === countryFilter
+
     return matchSearch && matchCountry
   })
+
+  const handleCountryCard = (country) => {
+    if (selectedCountry === country) {
+      setSelectedCountry(null)
+      setCountryFilter('All Countries')
+    } else {
+      setSelectedCountry(country)
+      setCountryFilter(country)
+    }
+  }
 
   return (
     <div>
 
       {/* header */}
       <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        marginBottom: 20,
+        display: 'flex', justifyContent: 'space-between',
+        alignItems: 'center', marginBottom: 20,
       }}>
         <div>
-          <h1 style={{
-            fontSize: 20,
-            fontWeight: 700,
-            color: theme.textDark,
-            margin: 0,
-          }}>
-          
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: theme.textDark, margin: 0 }}>
+            Students
           </h1>
-          <p style={{
-            fontSize: 13,
-            color: theme.textLight,
-            marginTop: 4,
-          }}>
-           
+          <p style={{ fontSize: 13, color: theme.textLight, marginTop: 4 }}>
+            Enrolled and studying students
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <select
-            value={country}
-            onChange={e => setCountry(e.target.value)}
+            value={countryFilter}
+            onChange={e => {
+              setCountryFilter(e.target.value)
+              setSelectedCountry(e.target.value === 'All Countries' ? null : e.target.value)
+            }}
             style={{
-              padding: '8px 14px',
-              background: theme.cardBg,
-              border: `1px solid ${theme.border}`,
-              borderRadius: 8,
-              fontSize: 13,
-              color: theme.textMid,
-              outline: 'none',
-              cursor: 'pointer',
+              background: '#fff', border: `1px solid ${theme.border}`,
+              borderRadius: 8, padding: '8px 14px',
+              fontSize: 13, color: theme.textMid, outline: 'none', cursor: 'pointer',
             }}
           >
-            <option value="All">All Countries</option>
-            {countries.map(c => (
-              <option key={c.code} value={c.name}>
-                {c.flag} {c.name}
-              </option>
-            ))}
+            {uniqueCountries.map(c => <option key={c}>{c}</option>)}
           </select>
           <button style={{
-            padding: '8px 16px',
-            background: theme.cardBg,
+            padding: '8px 16px', background: theme.cardBg,
             border: `1px solid ${theme.border}`,
-            borderRadius: 8,
-            fontSize: 13,
-            fontWeight: 500,
-            color: theme.textMid,
-            cursor: 'pointer',
+            borderRadius: 8, fontSize: 13, color: theme.textMid, cursor: 'pointer',
           }}>
-             Export
+            Export
           </button>
         </div>
       </div>
 
       {/* country cards */}
       <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(8, 1fr)',
-        gap: 10,
-        marginBottom: 24,
+        display: 'flex', gap: 12, marginBottom: 20,
+        overflowX: 'auto', paddingBottom: 4,
       }}>
-        {countries.map(c => (
-          <div
-            key={c.code}
-            onClick={() => setCountry(
-              country === c.name ? 'All' : c.name
-            )}
-            style={{
-              background: theme.cardBg,
-              border: `1px solid ${theme.border}`,
-              borderTop: country === c.name
-                ? `3px solid ${theme.primary}`
-                : `3px solid ${theme.border}`,
-              borderRadius: 10,
-              padding: '14px 10px',
-              textAlign: 'center',
-              cursor: 'pointer',
-              transition: 'all 0.15s',
-            }}
-          >
-            <div style={{ fontSize: 22, marginBottom: 6 }}>{c.flag}</div>
-            <div style={{
-              fontSize: 13,
-              fontWeight: 700,
-              color: theme.textDark,
-              marginBottom: 4,
-            }}>
-              {c.code}
+        {[...COUNTRIES, 'Others'].map(country => {
+          const count    = countryCounts[country] || 0
+          const isActive = selectedCountry === country
+          return (
+            <div
+              key={country}
+              onClick={() => handleCountryCard(country)}
+              style={{
+                minWidth: 120, padding: '16px 20px',
+                background: isActive ? '#dbeafe' : '#fff',
+                border: `1px solid ${isActive ? '#2563eb' : theme.border}`,
+                borderRadius: 12, textAlign: 'center',
+                cursor: 'pointer', flexShrink: 0,
+              }}
+            >
+              <div style={{
+                fontSize: 15, fontWeight: 700,
+                color: isActive ? '#2563eb' : theme.textDark,
+                marginBottom: 6,
+              }}>
+                {country}
+              </div>
+              <div style={{
+                fontSize: 28, fontWeight: 800,
+                color: isActive ? '#2563eb' : '#b91c1c',
+              }}>
+                {count}
+              </div>
             </div>
-            <div style={{
-              fontSize: 20,
-              fontWeight: 800,
-              color: theme.black,
-              marginBottom: 2,
-            }}>
-              {countByCountry(c.name)}
-            </div>
-            <div style={{ fontSize: 11, color: theme.textLight }}>
-              {c.name}
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
+
+      {/* search + active filter tag */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center' }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: '#fff', border: `1px solid ${theme.border}`,
+          borderRadius: 8, padding: '8px 14px', flex: 1,
+        }}>
+          <span style={{ color: theme.textMuted }}>&#128269;</span>
+          <input
+            placeholder="Search by name, phone, email, country..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{
+              background: 'none', border: 'none', outline: 'none',
+              fontSize: 13, color: theme.textMid, width: '100%',
+            }}
+          />
+        </div>
+
+        {selectedCountry && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '6px 14px',
+            background: '#dbeafe', border: '1px solid #2563eb',
+            borderRadius: 20, fontSize: 12, fontWeight: 600, color: '#2563eb',
+          }}>
+            {selectedCountry}
+            <span
+              onClick={() => { setSelectedCountry(null); setCountryFilter('All Countries') }}
+              style={{ cursor: 'pointer', fontWeight: 800 }}
+            >
+              x
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* results count */}
+      {selectedCountry && (
+        <p style={{ fontSize: 13, color: theme.textLight, marginBottom: 12 }}>
+          Showing {filtered.length} student{filtered.length !== 1 ? 's' : ''} going to {selectedCountry}
+        </p>
+      )}
 
       {/* table */}
       <div style={{
-        background: theme.cardBg,
-        border: `1px solid ${theme.border}`,
-        borderRadius: 10,
-        overflow: 'hidden',
+        background: '#fff', border: `1px solid ${theme.border}`,
+        borderRadius: 10, overflow: 'hidden',
       }}>
+
+        {/* header */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: '2fr 1.5fr 1.5fr 1fr 1.5fr 1fr 1fr 1.5fr',
-          padding: '10px 16px',
-          background: theme.pageBg,
+          gridTemplateColumns: '2fr 1.2fr 1.2fr 1.5fr 1.2fr 1fr',
+          padding: '10px 18px',
+          background: theme.pageBg || '#f9fafb',
           borderBottom: `1px solid ${theme.border}`,
         }}>
-          {['Name','Phone','Country','Class',
-            'Fee Status','Stage','Added','Actions'].map(h => (
+          {['Name', 'Phone', 'Country', 'Course', 'Stage', 'Added'].map(h => (
             <span key={h} style={{
-              fontSize: 11,
-              fontWeight: 600,
-              color: theme.textMuted,
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
+              fontSize: 11, fontWeight: 600, color: theme.textMuted,
+              textTransform: 'uppercase', letterSpacing: '0.05em',
             }}>
               {h}
             </span>
@@ -199,24 +232,15 @@ export default function Students() {
         </div>
 
         {loading && (
-          <p style={{ padding: 20, color: theme.textLight, fontSize: 13 }}>
-            Loading...
-          </p>
+          <p style={{ padding: 20, fontSize: 13, color: theme.textLight }}>Loading...</p>
         )}
 
         {!loading && filtered.length === 0 && (
-          <div style={{
-            padding: 60,
-            textAlign: 'center',
-            color: theme.textLight,
-          }}>
-            <div style={{ fontSize: 40, marginBottom: 10 }}></div>
-            <div style={{
-              fontSize: 14,
-              fontWeight: 600,
-              color: theme.textMid,
-            }}>
-              No students found
+          <div style={{ padding: 60, textAlign: 'center', color: theme.textLight }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: theme.textMid }}>
+              {selectedCountry
+                ? `No students found going to ${selectedCountry}`
+                : 'No students found'}
             </div>
           </div>
         )}
@@ -226,83 +250,49 @@ export default function Students() {
             key={s.id}
             style={{
               display: 'grid',
-              gridTemplateColumns: '2fr 1.5fr 1.5fr 1fr 1.5fr 1fr 1fr 1.5fr',
-              padding: '13px 16px',
-              borderBottom: i < filtered.length - 1
-                ? `1px solid ${theme.border}` : 'none',
+              gridTemplateColumns: '2fr 1.2fr 1.2fr 1.5fr 1.2fr 1fr',
+              padding: '13px 18px',
+              borderBottom: i < filtered.length - 1 ? `1px solid ${theme.border}` : 'none',
               alignItems: 'center',
             }}
-            onMouseEnter={e =>
-              e.currentTarget.style.background = theme.pageBg}
-            onMouseLeave={e =>
-              e.currentTarget.style.background = 'transparent'}
+            onMouseEnter={e => e.currentTarget.style.background = theme.pageBg || '#f9fafb'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
           >
-            <div style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: theme.textDark,
-            }}>
-              {s.name || '—'}
+            {/* name + email */}
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: theme.textDark }}>
+                {s.name || '—'}
+              </div>
+              <div style={{ fontSize: 11, color: theme.textLight, marginTop: 2 }}>
+                {s.email || '—'}
+              </div>
             </div>
-            <div style={{ fontSize: 13, color: theme.textMid }}>
-              {s.phone || '—'}
-            </div>
-            <div style={{
-              fontSize: 13,
-              color: theme.textMid,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-            }}>
-              <span>
-                {countries.find(c => c.name === s.country)?.flag || '🌍'}
-              </span>
-              {s.country || '—'}
-            </div>
-            <div style={{ fontSize: 13, color: theme.textMid }}>
-              {s.class || '—'}
-            </div>
+
+            <div style={{ fontSize: 13, color: theme.textMid }}>{s.phone   || '—'}</div>
+            <div style={{ fontSize: 13, color: theme.textMid }}>{s.country || '—'}</div>
+            <div style={{ fontSize: 13, color: theme.textMid }}>{s.course  || '—'}</div>
+
+            {/* stage badge */}
             <div>
               <span style={{
-                padding: '3px 10px',
-                borderRadius: 20,
-                fontSize: 11,
-                fontWeight: 600,
-                background: feeColor(s.fee_status).bg,
-                color: feeColor(s.fee_status).color,
+                padding: '3px 10px', borderRadius: 20,
+                fontSize: 11, fontWeight: 600,
+                background: stageStyle(s.status).bg,
+                color:      stageStyle(s.status).color,
               }}>
-                {s.fee_status
-                  ? `Rs${s.fee_paid || 0} ${s.fee_status}`
-                  : '—'}
+                {s.status || 'New'}
               </span>
             </div>
-            <div style={{ fontSize: 13, color: theme.textMid }}>
-              {s.stage || '—'}
-            </div>
+
             <div style={{ fontSize: 12, color: theme.textLight }}>
               {s.created_at
                 ? new Date(s.created_at).toLocaleDateString()
                 : '—'}
             </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button style={{
-                padding: '5px 12px',
-                background: theme.primary,
-                border: 'none',
-                borderRadius: 20,
-                fontSize: 12,
-                fontWeight: 600,
-                color: '#fff',
-                cursor: 'pointer',
-              }}>
-                 View
-              </button>
-            </div>
           </div>
         ))}
       </div>
-
-      <BottomButtons onAdd={load} />
+        
     </div>
   )
 }

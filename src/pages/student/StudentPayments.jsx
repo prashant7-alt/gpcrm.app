@@ -3,14 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import StudentLayout from './StudentLayout'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FIX: Instead of importing qr.png (which may not exist yet), we use a
-// safe img src that tries /qr.png from the public folder first.
-// TO USE YOUR OWN QR:
-//   1. Drop your qr.png into the `public/` folder at the root of your project.
-//   2. That's it — no import needed, Vite serves it automatically at /qr.png
-// ─────────────────────────────────────────────────────────────────────────────
-const QR_SRC = '/qr.png'   // ← Place qr.png in your /public folder
+const QR_SRC = '/qr.png'
+
+const SUPABASE_URL  = 'https://txwpmjtixdbebnbqorju.supabase.co'
+const MERCHANT_CODE = 'EPAYTEST'
 
 const METHOD_OPTIONS = ['SUPABASE FOR TEST', 'eSewa', 'Khalti', 'Bank Transfer']
 const TYPE_OPTIONS   = [
@@ -51,7 +47,7 @@ export default function StudentPayments() {
     amount: '', type: TYPE_OPTIONS[0], method: 'Cash', note: '', reference: '',
   })
   const [createdId,   setCreatedId]   = useState(null)
-  const [qrLoadError, setQrLoadError] = useState(false)   // ← tracks if QR image 404s
+  const [qrLoadError, setQrLoadError] = useState(false)
 
   useEffect(() => {
     if (!profile.id) { navigate('/login'); return }
@@ -98,7 +94,7 @@ export default function StudentPayments() {
     setCreatedId(data.id)
 
     if (QR_METHODS.includes(form.method)) {
-      setQrLoadError(false)   // reset QR error state for new modal open
+      setQrLoadError(false)
       setStep(2)
     } else {
       alert('✅ Thank you for testing!')
@@ -118,6 +114,76 @@ export default function StudentPayments() {
     alert('✅ Reference submitted! Admin will verify and confirm your payment.')
     resetModal()
     load()
+  }
+
+  // ── real eSewa instant payment ──
+  async function payWithEsewaNow() {
+    try {
+      if (!createdId) {
+        alert('Payment record not found. Please try again.')
+        return
+      }
+
+      const transactionUuid = `GP-${createdId}-${Date.now()}`
+      const amount = Number(form.amount)
+
+      const sigRes = await fetch(`${SUPABASE_URL}/functions/v1/esewa-sign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          total_amount:     amount,
+          transaction_uuid: transactionUuid,
+          product_code:     MERCHANT_CODE,
+        }),
+      })
+
+      const result = await sigRes.json()
+      const { signature } = result
+
+      if (!signature) {
+        alert('Failed to generate payment signature. Try again.')
+        return
+      }
+
+      const esewaForm = document.createElement('form')
+      esewaForm.method = 'POST'
+      esewaForm.action = 'https://rc-epay.esewa.com.np/api/epay/main/v2/form'
+
+      const fields = {
+        amount,
+        tax_amount:              0,
+        total_amount:            amount,
+        transaction_uuid:        transactionUuid,
+        product_code:            MERCHANT_CODE,
+        product_service_charge:  0,
+        product_delivery_charge: 0,
+        success_url: `${window.location.origin}/payment/success`,
+        failure_url: `${window.location.origin}/payment/failure`,
+        signed_field_names: 'total_amount,transaction_uuid,product_code',
+        signature,
+      }
+
+      Object.entries(fields).forEach(([key, value]) => {
+        const input = document.createElement('input')
+        input.type  = 'hidden'
+        input.name  = key
+        input.value = String(value)
+        esewaForm.appendChild(input)
+      })
+
+      // ── save transaction info so we can verify status regardless of which page eSewa sends us to ──
+      localStorage.setItem('pending_esewa_txn', JSON.stringify({
+        transaction_uuid: transactionUuid,
+        payment_id:       createdId,
+        amount:           amount,
+      }))
+
+      document.body.appendChild(esewaForm)
+      esewaForm.submit()
+
+    } catch (err) {
+      alert('eSewa payment error: ' + err.message)
+    }
   }
 
   function resetModal() {
@@ -344,8 +410,7 @@ export default function StudentPayments() {
                       borderRadius: 8, padding: '10px 14px', marginBottom: 14,
                       fontSize: 12, color: '#1e40af',
                     }}>
-                      📱 After submitting, you'll see a QR code to scan and pay via <strong>{form.method}</strong>.
-                      You'll then enter your transaction reference number.
+                      📱 After submitting, you'll see options to pay via <strong>{form.method}</strong>.
                     </div>
                   )}
 
@@ -374,24 +439,50 @@ export default function StudentPayments() {
                       cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
                     }}>
                       {saving ? 'Submitting…'
-                        : QR_METHODS.includes(form.method) ? 'Next → Scan & Pay'
+                        : QR_METHODS.includes(form.method) ? 'Next →'
                         : 'Submit Request'}
                     </button>
                   </div>
                 </>
               )}
 
-              {/* ── STEP 2: QR code + reference ─────────── */}
+              {/* ── STEP 2: QR code + reference + real eSewa option ─────────── */}
               {step === 2 && (
                 <>
                   <div style={{ textAlign: 'center', marginBottom: 20 }}>
                     <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '0 0 6px' }}>
-                      Scan to Pay via {form.method}
+                      Pay via {form.method}
                     </h3>
                     <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
                       Send <strong style={{ color: '#111827' }}>Rs {Number(form.amount).toLocaleString()}</strong> to Global Pathway Consultancy
                     </p>
                   </div>
+
+                  {/* ── REAL eSewa instant pay button — only shows when method is eSewa ── */}
+                  {form.method === 'eSewa' && (
+                    <button
+                      onClick={payWithEsewaNow}
+                      style={{
+                        width: '100%', padding: '12px 16px',
+                        background: '#60BB46', border: 'none', borderRadius: 10,
+                        fontSize: 14, fontWeight: 700, color: '#fff',
+                        cursor: 'pointer', fontFamily: 'inherit',
+                        marginBottom: 16,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      }}
+                    >
+                      ⚡ Pay instantly with eSewa
+                    </button>
+                  )}
+
+                  {form.method === 'eSewa' && (
+                    <div style={{
+                      textAlign: 'center', fontSize: 11, color: '#9ca3af',
+                      marginBottom: 16, marginTop: -8,
+                    }}>
+                      — or scan the QR code and enter your reference manually below —
+                    </div>
+                  )}
 
                   {/* ── QR Code ── */}
                   <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 18 }}>
@@ -400,7 +491,6 @@ export default function StudentPayments() {
                       background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
                     }}>
                       {qrLoadError ? (
-                        /* Fallback if qr.png not found in /public */
                         <div style={{
                           width: 180, height: 180,
                           background: '#f3f4f6', borderRadius: 8,

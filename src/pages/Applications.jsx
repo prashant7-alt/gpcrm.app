@@ -5,12 +5,29 @@ import BottomButtons from '../components/BottomButtons'
 
 const SUPABASE_URL = 'https://txwpmjtixdbebnbqorju.supabase.co'
 
+// countries used in the student dashboard — for the dropdown
+const COUNTRY_OPTIONS = [
+  'Korea', 'Australia', 'Japan', 'UK', 'USA',
+  'Canada', 'Finland', 'Germany', 'France', 'New Zealand',
+  'Ireland', 'Malta', 'Cyprus', 'Hungary', 'Poland',
+  'Czech Republic', 'Italy', 'Portugal', 'Sweden', 'Denmark',
+  'Norway', 'Netherlands', 'Belgium', 'Switzerland', 'Spain',
+  'Other',
+]
+
 const badgeStyle = (status) => {
   const map = {
-    'Approved': { bg: '#dcfce7',   color: '#15803d' },
-    'Pending':  { bg: '#fef9c3',   color: '#a16207' },
-    'Rejected': { bg: '#fee2e2',   color: '#b91c1c' },
-    'New':      { bg: '#dbeafe00', color: 'black'   },
+    'Approved':       { bg: '#dcfce7', color: '#15803d' },
+    'Pending':        { bg: '#fef9c3', color: '#a16207' },
+    'Rejected':       { bg: '#fee2e2', color: '#b91c1c' },
+    'New':            { bg: '#dbeafe', color: '#1d4ed8' },
+    'Inquiring':      { bg: '#ede9fe', color: '#7c3aed' },
+    'Counseling':     { bg: '#fef9c3', color: '#ca8a04' },
+    'Documentation':  { bg: '#ffedd5', color: '#ea580c' },
+    'Applied':        { bg: '#dbeafe', color: '#2563eb' },
+    'Visa Process':   { bg: '#cffafe', color: '#0891b2' },
+    'Class/Enrolled': { bg: '#ede9fe', color: '#7c3aed' },
+    'Abroad':         { bg: '#dcfce7', color: '#16a34a' },
   }
   return map[status] || { bg: '#f3f4f6', color: '#6b7280' }
 }
@@ -20,10 +37,14 @@ export default function Applications() {
   const [list,     setList]     = useState([])
   const [search,   setSearch]   = useState('')
   const [filter,   setFilter]   = useState('All')
+  const [country,  setCountry]  = useState('All')
   const [loading,  setLoading]  = useState(true)
   const [deleting, setDeleting] = useState(null)
-
-  const bottomButtonsRef = useRef(null)
+  const [showAdd,  setShowAdd]  = useState(false)
+  const [saving,   setSaving]   = useState(false)
+  const [form,     setForm]     = useState({
+    name: '', email: '', phone: '', course: '', country: '',
+  })
 
   useEffect(() => { load() }, [])
 
@@ -36,88 +57,51 @@ export default function Applications() {
     setLoading(false)
   }
 
-  // ── DELETE APPLICANT ─────────────────────────────────────────────────────
-  //
-  // Your profiles table structure:
-  //   id           uuid  ← this is the Supabase Auth user UUID
-  //   applicant_id bigint ← FK → applicants.id  (with ON DELETE CASCADE after SQL fix)
-  //   email        text
-  //   ...
-  //
-  // DELETE ORDER:
-  //   1. Find profile.id (auth UUID) using applicant_id
-  //   2. Call Edge Function to delete their Supabase Auth account (revokes login)
-  //   3. Delete the profiles row manually (belt-and-suspenders)
-  //   4. Delete the applicants row → CASCADE handles profiles if step 3 missed
-  //
+  const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
+
+  async function addApplicant() {
+    if (!form.name.trim()) return alert('Name is required')
+    setSaving(true)
+    const { error } = await supabase.from('applicants').insert({
+      name:    form.name.trim(),
+      email:   form.email.trim().toLowerCase() || null,
+      phone:   form.phone.trim()  || null,
+      course:  form.course.trim() || null,
+      country: form.country       || null,
+      status:  'New',
+    })
+    setSaving(false)
+    if (error) return alert('Error: ' + error.message)
+    setShowAdd(false)
+    setForm({ name: '', email: '', phone: '', course: '', country: '' })
+    load()
+  }
+
   async function deleteApplicant(applicant) {
     const confirmed = window.confirm(
-      `Delete "${applicant.name}"?\n\n` +
-      `This will:\n` +
-      `• Remove their applicant record\n` +
-      `• Delete their student portal login\n` +
-      `• They will no longer be able to log in\n\n` +
-      `This cannot be undone.`
+      `Delete "${applicant.name}"? This cannot be undone.`
     )
     if (!confirmed) return
-
     setDeleting(applicant.id)
-
     try {
-      // ── Step 1: find profile by applicant_id (bigint) ─────────────────
-      const { data: profile, error: profileFetchError } = await supabase
+      // delete auth user via edge function if they have an account
+      const { data: profile } = await supabase
         .from('profiles')
         .select('id')
-        .eq('applicant_id', applicant.id)   // applicant_id is bigint, applicant.id matches
+        .eq('email', (applicant.email || '').toLowerCase().trim())
         .maybeSingle()
 
-      if (profileFetchError) {
-        console.warn('Profile fetch warning:', profileFetchError.message)
-      }
-
-      // ── Step 2: delete Supabase Auth user via Edge Function ───────────
       if (profile?.id) {
-        try {
-          const res    = await fetch(`${SUPABASE_URL}/functions/v1/delete-user`, {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ user_id: profile.id }),
-          })
-          const result = await res.json()
-          if (!result.success) {
-            console.warn('Auth delete warning:', result.message)
-          }
-        } catch (fetchErr) {
-          console.warn('Edge function warning:', fetchErr.message)
-          // continue — still delete DB rows even if auth call fails
-        }
-
-        // ── Step 3: explicitly delete the profiles row ─────────────────
-        // (ON DELETE CASCADE will also do this, but being explicit is safer)
-        const { error: profileDeleteError } = await supabase
-          .from('profiles')
-          .delete()
-          .eq('id', profile.id)
-
-        if (profileDeleteError) {
-          console.warn('Profile row delete warning:', profileDeleteError.message)
-          // If this fails, cascade from step 4 will clean it up
-        }
+        await fetch(`${SUPABASE_URL}/functions/v1/delete-user`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: profile.id }),
+        })
+        await supabase.from('profiles').delete().eq('id', profile.id)
       }
 
-      // ── Step 4: delete applicant row ──────────────────────────────────
-      // After ON DELETE CASCADE SQL fix, this also auto-deletes any
-      // remaining profiles row that references this applicant_id
-      const { error: applicantError } = await supabase
-        .from('applicants')
-        .delete()
-        .eq('id', applicant.id)
-
-      if (applicantError) throw applicantError
-
+      await supabase.from('applicants').delete().eq('id', applicant.id)
       load()
-      alert(`✅ "${applicant.name}" deleted. Their login access has been removed.`)
-
     } catch (err) {
       alert('Error deleting: ' + err.message)
     } finally {
@@ -125,16 +109,20 @@ export default function Applications() {
     }
   }
 
+  // unique countries from actual data for dropdown
+  const countryOptions = ['All', ...new Set(list.map(a => a.country).filter(Boolean)).values()]
+
   const filtered = list.filter(a => {
-    const matchSearch = a.name?.toLowerCase().includes(search.toLowerCase())
-    const matchFilter = filter === 'All' || a.status === filter
-    return matchSearch && matchFilter
+    const matchSearch  = a.name?.toLowerCase().includes(search.toLowerCase())
+    const matchFilter  = filter  === 'All' || a.status  === filter
+    const matchCountry = country === 'All' || a.country === country
+    return matchSearch && matchFilter && matchCountry
   })
 
   return (
     <div>
 
-      {/* ── PAGE HEADER ── */}
+      {/* header */}
       <div style={{
         display: 'flex', justifyContent: 'space-between',
         alignItems: 'flex-start', marginBottom: 20,
@@ -148,7 +136,7 @@ export default function Applications() {
           </p>
         </div>
         <button
-          onClick={() => bottomButtonsRef.current?.openApplicantModal()}
+          onClick={() => setShowAdd(true)}
           style={{
             padding: '9px 16px', background: theme.primary,
             border: 'none', borderRadius: 8,
@@ -159,14 +147,14 @@ export default function Applications() {
         </button>
       </div>
 
-      {/* ── SEARCH + FILTER ── */}
+      {/* search + filters */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
           background: theme.cardBg, border: `1px solid ${theme.border}`,
           borderRadius: 8, padding: '8px 14px', flex: 1,
         }}>
-          <span style={{ color: theme.textMuted }}>🔍</span>
+          <span style={{ color: theme.textMuted }}>&#128269;</span>
           <input
             placeholder="Search by name..."
             value={search}
@@ -177,6 +165,8 @@ export default function Applications() {
             }}
           />
         </div>
+
+        {/* status filter */}
         <select
           value={filter}
           onChange={e => setFilter(e.target.value)}
@@ -186,20 +176,42 @@ export default function Applications() {
             fontSize: 13, color: theme.textMid, outline: 'none', cursor: 'pointer',
           }}
         >
-          <option>All</option>
+          <option value="All">All Status</option>
           <option>New</option>
           <option>Pending</option>
           <option>Approved</option>
           <option>Rejected</option>
+          <option>Inquiring</option>
+          <option>Counseling</option>
+          <option>Documentation</option>
+          <option>Applied</option>
+          <option>Visa Process</option>
+          <option>Class/Enrolled</option>
+          <option>Abroad</option>
+        </select>
+
+        {/* country filter — from actual data */}
+        <select
+          value={country}
+          onChange={e => setCountry(e.target.value)}
+          style={{
+            background: theme.cardBg, border: `1px solid ${theme.border}`,
+            borderRadius: 8, padding: '8px 14px',
+            fontSize: 13, color: theme.textMid, outline: 'none', cursor: 'pointer',
+          }}
+        >
+          {countryOptions.map(c => (
+            <option key={c}>{c}</option>
+          ))}
         </select>
       </div>
 
-      {/* ── TABLE ── */}
+      {/* table */}
       <div style={{
         background: theme.cardBg, border: `1px solid ${theme.border}`,
         borderRadius: 10, overflow: 'hidden',
       }}>
-        {/* header */}
+
         <div style={{
           display: 'grid',
           gridTemplateColumns: '2fr 1.5fr 1.5fr 1fr 1fr 0.8fr',
@@ -217,14 +229,11 @@ export default function Applications() {
         </div>
 
         {loading && (
-          <p style={{ padding: 20, color: theme.textLight, fontSize: 13 }}>
-            Loading...
-          </p>
+          <p style={{ padding: 20, color: theme.textLight, fontSize: 13 }}>Loading...</p>
         )}
 
         {!loading && filtered.length === 0 && (
           <div style={{ padding: 60, textAlign: 'center', color: theme.textLight }}>
-            <div style={{ fontSize: 36, marginBottom: 10 }}>📋</div>
             <div style={{ fontSize: 14, fontWeight: 600, color: theme.textMid }}>
               No applicants found
             </div>
@@ -238,16 +247,13 @@ export default function Applications() {
               display: 'grid',
               gridTemplateColumns: '2fr 1.5fr 1.5fr 1fr 1fr 0.8fr',
               padding: '13px 16px',
-              borderBottom: i < filtered.length - 1
-                ? `1px solid ${theme.border}` : 'none',
+              borderBottom: i < filtered.length - 1 ? `1px solid ${theme.border}` : 'none',
               alignItems: 'center',
               opacity: deleting === a.id ? 0.5 : 1,
-              transition: 'opacity 0.2s',
             }}
             onMouseEnter={e => e.currentTarget.style.background = theme.pageBg}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
           >
-            {/* name + email */}
             <div>
               <div style={{ fontSize: 13, fontWeight: 500, color: theme.textDark }}>
                 {a.name || '—'}
@@ -260,7 +266,6 @@ export default function Applications() {
             <div style={{ fontSize: 13, color: theme.textMid }}>{a.course  || '—'}</div>
             <div style={{ fontSize: 13, color: theme.textMid }}>{a.country || '—'}</div>
 
-            {/* status badge */}
             <div>
               <span style={{
                 padding: '3px 10px', borderRadius: 20,
@@ -272,39 +277,143 @@ export default function Applications() {
               </span>
             </div>
 
-            {/* date */}
             <div style={{ fontSize: 12, color: theme.textLight }}>
-              {a.created_at
-                ? new Date(a.created_at).toLocaleDateString()
-                : '—'}
+              {a.created_at ? new Date(a.created_at).toLocaleDateString() : '—'}
             </div>
 
-            {/* delete button */}
-            <div>
-              <button
-                onClick={() => deleteApplicant(a)}
-                disabled={deleting === a.id}
-                title="Delete applicant and remove their login"
-                style={{
-                  padding: '5px 12px',
-                  background: deleting === a.id ? '#f3f4f6' : '#fee2e2',
-                  border: 'none', borderRadius: 6,
-                  fontSize: 11, fontWeight: 600,
-                  color: deleting === a.id ? '#9ca3af' : '#b91c1c',
-                  cursor: deleting === a.id ? 'not-allowed' : 'pointer',
-                  fontFamily: 'inherit',
-                  transition: 'all 0.15s',
-                }}
-              >
-                {deleting === a.id ? 'Deleting…' : '🗑 Delete'}
-              </button>
-            </div>
+            <button
+              onClick={() => deleteApplicant(a)}
+              disabled={deleting === a.id}
+              style={{
+                padding: '5px 10px',
+                background: deleting === a.id ? '#f3f4f6' : '#fee2e2',
+                border: 'none', borderRadius: 6,
+                fontSize: 11, fontWeight: 600,
+                color: deleting === a.id ? '#9ca3af' : '#b91c1c',
+                cursor: deleting === a.id ? 'not-allowed' : 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              {deleting === a.id ? 'Deleting...' : 'Delete'}
+            </button>
           </div>
         ))}
       </div>
 
-      <BottomButtons ref={bottomButtonsRef} onAdd={load} />
+      {/* add applicant modal */}
+      {showAdd && (
+        <div
+          onClick={() => setShowAdd(false)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', border: '1px solid #e5e7eb',
+              borderRadius: 14, padding: 28, width: 440,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.14)',
+            }}
+          >
+            <div style={{
+              display: 'flex', justifyContent: 'space-between',
+              alignItems: 'center', marginBottom: 22,
+            }}>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: 0 }}>
+                Add New Applicant
+              </h3>
+              <button onClick={() => setShowAdd(false)} style={{
+                background: 'none', border: 'none',
+                fontSize: 20, cursor: 'pointer', color: '#9ca3af',
+              }}>x</button>
+            </div>
 
+            {[
+              { label: 'Full Name *', key: 'name',   placeholder: 'Ram Sharma',           type: 'text'  },
+              { label: 'Email',       key: 'email',  placeholder: 'ram@email.com',         type: 'email' },
+              { label: 'Phone',       key: 'phone',  placeholder: '98XXXXXXXX',            type: 'text'  },
+              { label: 'Course',      key: 'course', placeholder: 'BSc Computer Science',  type: 'text'  },
+            ].map(f => (
+              <div key={f.key} style={{ marginBottom: 14 }}>
+                <label style={{
+                  display: 'block', fontSize: 11, fontWeight: 600,
+                  color: '#6b7280', textTransform: 'uppercase',
+                  letterSpacing: '0.05em', marginBottom: 5,
+                }}>
+                  {f.label}
+                </label>
+                <input
+                  type={f.type}
+                  placeholder={f.placeholder}
+                  value={form[f.key]}
+                  onChange={e => set(f.key, e.target.value)}
+                  style={{
+                    width: '100%', padding: '9px 12px',
+                    border: '1px solid #e5e7eb', borderRadius: 8,
+                    fontSize: 13, color: '#111827', outline: 'none',
+                    fontFamily: 'inherit', boxSizing: 'border-box', background: '#f9fafb',
+                  }}
+                />
+              </div>
+            ))}
+
+            {/* country dropdown */}
+            <div style={{ marginBottom: 22 }}>
+              <label style={{
+                display: 'block', fontSize: 11, fontWeight: 600,
+                color: '#6b7280', textTransform: 'uppercase',
+                letterSpacing: '0.05em', marginBottom: 5,
+              }}>
+                Country
+              </label>
+              <select
+                value={form.country}
+                onChange={e => set('country', e.target.value)}
+                style={{
+                  width: '100%', padding: '9px 12px',
+                  border: '1px solid #e5e7eb', borderRadius: 8,
+                  fontSize: 13, color: '#111827', outline: 'none',
+                  fontFamily: 'inherit', background: '#f9fafb',
+                  boxSizing: 'border-box', cursor: 'pointer',
+                }}
+              >
+                <option value="">Select country...</option>
+                {COUNTRY_OPTIONS.map(c => (
+                  <option key={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowAdd(false)} style={{
+                padding: '9px 18px', background: '#f9fafb',
+                border: '1px solid #e5e7eb', borderRadius: 8,
+                fontSize: 13, color: '#6b7280', cursor: 'pointer',
+              }}>
+                Cancel
+              </button>
+              <button
+                onClick={addApplicant}
+                disabled={saving}
+                style={{
+                  padding: '9px 20px',
+                  background: saving ? '#9ca3af' : theme.primary,
+                  border: 'none', borderRadius: 8,
+                  fontSize: 13, fontWeight: 600, color: '#fff',
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                {saving ? 'Saving...' : 'Add Applicant'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <BottomButtons onAdd={load} />
     </div>
   )
 }

@@ -26,6 +26,10 @@ import Tasks        from './pages/Tasks'
 import Settings     from './pages/Settings'
 import StaffChat    from './pages/StaffChat'
 
+// eSewa payment redirect pages — public, no auth wrapper
+import EsewaSuccess from './pages/payment/EsewaSuccess'
+import EsewaFailure from './pages/payment/EsewaFailure'
+
 const SIDEBAR_WIDTH = 230
 
 function Layout({ children }) {
@@ -86,6 +90,10 @@ export default function App() {
         {/* public */}
         <Route path="/login" element={<Login />} />
         <Route path="/"      element={<Navigate to="/login" replace />} />
+
+        {/* eSewa redirect pages — public, no role check */}
+        <Route path="/payment/success" element={<EsewaSuccess />} />
+        <Route path="/payment/failure" element={<EsewaFailure />} />
 
         {/* ── student routes ── */}
         <Route path="/student/dashboard" element={
