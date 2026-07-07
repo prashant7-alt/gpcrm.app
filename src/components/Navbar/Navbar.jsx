@@ -3,12 +3,14 @@ import { useLocation, useNavigate, NavLink } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import theme from '../../theme'
 
+// ── Sidebar menus per role ─────────────────────────────────────────────────
+
 const adminMenu = [
   { section: 'Overview',   links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
   { section: 'Pipeline',   links: [{ to: '/applications', label: 'Applications' }, { to: '/students', label: 'Students' }, { to: '/visitors', label: 'Visitors' }] },
   { section: 'Operations', links: [{ to: '/appointments', label: 'Appointments' }, { to: '/tasks',    label: 'Tasks'    }] },
   { section: 'Finance',    links: [{ to: '/payments',     label: 'Payments'     }, { to: '/reports',  label: 'Reports'  }] },
-  { section: 'Team',       links: [{ to: '/staff',        label: 'Staff'        }, { to: '/documents',label: 'Documents'}] },
+  { section: 'Team',       links: [{ to: '/staff',        label: 'Staff'        }, { to: '/documents',label: 'Documents'}, { to: '/chat',     label: 'Chat'     }] },
   { section: 'System',     links: [{ to: '/settings',     label: 'Settings'     }] },
 ]
 
@@ -20,6 +22,98 @@ const staffMenu = [
   { section: 'Documents',  links: [{ to: '/documents',    label: 'Documents'    }, { to: '/chat',     label: 'Chat'     }] },
 ]
 
+// Manager — same as staff but also sees Reports
+const managerMenu = [
+  { section: 'Overview',   links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
+  { section: 'Pipeline',   links: [{ to: '/applications', label: 'Applications' }, { to: '/students', label: 'Students' }, { to: '/visitors', label: 'Visitors' }] },
+  { section: 'Operations', links: [{ to: '/appointments', label: 'Appointments' }, { to: '/tasks',    label: 'Tasks'    }] },
+  { section: 'Finance',    links: [{ to: '/payments',     label: 'Payments'     }, { to: '/reports',  label: 'Reports'  }] },
+  { section: 'Documents',  links: [{ to: '/documents',    label: 'Documents'    }, { to: '/chat',     label: 'Chat'     }] },
+]
+
+// Counselor — students, appointments, tasks, chat
+const counselorMenu = [
+  { section: 'Overview',   links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
+  { section: 'Students',   links: [{ to: '/students',     label: 'Students'     }] },
+  { section: 'Operations', links: [{ to: '/appointments', label: 'Appointments' }, { to: '/tasks',    label: 'Tasks'    }] },
+  { section: 'Team',       links: [{ to: '/chat',         label: 'Chat'         }] },
+]
+
+// Visa Officer — students, appointments, documents, tasks, chat
+const visaOfficerMenu = [
+  { section: 'Overview',   links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
+  { section: 'Pipeline',   links: [{ to: '/applications', label: 'Applications' }, { to: '/students', label: 'Students' }] },
+  { section: 'Operations', links: [{ to: '/appointments', label: 'Appointments' }, { to: '/tasks',    label: 'Tasks'    }] },
+  { section: 'Documents',  links: [{ to: '/documents',    label: 'Documents'    }, { to: '/chat',     label: 'Chat'     }] },
+]
+
+// Finance Officer — payments, reports, students (view only), tasks
+const financeMenu = [
+  { section: 'Overview',   links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
+  { section: 'Finance',    links: [{ to: '/payments',     label: 'Payments'     }, { to: '/reports',  label: 'Reports'  }] },
+  { section: 'Reference',  links: [{ to: '/students',     label: 'Students'     }, { to: '/tasks',    label: 'Tasks'    }] },
+  { section: 'Team',       links: [{ to: '/chat',         label: 'Chat'         }] },
+]
+
+// Document Handler — documents, students, tasks, chat
+const documentMenu = [
+  { section: 'Overview',   links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
+  { section: 'Students',   links: [{ to: '/students',     label: 'Students'     }] },
+  { section: 'Work',       links: [{ to: '/documents',    label: 'Documents'    }, { to: '/tasks',    label: 'Tasks'    }] },
+  { section: 'Team',       links: [{ to: '/chat',         label: 'Chat'         }] },
+]
+
+// Receptionist — applications, students, visitors, appointments, payments, tasks
+const receptionistMenu = [
+  { section: 'Overview',   links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
+  { section: 'Pipeline',   links: [{ to: '/applications', label: 'Applications' }, { to: '/students', label: 'Students' }, { to: '/visitors', label: 'Visitors' }] },
+  { section: 'Operations', links: [{ to: '/appointments', label: 'Appointments' }, { to: '/tasks',    label: 'Tasks'    }] },
+  { section: 'Finance',    links: [{ to: '/payments',     label: 'Payments'     }] },
+  { section: 'Team',       links: [{ to: '/chat',         label: 'Chat'         }] },
+]
+
+// Marketing — applications, reports, tasks, chat
+const marketingMenu = [
+  { section: 'Overview',   links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
+  { section: 'Pipeline',   links: [{ to: '/applications', label: 'Applications' }] },
+  { section: 'Analytics',  links: [{ to: '/reports',      label: 'Reports'      }, { to: '/tasks',    label: 'Tasks'    }] },
+  { section: 'Team',       links: [{ to: '/chat',         label: 'Chat'         }] },
+]
+
+// Other — minimal: dashboard, tasks, chat
+const otherMenu = [
+  { section: 'Overview',   links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
+  { section: 'Work',       links: [{ to: '/tasks',        label: 'Tasks'        }] },
+  { section: 'Team',       links: [{ to: '/chat',         label: 'Chat'         }] },
+]
+
+const MENUS = {
+  admin:            adminMenu,
+  staff:            staffMenu,
+  manager:          managerMenu,
+  counselor:        counselorMenu,
+  visa_officer:     visaOfficerMenu,
+  finance_officer:  financeMenu,
+  document_handler: documentMenu,
+  receptionist:     receptionistMenu,
+  marketing:        marketingMenu,
+  other:            otherMenu,
+}
+
+// ── Role display labels + colours ──────────────────────────────────────────
+const ROLE_META = {
+  admin:            { label: 'Administrator',    badge: 'Admin Panel',        badgeBg: '#dbeafe', badgeColor: '#1d4ed8', avatarBg: '#1a1f3a' },
+  staff:            { label: 'Staff Member',     badge: 'Staff Panel',        badgeBg: '#ede9fe', badgeColor: '#7c3aed', avatarBg: '#7c3aed' },
+  manager:          { label: 'Manager',          badge: 'Manager Panel',      badgeBg: '#cffafe', badgeColor: '#0e7490', avatarBg: '#0e7490' },
+  counselor:        { label: 'Counselor',        badge: 'Counselor Panel',    badgeBg: '#d1fae5', badgeColor: '#065f46', avatarBg: '#065f46' },
+  visa_officer:     { label: 'Visa Officer',     badge: 'Visa Panel',         badgeBg: '#fce7f3', badgeColor: '#9d174d', avatarBg: '#9d174d' },
+  finance_officer:  { label: 'Finance Officer',  badge: 'Finance Panel',      badgeBg: '#dcfce7', badgeColor: '#15803d', avatarBg: '#15803d' },
+  document_handler: { label: 'Document Handler', badge: 'Documents Panel',    badgeBg: '#fef9c3', badgeColor: '#854d0e', avatarBg: '#854d0e' },
+  receptionist:     { label: 'Receptionist',     badge: 'Reception Panel',    badgeBg: '#fee2e2', badgeColor: '#991b1b', avatarBg: '#991b1b' },
+  marketing:        { label: 'Marketing',        badge: 'Marketing Panel',    badgeBg: '#fef3c7', badgeColor: '#92400e', avatarBg: '#92400e' },
+  other:            { label: 'Staff',            badge: 'Staff Panel',        badgeBg: '#f3f4f6', badgeColor: '#374151', avatarBg: '#374151' },
+}
+
 const PAGE_LABELS = {
   dashboard: 'Dashboard', applications: 'Applicants', students: 'Students',
   visitors: 'Visitors',   appointments: 'Appointments', tasks: 'Tasks',
@@ -27,31 +121,25 @@ const PAGE_LABELS = {
   reports: 'Reports',     settings: 'Settings', chat: 'Chat',
 }
 
-const PAGE_SUB = {}
 const SIDEBAR_WIDTH = 230
 
 export default function Navbar({ menuOpen, setMenuOpen }) {
-
   const location     = useLocation()
   const navigate     = useNavigate()
   const drawerRef    = useRef(null)
   const toggleBtnRef = useRef(null)
 
-  const profile  = JSON.parse(localStorage.getItem('profile') || '{}')
-  const isAdmin  = profile.role === 'admin'
-  const isStaff  = profile.role === 'staff'
+  const profile = JSON.parse(localStorage.getItem('profile') || '{}')
+  const role    = profile.role || 'staff'
 
-  const menu = isAdmin ? adminMenu : staffMenu
+  const menu     = MENUS[role]     || otherMenu
+  const roleMeta = ROLE_META[role] || ROLE_META.other
 
-  const key      = location.pathname.replace('/', '').toLowerCase()
-  const title    = PAGE_LABELS[key] || 'Dashboard'
-  const subtitle = PAGE_SUB[key] || ''
+  const key   = location.pathname.replace('/', '').toLowerCase()
+  const title = PAGE_LABELS[key] || 'Dashboard'
 
-  const displayName = profile.name || (isAdmin ? 'Admin' : isStaff ? 'Staff' : 'User')
-  const roleLabel   = isAdmin ? 'Administrator' : isStaff ? 'Staff Member' : 'User'
-
-  const initials = displayName
-    .split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+  const displayName = profile.name || roleMeta.label
+  const initials    = displayName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
 
   useEffect(() => {
     function handleClick(e) {
@@ -75,6 +163,7 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
 
   return (
     <>
+      {/* ── Top header ── */}
       <header style={{
         height: 64,
         background: '#fff',
@@ -84,6 +173,7 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
         zIndex: 200,
         boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
       }}>
+        {/* Hamburger */}
         <button
           ref={toggleBtnRef}
           onClick={() => setMenuOpen(v => !v)}
@@ -106,10 +196,11 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
                 : 'scaleX(0)'
                 : 'none',
               opacity: menuOpen && i === 1 ? 0 : 1,
-            }}/>
+            }} />
           ))}
         </button>
 
+        {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           <img src="/src/assets/images/logo.png" alt="Logo"
             style={{ width: 79, height: 90, borderRadius: 8, objectFit: 'contain' }} />
@@ -121,20 +212,30 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
 
         <div style={{ width: 1, height: 32, background: '#e5e7eb', flexShrink: 0 }} />
 
+        {/* Page title */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 30, fontWeight: 700, color: '#0f327dcf', lineHeight: 1.2 }}>
             {title}
           </div>
-          {subtitle && <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>{subtitle}</div>}
         </div>
 
+        {/* Role badge — visible in header */}
+        <div style={{
+          padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+          background: roleMeta.badgeBg, color: roleMeta.badgeColor,
+          flexShrink: 0, whiteSpace: 'nowrap',
+        }}>
+          {roleMeta.badge}
+        </div>
+
+        {/* Avatar */}
         <div
-          onClick={() => isAdmin && navigate('/settings')}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: isAdmin ? 'pointer' : 'default' }}
+          onClick={() => role === 'admin' && navigate('/settings')}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: role === 'admin' ? 'pointer' : 'default' }}
         >
           <div style={{
             width: 36, height: 36, borderRadius: '50%',
-            background: isAdmin ? '#1a1f3a' : '#7c3aed',
+            background: roleMeta.avatarBg,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontWeight: 700, fontSize: 11, color: '#fff', flexShrink: 0,
           }}>
@@ -142,11 +243,12 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
           </div>
           <div style={{ lineHeight: 1.25 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{displayName}</div>
-            <div style={{ fontSize: 10.5, color: '#9ca3af' }}>{roleLabel}</div>
+            <div style={{ fontSize: 10.5, color: '#9ca3af' }}>{roleMeta.label}</div>
           </div>
         </div>
       </header>
 
+      {/* ── Sidebar drawer ── */}
       <nav ref={drawerRef} style={{
         position: 'fixed',
         top: 64, left: 0,
@@ -160,20 +262,23 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
         transition: 'transform 0.22s cubic-bezier(0.4,0,0.2,1)',
         overflow: 'hidden',
       }}>
+        {/* Role badge in sidebar */}
         <div style={{
           padding: '10px 14px 6px',
           borderBottom: `1px solid ${theme.border || '#e5e7eb'}`,
         }}>
           <span style={{
+            display: 'inline-block',
             padding: '3px 10px', borderRadius: 20,
             fontSize: 11, fontWeight: 600,
-            background: isAdmin ? '#dbeafe' : '#ede9fe',
-            color: isAdmin ? '#1d4ed8' : '#7c3aed',
+            background: roleMeta.badgeBg,
+            color: roleMeta.badgeColor,
           }}>
-            {isAdmin ? '👑 Admin Panel' : '👤 Staff Panel'}
+            {roleMeta.badge}
           </span>
         </div>
 
+        {/* Nav links */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '6px 10px' }}>
           {menu.map(group => (
             <div key={group.section}>
@@ -204,6 +309,7 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
           ))}
         </div>
 
+        {/* Logout */}
         <div style={{ borderTop: `1px solid ${theme.border || '#e5e7eb'}`, padding: '10px 10px 14px' }}>
           <button
             onClick={handleLogout}

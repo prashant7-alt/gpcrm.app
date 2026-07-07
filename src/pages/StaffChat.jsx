@@ -1,430 +1,450 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
+import theme from '../theme'
+
+const avatarColor = (name) => {
+  const colors = ['#16a34a','#2563eb','#7c3aed','#db2777','#ea580c','#0891b2']
+  return colors[(name?.charCodeAt(0) || 0) % colors.length]
+}
+
+const getInitials = (name) => {
+  if (!name) return '?'
+  return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+}
 
 export default function StaffChat() {
-  const navigate  = useNavigate()
+
   const profile   = JSON.parse(localStorage.getItem('profile') || '{}')
   const bottomRef = useRef(null)
 
-  const [studentList,   setStudentList]   = useState([])
-  const [activeStudent, setActiveStudent] = useState(null)
-  const [messages,      setMessages]      = useState([])
-  const [text,          setText]          = useState('')
-  const [sending,       setSending]       = useState(false)
-  const [loadingMsgs,   setLoadingMsgs]   = useState(false)
-  const [unread,        setUnread]        = useState({})
-  const [search,        setSearch]        = useState('')
+  const [students,   setStudents]   = useState([])
+  const [selected,   setSelected]   = useState(null)
+  const [messages,   setMessages]   = useState([])
+  const [newMessage, setNewMessage] = useState('')
+  const [loading,    setLoading]    = useState(false)
+  const [sending,    setSending]    = useState(false)
+  const [search,     setSearch]     = useState('')
+
+  useEffect(() => { loadStudents() }, [])
 
   useEffect(() => {
-    if (!profile.id) navigate('/login')
-  }, [])
-
-  useEffect(() => {
-    async function loadStudents() {
-      const { data } = await supabase
-        .from('profiles')
-        .select('id, name, email, role')
-        .eq('role', 'student')
-        .order('name')
-      setStudentList(data || [])
-    }
-    loadStudents()
-  }, [])
-
-  useEffect(() => {
-    if (!activeStudent) return
+    if (!selected) return
     loadMessages()
-    markAsRead()
-  }, [activeStudent])
 
-  useEffect(() => {
-    if (!profile.id) return
+    // realtime: listen for new messages in this conversation
     const channel = supabase
-      .channel('staff-chat-' + profile.id)
+      .channel('staffchat-' + profile.id + '-' + selected.id)
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public', table: 'messages',
       }, (payload) => {
         const msg = payload.new
-        if (
-          activeStudent &&
-          (
-            (msg.sender_id === profile.id      && msg.receiver_id === activeStudent.id) ||
-            (msg.sender_id === activeStudent.id && msg.receiver_id === profile.id)
-          )
-        ) {
-          setMessages(prev => [...prev, msg])
-          markAsRead()
-        } else {
-          if (msg.sender_id !== profile.id) {
-            setUnread(prev => ({ ...prev, [msg.sender_id]: (prev[msg.sender_id] || 0) + 1 }))
-          }
+        // accept message if it belongs to this conversation (by name OR email)
+        const involvesSender   = msg.sender_name === profile.name   || msg.sender_email === profile.email
+        const involvesReceiver = msg.sender_name === selected.name  || msg.sender_email === selected.email
+        const involvesMe       = msg.receiver_name === profile.name || msg.receiver_email === profile.email
+        const involvesStudent  = msg.receiver_name === selected.name|| msg.receiver_email === selected.email
+
+        if ((involvesSender && involvesStudent) || (involvesReceiver && involvesMe)) {
+          setMessages(prev => {
+            // avoid duplicate if loadMessages already added it
+            if (prev.find(m => m.id === msg.id)) return prev
+            return [...prev, msg]
+          })
+          setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
         }
       })
       .subscribe()
-    return () => supabase.removeChannel(channel)
-  }, [profile.id, activeStudent])
+
+    return () => { supabase.removeChannel(channel) }
+  }, [selected])
 
   useEffect(() => {
-    setTimeout(() => {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, 100)
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
   }, [messages])
 
+  async function loadStudents() {
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, name, email, role')
+      .eq('role', 'student')
+      .order('name')
+    setStudents(data || [])
+  }
+
   async function loadMessages() {
-    if (!activeStudent || !profile.id) return
-    setLoadingMsgs(true)
+    if (!selected) return
+    setLoading(true)
+
+    // query by BOTH name and email to catch all message combinations
     const { data } = await supabase
       .from('messages')
       .select('*')
       .or(
-        `and(sender_id.eq.${profile.id},receiver_id.eq.${activeStudent.id}),` +
-        `and(sender_id.eq.${activeStudent.id},receiver_id.eq.${profile.id})`
+        `and(sender_email.eq.${selected.email},receiver_email.eq.${profile.email}),` +
+        `and(sender_email.eq.${profile.email},receiver_email.eq.${selected.email}),` +
+        `and(sender_name.eq.${selected.name},receiver_name.eq.${profile.name}),` +
+        `and(sender_name.eq.${profile.name},receiver_name.eq.${selected.name})`
       )
       .order('created_at', { ascending: true })
-    setMessages(data || [])
-    setLoadingMsgs(false)
-  }
 
-  async function markAsRead() {
-    if (!activeStudent || !profile.id) return
-    await supabase
-      .from('messages')
-      .update({ read: true })
-      .eq('receiver_id', profile.id)
-      .eq('sender_id', activeStudent.id)
-      .eq('read', false)
-    setUnread(prev => ({ ...prev, [activeStudent.id]: 0 }))
+    // deduplicate by id (the broad OR can return same row multiple times)
+    const seen = new Set()
+    const deduped = (data || []).filter(m => {
+      if (seen.has(m.id)) return false
+      seen.add(m.id)
+      return true
+    })
+
+    setMessages(deduped)
+    setLoading(false)
   }
 
   async function sendMessage() {
-    if (!text.trim() || !activeStudent || sending) return
+    if (!newMessage.trim() || !selected) return
     setSending(true)
+
     const { error } = await supabase.from('messages').insert({
-      sender_id:     profile.id,
-      receiver_id:   activeStudent.id,
-      sender_name:   profile.name || 'Staff',
-      receiver_name: activeStudent.name,
-      message:       text.trim(),
+      message:        newMessage.trim(),
+      sender_name:    profile.name,
+      sender_email:   profile.email,
+      sender_role:    profile.role,
+      receiver_name:  selected.name,
+      receiver_email: selected.email || '',
+      is_read:        false,
     })
-    if (!error) setText('')
+
     setSending(false)
+    if (error) { alert('Failed to send: ' + error.message); return }
+    setNewMessage('')
+    loadMessages()
   }
 
-  function handleKey(e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
+  function handleKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      sendMessage()
+    }
   }
 
-  function formatTime(ts) {
+  const formatTime = (ts) => {
     if (!ts) return ''
-    return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  }
-
-  function formatDate(ts) {
-    if (!ts) return ''
-    const d = new Date(ts), now = new Date()
-    if (d.toDateString() === now.toDateString()) return 'Today'
-    const yest = new Date(); yest.setDate(yest.getDate() - 1)
-    if (d.toDateString() === yest.toDateString()) return 'Yesterday'
-    return d.toLocaleDateString()
-  }
-
-  function groupByDate(msgs) {
-    const groups = []; let lastDate = null
-    msgs.forEach(m => {
-      const d = formatDate(m.created_at)
-      if (d !== lastDate) { groups.push({ type: 'date', label: d }); lastDate = d }
-      groups.push({ type: 'msg', data: m })
+    return new Date(ts).toLocaleTimeString('en-US', {
+      hour: '2-digit', minute: '2-digit', hour12: true,
     })
-    return groups
   }
 
-  const totalUnread  = Object.values(unread).reduce((s, n) => s + n, 0)
-  const filteredList = studentList.filter(s =>
+  const formatDate = (ts) => {
+    if (!ts) return ''
+    const d         = new Date(ts)
+    const today     = new Date()
+    const yesterday = new Date(today)
+    yesterday.setDate(today.getDate() - 1)
+    if (d.toDateString() === today.toDateString())     return 'Today'
+    if (d.toDateString() === yesterday.toDateString()) return 'Yesterday'
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
+
+  const groupedMessages = messages.reduce((groups, msg) => {
+    const date = formatDate(msg.created_at)
+    if (!groups[date]) groups[date] = []
+    groups[date].push(msg)
+    return groups
+  }, {})
+
+  const filteredStudents = students.filter(s =>
     s.name?.toLowerCase().includes(search.toLowerCase()) ||
     s.email?.toLowerCase().includes(search.toLowerCase())
   )
 
+  // a message is "from me" if it was sent by the staff member (profile)
+  const isFromMe = (msg) =>
+    msg.sender_email === profile.email ||
+    msg.sender_name  === profile.name
+
   return (
-    // ── FIXED: outer div takes exact remaining height, no overflow ──
     <div style={{
+      height: 'calc(100vh - 120px)',
+      display: 'flex', flexDirection: 'column',
       fontFamily: "'Segoe UI', Arial, sans-serif",
-      height: 'calc(100vh - 88px)',
-      display: 'flex',
-      flexDirection: 'column',
-      overflow: 'hidden',
     }}>
 
-      {/* page header */}
-      <div style={{ marginBottom: 14, flexShrink: 0 }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>
-          Chat with Students
+      {/* header */}
+      <div style={{ marginBottom: 16 }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: theme.textDark, margin: '0 0 4px' }}>
+          Student Messages
         </h1>
-        <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
-          Communicate directly with your students
+        <p style={{ fontSize: 13, color: theme.textLight, margin: 0 }}>
+          Chat with students directly
         </p>
       </div>
 
-      {/* ── FIXED: chat container fills remaining space exactly ── */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '280px 1fr',
-        flex: 1,
-        minHeight: 0,       // ← critical: allows flex child to shrink below content size
-        background: '#fff',
-        border: '1px solid #e5e7eb',
-        borderRadius: 14,
-        overflow: 'hidden',
-      }}>
+      <div style={{ display: 'flex', gap: 16, flex: 1, minHeight: 0 }}>
 
-        {/* ── STUDENT LIST ── */}
+        {/* ── Student list sidebar ──────────────────────────── */}
         <div style={{
-          borderRight: '1px solid #e5e7eb',
-          display: 'flex',
-          flexDirection: 'column',
-          background: '#f9fafb',
-          minHeight: 0,      // ← allows inner scroll to work
+          width: 260, flexShrink: 0,
+          background: '#fff', border: `1px solid ${theme.border}`,
+          borderRadius: 12, overflow: 'hidden',
+          display: 'flex', flexDirection: 'column',
         }}>
-          {/* header + search — fixed, doesn't scroll */}
-          <div style={{ padding: '12px 14px', borderBottom: '1px solid #e5e7eb', flexShrink: 0 }}>
-            <div style={{
-              fontSize: 12, fontWeight: 700, color: '#6b7280',
-              textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10,
-            }}>
-              Students {totalUnread > 0 && (
-                <span style={{
-                  marginLeft: 6, background: '#dc2626', color: '#fff',
-                  borderRadius: 20, fontSize: 10, padding: '1px 6px', fontWeight: 700,
-                }}>
-                  {totalUnread}
-                </span>
-              )}
-            </div>
-            <input
-              type="text"
-              placeholder="Search students..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              style={{
-                width: '100%', padding: '7px 10px',
-                border: '1px solid #d1d5db', borderRadius: 8,
-                fontSize: 12, outline: 'none', fontFamily: 'inherit',
-                boxSizing: 'border-box', background: '#fff', color: '#111827',
-              }}
-            />
+          <div style={{
+            padding: '12px 14px', borderBottom: `1px solid ${theme.border}`,
+            fontSize: 11, fontWeight: 700, color: theme.textMuted,
+            textTransform: 'uppercase', letterSpacing: '0.06em',
+          }}>
+            Students ({filteredStudents.length})
           </div>
 
-          {/* scrollable student list */}
-          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-            {filteredList.length === 0 && (
-              <div style={{ padding: 20, fontSize: 13, color: '#9ca3af', textAlign: 'center' }}>
-                {search ? 'No students found' : 'No students yet'}
-              </div>
+          {/* search */}
+          <div style={{ padding: '8px 10px', borderBottom: `1px solid ${theme.border}` }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: theme.pageBg, border: `1px solid ${theme.border}`,
+              borderRadius: 7, padding: '6px 10px',
+            }}>
+              <span style={{ color: theme.textMuted, fontSize: 13 }}>🔍</span>
+              <input
+                placeholder="Search students..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                style={{
+                  background: 'none', border: 'none', outline: 'none',
+                  fontSize: 12, color: theme.textMid, width: '100%', fontFamily: 'inherit',
+                }}
+              />
+            </div>
+          </div>
+
+          <div style={{ flex: 1, overflowY: 'auto', padding: '6px 8px' }}>
+            {filteredStudents.length === 0 && (
+              <p style={{ fontSize: 12, color: '#9ca3af', padding: '12px 8px', textAlign: 'center' }}>
+                No students found
+              </p>
             )}
-            {filteredList.map(student => {
-              const isActive  = activeStudent?.id === student.id
-              const unreadCnt = unread[student.id] || 0
-              const initials  = student.name
-                ? student.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
-                : '?'
+            {filteredStudents.map(s => {
+              const isSelected = selected?.id === s.id
               return (
                 <div
-                  key={student.id}
-                  onClick={() => setActiveStudent(student)}
+                  key={s.id}
+                  onClick={() => setSelected(s)}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 11,
-                    padding: '12px 14px', cursor: 'pointer',
-                    borderBottom: '1px solid #f3f4f6',
-                    background: isActive ? '#f0fdf4' : 'transparent',
-                    borderLeft: isActive ? '3px solid #16a34a' : '3px solid transparent',
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 10px', borderRadius: 8, cursor: 'pointer',
+                    marginBottom: 2,
+                    background: isSelected ? '#dcfce7' : 'transparent',
                     transition: 'background 0.12s',
                   }}
-                  onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = '#f3f4f6' }}
-                  onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent' }}
+                  onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = theme.pageBg }}
+                  onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
                 >
                   <div style={{
-                    width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
-                    background: isActive ? '#16a34a' : '#e5e7eb',
+                    width: 36, height: 36, borderRadius: '50%',
+                    background: avatarColor(s.name),
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 13, fontWeight: 700,
-                    color: isActive ? '#fff' : '#374151',
+                    fontSize: 13, fontWeight: 700, color: '#fff', flexShrink: 0,
                   }}>
-                    {initials}
+                    {getInitials(s.name)}
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ minWidth: 0 }}>
                     <div style={{
-                      fontSize: 13, fontWeight: 600,
-                      color: isActive ? '#16a34a' : '#111827',
-                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      fontSize: 13, fontWeight: isSelected ? 600 : 500,
+                      color: isSelected ? '#15803d' : theme.textDark,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     }}>
-                      {student.name}
+                      {s.name}
                     </div>
                     <div style={{
-                      fontSize: 11, color: '#6b7280',
-                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      fontSize: 11, color: theme.textLight,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     }}>
-                      {student.email}
+                      {s.email}
                     </div>
                   </div>
-                  {unreadCnt > 0 && (
-                    <span style={{
-                      background: '#dc2626', color: '#fff',
-                      borderRadius: 20, fontSize: 10, fontWeight: 700,
-                      padding: '1px 7px', flexShrink: 0,
-                    }}>
-                      {unreadCnt}
-                    </span>
-                  )}
                 </div>
               )
             })}
           </div>
         </div>
 
-        {/* ── CHAT AREA ── */}
-        {!activeStudent ? (
-          <div style={{
-            display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center',
-            color: '#9ca3af', gap: 12,
-          }}>
-            <div style={{ fontSize: 48 }}>💬</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#6b7280' }}>
-              Select a student to start chatting
-            </div>
-            <div style={{ fontSize: 13 }}>Messages are private between you and the student</div>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {/* ── Chat area ─────────────────────────────────────── */}
+        <div style={{
+          flex: 1, background: '#fff', border: `1px solid ${theme.border}`,
+          borderRadius: 12, display: 'flex', flexDirection: 'column',
+          overflow: 'hidden', minHeight: 0,
+        }}>
 
-            {/* chat header — fixed */}
+          {/* Empty state */}
+          {!selected && (
             <div style={{
-              padding: '14px 18px', flexShrink: 0,
-              borderBottom: '1px solid #e5e7eb',
-              display: 'flex', alignItems: 'center', gap: 12,
-              background: '#fff',
+              flex: 1, display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', color: '#9ca3af',
             }}>
+              <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.4 }}>💬</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: theme.textMid }}>
+                Select a student to start chatting
+              </div>
+            </div>
+          )}
+
+          {selected && (
+            <>
+              {/* Chat header */}
               <div style={{
-                width: 36, height: 36, borderRadius: '50%',
-                background: '#16a34a',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 13, fontWeight: 700, color: '#fff', flexShrink: 0,
+                padding: '14px 18px', borderBottom: `1px solid ${theme.border}`,
+                display: 'flex', alignItems: 'center', gap: 12,
+                flexShrink: 0,
               }}>
-                {activeStudent.name?.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
-              </div>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>
-                  {activeStudent.name}
+                <div style={{
+                  width: 38, height: 38, borderRadius: '50%',
+                  background: avatarColor(selected.name),
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 14, fontWeight: 700, color: '#fff', flexShrink: 0,
+                }}>
+                  {getInitials(selected.name)}
                 </div>
-                <div style={{ fontSize: 11, color: '#6b7280' }}>{activeStudent.email}</div>
-              </div>
-            </div>
-
-            {/* messages — scrollable */}
-            <div style={{
-              flex: 1, overflowY: 'auto', minHeight: 0,
-              padding: '16px 18px',
-              display: 'flex', flexDirection: 'column', gap: 4,
-              background: '#fafafa',
-            }}>
-              {loadingMsgs && (
-                <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: 13, padding: 20 }}>
-                  Loading messages...
-                </div>
-              )}
-              {!loadingMsgs && messages.length === 0 && (
-                <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: 13, padding: 40 }}>
-                  No messages yet. Start the conversation! 👋
-                </div>
-              )}
-              {groupByDate(messages).map((item, i) => {
-                if (item.type === 'date') return (
-                  <div key={i} style={{ textAlign: 'center', margin: '12px 0', fontSize: 11, color: '#9ca3af' }}>
-                    <span style={{ background: '#f3f4f6', padding: '3px 12px', borderRadius: 20 }}>
-                      {item.label}
-                    </span>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: theme.textDark }}>
+                    {selected.name}
                   </div>
-                )
-                const msg  = item.data
-                const isMe = msg.sender_id === profile.id
-                return (
-                  <div key={msg.id} style={{
-                    display: 'flex',
-                    justifyContent: isMe ? 'flex-end' : 'flex-start',
-                    marginBottom: 2,
+                  <div style={{ fontSize: 12, color: theme.textLight }}>
+                    {selected.email}
+                  </div>
+                </div>
+              </div>
+
+              {/* Messages scroll area */}
+              <div style={{
+                flex: 1, overflowY: 'auto', padding: '16px 18px',
+                display: 'flex', flexDirection: 'column', gap: 2,
+                background: '#f9fafb', minHeight: 0,
+              }}>
+                {loading && (
+                  <p style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', marginTop: 40 }}>
+                    Loading messages...
+                  </p>
+                )}
+
+                {!loading && messages.length === 0 && (
+                  <div style={{
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    color: '#9ca3af', paddingTop: 60,
                   }}>
-                    <div style={{ maxWidth: '70%' }}>
-                      <div style={{
-                        padding: '9px 14px',
-                        borderRadius: isMe ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-                        background: isMe ? '#16a34a' : '#fff',
-                        color:      isMe ? '#fff'    : '#111827',
-                        fontSize: 13, lineHeight: 1.5,
-                        border: isMe ? 'none' : '1px solid #e5e7eb',
-                        boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
-                        whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                      }}>
-                        {msg.message}
-                      </div>
-                      <div style={{
-                        fontSize: 10, color: '#9ca3af', marginTop: 3,
-                        textAlign: isMe ? 'right' : 'left',
-                      }}>
-                        {formatTime(msg.created_at)}
-                        {isMe && <span style={{ marginLeft: 4 }}>{msg.read ? ' ✓✓' : ' ✓'}</span>}
-                      </div>
-                    </div>
+                    <div style={{ fontSize: 36, marginBottom: 10, opacity: 0.4 }}>✉️</div>
+                    <div style={{ fontSize: 13 }}>No messages yet with {selected.name}</div>
                   </div>
-                )
-              })}
-              <div ref={bottomRef} />
-            </div>
+                )}
 
-            {/* input — fixed at bottom */}
-            <div style={{
-              padding: '12px 16px', flexShrink: 0,
-              borderTop: '1px solid #e5e7eb',
-              display: 'flex', gap: 10, alignItems: 'flex-end',
-              background: '#fff',
-            }}>
-              <textarea
-                value={text}
-                onChange={e => setText(e.target.value)}
-                onKeyDown={handleKey}
-                placeholder={`Message ${activeStudent.name}...`}
-                rows={1}
-                style={{
-                  flex: 1, padding: '10px 14px',
-                  border: '1px solid #d1d5db', borderRadius: 10,
-                  fontSize: 13, fontFamily: 'inherit', resize: 'none',
-                  outline: 'none', lineHeight: 1.5,
-                  maxHeight: 120, overflowY: 'auto',
-                }}
-                onInput={e => {
-                  e.target.style.height = 'auto'
-                  e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'
-                }}
-              />
-              <button
-                onClick={sendMessage}
-                disabled={!text.trim() || sending}
-                style={{
-                  padding: '10px 18px',
-                  background: !text.trim() || sending ? '#e5e7eb' : '#16a34a',
-                  border: 'none', borderRadius: 10,
-                  fontSize: 13, fontWeight: 600,
-                  color: !text.trim() || sending ? '#9ca3af' : '#fff',
-                  cursor: !text.trim() || sending ? 'not-allowed' : 'pointer',
-                  fontFamily: 'inherit', flexShrink: 0,
-                  transition: 'background 0.15s',
-                }}
-              >
-                {sending ? '...' : 'Send ↑'}
-              </button>
-            </div>
+                {Object.entries(groupedMessages).map(([date, msgs]) => (
+                  <div key={date}>
+                    {/* Date divider */}
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      margin: '12px 0 8px',
+                    }}>
+                      <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
+                      <span style={{
+                        fontSize: 11, color: '#9ca3af', fontWeight: 600,
+                        padding: '2px 10px', background: '#fff',
+                        borderRadius: 20, border: '1px solid #e5e7eb',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {date}
+                      </span>
+                      <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
+                    </div>
 
-          </div>
-        )}
+                    {msgs.map((msg, i) => {
+                      const mine = isFromMe(msg)
+                      return (
+                        <div key={msg.id || i} style={{
+                          display: 'flex',
+                          justifyContent: mine ? 'flex-end' : 'flex-start',
+                          marginBottom: 6,
+                        }}>
+                          <div style={{
+                            maxWidth: '70%',
+                            // Staff (me) = green bubble, student = white bubble
+                            background: mine ? '#16a34a' : '#ffffff',
+                            color:      mine ? '#ffffff' : '#111827',
+                            border:     mine ? 'none' : '1px solid #e5e7eb',
+                            padding: '9px 14px',
+                            borderRadius: mine
+                              ? '18px 18px 4px 18px'
+                              : '18px 18px 18px 4px',
+                            fontSize: 13, lineHeight: 1.5,
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                          }}>
+                            {/* message text */}
+                            <div style={{
+                              color: mine ? '#ffffff' : '#111827',
+                              wordBreak: 'break-word',
+                            }}>
+                              {msg.message || msg.content || ''}
+                            </div>
+                            {/* timestamp */}
+                            <div style={{
+                              fontSize: 10, marginTop: 4,
+                              color: mine ? 'rgba(255,255,255,0.75)' : '#9ca3af',
+                              textAlign: 'right',
+                            }}>
+                              {formatTime(msg.created_at)}
+                              {mine && ' ✓'}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ))}
+
+                <div ref={bottomRef} />
+              </div>
+
+              {/* Input bar */}
+              <div style={{
+                padding: '12px 16px', borderTop: `1px solid ${theme.border}`,
+                display: 'flex', gap: 10, alignItems: 'flex-end',
+                background: '#fff', flexShrink: 0,
+              }}>
+                <textarea
+                  placeholder={`Reply to ${selected.name}...`}
+                  value={newMessage}
+                  onChange={e => setNewMessage(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  rows={1}
+                  style={{
+                    flex: 1, padding: '10px 14px',
+                    border: `1px solid ${theme.border}`, borderRadius: 10,
+                    fontSize: 13, color: '#111827', outline: 'none',
+                    fontFamily: 'inherit', resize: 'none', lineHeight: 1.5,
+                    background: '#fff', maxHeight: 120, overflowY: 'auto',
+                  }}
+                  onInput={e => {
+                    e.target.style.height = 'auto'
+                    e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'
+                  }}
+                />
+                <button
+                  onClick={sendMessage}
+                  disabled={sending || !newMessage.trim()}
+                  style={{
+                    padding: '10px 18px',
+                    background: sending || !newMessage.trim() ? '#e5e7eb' : '#16a34a',
+                    border: 'none', borderRadius: 10,
+                    fontSize: 13, fontWeight: 600,
+                    color: sending || !newMessage.trim() ? '#9ca3af' : '#fff',
+                    cursor: sending || !newMessage.trim() ? 'not-allowed' : 'pointer',
+                    fontFamily: 'inherit', flexShrink: 0,
+                    transition: 'background 0.15s',
+                  }}
+                >
+                  {sending ? 'Sending...' : 'Send ↑'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )
