@@ -17,23 +17,40 @@ const STAGES = [
 export default function StudentVisaStatus() {
 
   const navigate = useNavigate()
-  const profile  = JSON.parse(localStorage.getItem('profile') || '{}')
 
+  // ✅ FIX: profile is now state, loaded safely inside useEffect
+  const [profile,   setProfile]  = useState(null)
   const [applicant, setApplicant] = useState(null)
   const [loading,   setLoading]   = useState(true)
-  const [loadError, setLoadError] = useState(null) // NEW: surface real errors instead of hiding them
+  const [loadError, setLoadError] = useState(null)
 
+  // ✅ Step 1: Load profile from localStorage safely
   useEffect(() => {
-    if (!profile.id) { navigate('/login'); return }
+    const stored = localStorage.getItem('profile')
+    if (!stored) {
+      navigate('/login')
+      return
+    }
+    const parsed = JSON.parse(stored)
+    if (!parsed?.id) {
+      navigate('/login')
+      return
+    }
+    setProfile(parsed)
+  }, [])
+
+  // ✅ Step 2: Only runs after profile is ready
+  useEffect(() => {
+    if (!profile) return
+
     load()
 
-    // realtime — when admin changes stage it auto updates
+    // Realtime — when admin changes stage it auto updates
     const channel = supabase
       .channel('visa-pipeline-' + profile.id)
       .on('postgres_changes', {
         event: 'UPDATE', schema: 'public', table: 'applicants',
       }, (payload) => {
-        // check if this update belongs to the current student
         if (
           String(payload.new.id)    === String(profile.applicant_id) ||
           payload.new.email?.toLowerCase() === profile.email?.toLowerCase()
@@ -44,7 +61,7 @@ export default function StudentVisaStatus() {
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
-  }, [])
+  }, [profile]) // ← depends on profile being set
 
   async function load() {
     setLoading(true)
@@ -53,7 +70,7 @@ export default function StudentVisaStatus() {
     let data = null
     const errors = []
 
-    // method 1 — use applicant_id (only if it's actually a valid number)
+    // Method 1 — use applicant_id
     if (profile.applicant_id != null && profile.applicant_id !== '') {
       const idNum = parseInt(profile.applicant_id, 10)
       if (!Number.isNaN(idNum)) {
@@ -69,7 +86,7 @@ export default function StudentVisaStatus() {
       }
     }
 
-    // method 2 — email match fallback
+    // Method 2 — email match fallback
     if (!data && profile.email) {
       const { data: d, error } = await supabase
         .from('applicants')
@@ -80,7 +97,7 @@ export default function StudentVisaStatus() {
       data = d
     }
 
-    // method 3 — name match fallback
+    // Method 3 — name match fallback
     if (!data && profile.name) {
       const { data: d, error } = await supabase
         .from('applicants')
@@ -91,14 +108,8 @@ export default function StudentVisaStatus() {
       data = d
     }
 
-    // NEW: log everything so failures are visible instead of silently
-    // rendering "No application found"
     if (errors.length) {
       errors.forEach(([label, err]) => console.error(`[VisaStatus] ${label} failed:`, err))
-      // Most common cause: Row Level Security on `applicants` blocks the
-      // student role from reading rows that aren't explicitly permitted.
-      // If you see a 401/permission-denied style error here, check RLS
-      // policies on the applicants table (see notes below the component).
       setLoadError(errors[errors.length - 1][1]?.message || 'Failed to load your application.')
     }
 
@@ -108,6 +119,9 @@ export default function StudentVisaStatus() {
     setApplicant(data || null)
     setLoading(false)
   }
+
+  // ✅ Guard: don't render anything until profile is confirmed
+  if (!profile) return null
 
   const activeIndex = applicant
     ? Math.max(0, STAGES.findIndex(s => s.key === applicant.status))
@@ -162,7 +176,7 @@ export default function StudentVisaStatus() {
 
         {!loading && applicant && (
           <>
-            {/* current status banner */}
+            {/* Current status banner */}
             <div style={{
               background: activeIndex === STAGES.length - 1 ? '#f0fdf4' : '#eff6ff',
               border: `1px solid ${activeIndex === STAGES.length - 1 ? '#bbf7d0' : '#bfdbfe'}`,
@@ -187,7 +201,7 @@ export default function StudentVisaStatus() {
               </div>
             </div>
 
-            {/* vertical pipeline steps */}
+            {/* Vertical pipeline steps */}
             <div style={{
               background: '#fff', border: '1px solid #e5e7eb',
               borderRadius: 12, padding: '24px 28px',
@@ -251,7 +265,7 @@ export default function StudentVisaStatus() {
               })}
             </div>
 
-            {/* applicant details */}
+            {/* Applicant details */}
             <div style={{
               background: '#fff', border: '1px solid #e5e7eb',
               borderRadius: 12, padding: '16px 20px', marginTop: 16,

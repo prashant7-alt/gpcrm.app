@@ -24,62 +24,14 @@ import StudentProfile      from './pages/student/StudentProfile'
 import StudentPayments     from './pages/student/StudentPayments'
 import StudentDocuments    from './pages/student/StudentDocuments'
 import StudentChat         from './pages/student/StudentChat'
+import StudentVisaStatus   from './pages/student/StudentVisaStatus'
 
 import EsewaSuccess        from './pages/payment/EsewaSuccess'
 import EsewaFailure        from './pages/payment/EsewaFailure'
 
 const SIDEBAR_WIDTH = 230
+const ALL_STAFF = ['admin', 'staff', 'finance_officer', 'document_handler', 'receptionist']
 
-// ── Role constants ─────────────────────────────────────────────────────────
-const ALL_STAFF = [
-  'admin', 'staff', 'manager',
-  'counselor', 'visa_officer',
-  'finance_officer', 'document_handler',
-  'receptionist', 'marketing', 'other',
-]
-
-const CAN_SEE_APPLICATIONS = [
-  'admin', 'staff', 'manager',
-  'visa_officer', 'receptionist', 'marketing',
-]
-
-const CAN_SEE_STUDENTS = [
-  'admin', 'staff', 'manager',
-  'counselor', 'visa_officer', 'document_handler', 'finance_officer',
-]
-
-const CAN_SEE_APPOINTMENTS = [
-  'admin', 'staff', 'manager',
-  'counselor', 'visa_officer', 'receptionist',
-]
-
-const CAN_SEE_VISITORS = [
-  'admin', 'staff', 'manager', 'receptionist',
-]
-
-const CAN_SEE_TASKS = [
-  'admin', 'staff', 'manager',
-  'counselor', 'visa_officer', 'document_handler',
-  'finance_officer', 'receptionist', 'marketing', 'other',
-]
-
-const CAN_SEE_PAYMENTS = [
-  'admin', 'staff', 'manager', 'finance_officer', 'receptionist',
-]
-
-const CAN_SEE_REPORTS = [
-  'admin', 'manager', 'finance_officer', 'marketing',
-]
-
-const CAN_SEE_DOCUMENTS = [
-  'admin', 'staff', 'manager', 'visa_officer', 'document_handler',
-]
-
-const CAN_SEE_CHAT = ALL_STAFF
-
-const ADMIN_ONLY = ['admin']
-
-// ── Layout wrapper ─────────────────────────────────────────────────────────
 function Layout({ children }) {
   const [menuOpen, setMenuOpen] = useState(false)
   return (
@@ -113,7 +65,6 @@ function StudentRoute({ children }) {
   )
 }
 
-// ── App ────────────────────────────────────────────────────────────────────
 export default function App() {
   return (
     <BrowserRouter>
@@ -123,77 +74,46 @@ export default function App() {
         <Route path="/"      element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<Login />} />
 
-        {/* eSewa callbacks — no auth, eSewa redirects here */}
-        <Route path="/payment/success" element={<EsewaSuccess />} />
-        <Route path="/payment/failure" element={<EsewaFailure />} />
+        {/* Payment callbacks */}
+        <Route path="/payment/esewa-success" element={<EsewaSuccess />} />
+        <Route path="/payment/esewa-failure" element={<EsewaFailure />} />
 
-        {/* Dashboard — every staff role */}
-        <Route path="/dashboard" element={
-          <StaffRoute roles={ALL_STAFF}><Dashboard /></StaffRoute>
-        } />
+        {/* Dashboard */}
+        <Route path="/dashboard" element={<StaffRoute roles={ALL_STAFF}><Dashboard /></StaffRoute>} />
 
-        {/* Applications */}
-        <Route path="/applications" element={
-          <StaffRoute roles={CAN_SEE_APPLICATIONS}><Applications /></StaffRoute>
-        } />
+        {/* Pipeline */}
+        <Route path="/applications" element={<StaffRoute roles={['admin','staff','receptionist']}><Applications /></StaffRoute>} />
+        <Route path="/students"     element={<StaffRoute roles={['admin','staff','receptionist']}><Students /></StaffRoute>} />
+        <Route path="/visitors"     element={<StaffRoute roles={['admin','staff','receptionist']}><Visitors /></StaffRoute>} />
 
-        {/* Students */}
-        <Route path="/students" element={
-          <StaffRoute roles={CAN_SEE_STUDENTS}><Students /></StaffRoute>
-        } />
+        {/* Operations */}
+        <Route path="/appointments" element={<StaffRoute roles={['admin','staff']}><Appointments /></StaffRoute>} />
+        <Route path="/tasks"        element={<StaffRoute roles={['admin','staff']}><Tasks /></StaffRoute>} />
 
-        {/* Visitors */}
-        <Route path="/visitors" element={
-          <StaffRoute roles={CAN_SEE_VISITORS}><Visitors /></StaffRoute>
-        } />
-
-        {/* Appointments */}
-        <Route path="/appointments" element={
-          <StaffRoute roles={CAN_SEE_APPOINTMENTS}><Appointments /></StaffRoute>
-        } />
-
-        {/* Tasks — everyone */}
-        <Route path="/tasks" element={
-          <StaffRoute roles={CAN_SEE_TASKS}><Tasks /></StaffRoute>
-        } />
-
-        {/* Payments */}
-        <Route path="/payments" element={
-          <StaffRoute roles={CAN_SEE_PAYMENTS}><Payments /></StaffRoute>
-        } />
-
-        {/* Reports */}
-        <Route path="/reports" element={
-          <StaffRoute roles={CAN_SEE_REPORTS}><Reports /></StaffRoute>
-        } />
+        {/* Finance */}
+        <Route path="/payments" element={<StaffRoute roles={['admin','staff','finance_officer']}><Payments /></StaffRoute>} />
+        <Route path="/reports"  element={<StaffRoute roles={['admin','finance_officer']}><Reports /></StaffRoute>} />
 
         {/* Documents */}
-        <Route path="/documents" element={
-          <StaffRoute roles={CAN_SEE_DOCUMENTS}><Documents /></StaffRoute>
-        } />
+        <Route path="/documents" element={<StaffRoute roles={['admin','staff','document_handler']}><Documents /></StaffRoute>} />
 
-        {/* Chat — everyone */}
-        <Route path="/chat" element={
-          <StaffRoute roles={CAN_SEE_CHAT}><StaffChat /></StaffRoute>
-        } />
+        {/* Chat */}
+        <Route path="/chat" element={<StaffRoute roles={['staff','document_handler']}><StaffChat /></StaffRoute>} />
 
         {/* Admin only */}
-        <Route path="/staff" element={
-          <StaffRoute roles={ADMIN_ONLY}><Staff /></StaffRoute>
-        } />
-        <Route path="/settings" element={
-          <StaffRoute roles={ADMIN_ONLY}><Settings /></StaffRoute>
-        } />
+        <Route path="/staff"    element={<StaffRoute roles={['admin']}><Staff /></StaffRoute>} />
+        <Route path="/settings" element={<StaffRoute roles={['admin']}><Settings /></StaffRoute>} />
 
-        {/* Student portal */}
+        {/* Student routes */}
         <Route path="/student/dashboard"    element={<StudentRoute><StudentDashboard /></StudentRoute>} />
         <Route path="/student/appointments" element={<StudentRoute><StudentAppointments /></StudentRoute>} />
         <Route path="/student/profile"      element={<StudentRoute><StudentProfile /></StudentRoute>} />
         <Route path="/student/payments"     element={<StudentRoute><StudentPayments /></StudentRoute>} />
         <Route path="/student/documents"    element={<StudentRoute><StudentDocuments /></StudentRoute>} />
         <Route path="/student/chat"         element={<StudentRoute><StudentChat /></StudentRoute>} />
+        <Route path="/student/visa-status"  element={<StudentRoute><StudentVisaStatus /></StudentRoute>} />
 
-        {/* 404 fallback */}
+        {/* 404 */}
         <Route path="*" element={<Navigate to="/login" replace />} />
 
       </Routes>
