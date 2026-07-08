@@ -28,9 +28,10 @@ import StudentVisaStatus   from './pages/student/StudentVisaStatus'
 
 import EsewaSuccess        from './pages/payment/EsewaSuccess'
 import EsewaFailure        from './pages/payment/EsewaFailure'
+import KhaltiSuccess       from './pages/payment/KhaltiSuccess'
 
 const SIDEBAR_WIDTH = 230
-const ALL_STAFF = ['admin', 'staff', 'finance_officer', 'document_handler', 'receptionist']
+const ALL_STAFF = ['admin', 'staff', 'manager', 'counselor', 'visa_officer', 'finance_officer', 'document_handler', 'receptionist', 'marketing', 'other']
 
 function Layout({ children }) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -77,6 +78,7 @@ export default function App() {
         {/* Payment callbacks */}
         <Route path="/payment/esewa-success" element={<EsewaSuccess />} />
         <Route path="/payment/esewa-failure" element={<EsewaFailure />} />
+        <Route path="/payment/khalti-success" element={<KhaltiSuccess />} />
 
         {/* Dashboard */}
         <Route path="/dashboard" element={<StaffRoute roles={ALL_STAFF}><Dashboard /></StaffRoute>} />
@@ -98,7 +100,7 @@ export default function App() {
         <Route path="/documents" element={<StaffRoute roles={['admin','staff','document_handler']}><Documents /></StaffRoute>} />
 
         {/* Chat */}
-        <Route path="/chat" element={<StaffRoute roles={['staff','document_handler']}><StaffChat /></StaffRoute>} />
+        <Route path="/chat" element={<StaffRoute roles={ALL_STAFF}><StaffChat /></StaffRoute>} />
 
         {/* Admin only */}
         <Route path="/staff"    element={<StaffRoute roles={['admin']}><Staff /></StaffRoute>} />

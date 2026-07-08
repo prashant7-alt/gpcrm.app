@@ -15,8 +15,9 @@ serve(async (req) => {
   try {
     const { total_amount, transaction_uuid, product_code } = await req.json()
 
-    // hardcoded directly — no env variable, no terminal special-character risk
-    const SECRET_KEY = '8gBm/:&EnhH.1/q'
+    // eSewa UAT/sandbox test secret used as fallback only. Set ESEWA_SECRET_KEY
+    // in Supabase Edge Function secrets with your real merchant secret for production.
+    const SECRET_KEY = Deno.env.get('ESEWA_SECRET_KEY') ?? '8gBm/:&EnhH.1/q'
 
     // eSewa requires signature of this exact string in this exact order
     const message = `total_amount=${total_amount},transaction_uuid=${transaction_uuid},product_code=${product_code}`
