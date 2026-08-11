@@ -3,6 +3,7 @@ import { supabase } from '../supabase'
 import theme from '../theme'
 import BottomButtons from '../components/BottomButtons'
 import { advanceApplicantStage } from '../lib/pipelineStages' // adjust path if needed
+import { useIsMobile } from '../hooks/useIsMobile'
 
 const statusStyle = (status) => {
   if (status === 'confirmed') return { bg: '#dcfce7', color: '#15803d' }
@@ -12,6 +13,7 @@ const statusStyle = (status) => {
 }
 
 export default function Appointments() {
+  const isMobile = useIsMobile()
 
   const [appointments, setAppointments] = useState([])
   const [search,       setSearch]       = useState('')
@@ -30,6 +32,22 @@ export default function Appointments() {
   const [rescheduleForm, setRescheduleForm] = useState({ date: '', time: '' })
 
   useEffect(() => { load() }, [])
+
+  // ── Realtime — auto-refresh whenever any appointment is inserted,
+  // updated, or deleted (e.g. a student books a new one, or another
+  // admin accepts/rejects/reschedules one). No manual refresh needed.
+  useEffect(() => {
+    const channel = supabase
+      .channel('appointments-admin')
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'appointments',
+      }, () => {
+        load()
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [])
 
   async function load() {
     const { data } = await supabase
@@ -148,28 +166,32 @@ export default function Appointments() {
     completed: appointments.filter(a => a.status === 'completed').length,
   }
 
+  const tableCols = '2fr 1.5fr 1.5fr 1fr 1.5fr 2fr'
+
   return (
     <div>
 
       {/* header */}
       <div style={{
         display: 'flex',
+        flexDirection: isMobile ? 'column' : 'row',
         justifyContent: 'space-between',
-        alignItems: 'flex-start',
+        alignItems: isMobile ? 'stretch' : 'flex-start',
+        gap: isMobile ? 12 : 0,
         marginBottom: 20,
       }}>
         <div>
           <h1 style={{
-            fontSize: 20, fontWeight: 700,
+            fontSize: isMobile ? 18 : 20, fontWeight: 700,
             color: theme.textDark, margin: 0,
           }}>
-         
+
           </h1>
           <p style={{
             fontSize: 13, color: theme.textLight,
             marginTop: 4,
           }}>
-            
+
           </p>
         </div>
         <button
@@ -180,18 +202,22 @@ export default function Appointments() {
             border: 'none', borderRadius: 8,
             fontSize: 13, fontWeight: 600,
             color: '#fff', cursor: 'pointer',
+            width: isMobile ? '100%' : 'auto',
           }}
         >
           + Schedule Appointment
         </button>
       </div>
 
-      {/* filter tabs */}
+      {/* filter tabs — horizontal scroll on phone instead of wrapping into a tall block */}
       <div style={{
         display: 'flex',
         gap: 8,
         marginBottom: 16,
-        flexWrap: 'wrap',
+        flexWrap: isMobile ? 'nowrap' : 'wrap',
+        overflowX: isMobile ? 'auto' : 'visible',
+        WebkitOverflowScrolling: 'touch',
+        paddingBottom: isMobile ? 4 : 0,
       }}>
         {Object.entries(counts).map(([key, count]) => (
           <button
@@ -207,6 +233,8 @@ export default function Appointments() {
               color: filter === key ? theme.primaryText : theme.textMid,
               cursor: 'pointer',
               textTransform: 'capitalize',
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
             }}
           >
             {key} ({count})
@@ -224,7 +252,7 @@ export default function Appointments() {
         borderRadius: 8,
         padding: '8px 14px',
         marginBottom: 16,
-        maxWidth: 380,
+        maxWidth: isMobile ? '100%' : 380,
       }}>
         <span style={{ color: theme.textMuted }}></span>
         <input
@@ -239,33 +267,35 @@ export default function Appointments() {
         />
       </div>
 
-      {/* table */}
+      {/* table / cards */}
       <div style={{
         background: theme.cardBg,
-        border: `3px solid ${theme.border}`,
+        border: `1px solid ${theme.border}`,
         borderRadius: 10,
         overflow: 'hidden',
       }}>
 
-        {/* table header */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '2fr 1.5fr 1.5fr 1fr 1.5fr 2fr',
-          padding: '10px 16px',
-          background: theme.pageBg,
-          borderBottom: `3px solid ${theme.border}`,
-        }}>
-          {['Student','Type','Date & Time','Status','Note','Actions'].map(h => (
-            <span key={h} style={{
-              fontSize: 11, fontWeight: 600,
-              color: theme.textMuted,
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-            }}>
-              {h}
-            </span>
-          ))}
-        </div>
+        {/* table header — desktop only */}
+        {!isMobile && (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: tableCols,
+            padding: '10px 16px',
+            background: theme.pageBg,
+            borderBottom: `1px solid ${theme.border}`,
+          }}>
+            {['Student','Type','Date & Time','Status','Note','Actions'].map(h => (
+              <span key={h} style={{
+                fontSize: 11, fontWeight: 600,
+                color: theme.textMuted,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}>
+                {h}
+              </span>
+            ))}
+          </div>
+        )}
 
         {loading && (
           <p style={{ padding: 20, color: theme.textLight, fontSize: 13 }}>
@@ -286,158 +316,273 @@ export default function Appointments() {
         )}
 
         {filtered.map((a, i) => (
-          <div key={a.id} style={{
-            display: 'grid',
-            gridTemplateColumns: '2fr 1.5fr 1.5fr 1fr 1.5fr 2fr',
-            padding: '13px 16px',
-            borderBottom: i < filtered.length - 1
-              ? `3px solid ${theme.border}` : 'none',
-            alignItems: 'center',
-          }}
-            onMouseEnter={e =>
-              e.currentTarget.style.background = theme.pageBg}
-            onMouseLeave={e =>
-              e.currentTarget.style.background = 'transparent'}
-          >
-            {/* student */}
-            <div>
-              <div style={{
-                fontSize: 13, fontWeight: 600,
-                color: theme.textDark,
-              }}>
-                {a.student_name || '—'}
-              </div>
-              <div style={{
-                fontSize: 11, color: theme.textLight,
-                marginTop: 2,
-              }}>
-                {a.student_email || '—'}
-              </div>
-            </div>
-
-            {/* type */}
-            <div style={{ fontSize: 13, color: theme.textMid }}>
-              {a.type || '—'}
-            </div>
-
-            {/* date + time */}
-            <div>
-              <div style={{ fontSize: 13, color: theme.textMid }}>
-                {a.date || '—'}
-              </div>
-              <div style={{ fontSize: 12, color: theme.textLight }}>
-                {a.time || '—'}
-              </div>
-            </div>
-
-            {/* status badge */}
-            <div>
-              <span style={{
-                padding: '3px 10px',
-                borderRadius: 20,
-                fontSize: 11, fontWeight: 600,
-                background: statusStyle(a.status).bg,
-                color: statusStyle(a.status).color,
-              }}>
-                {a.status || 'pending'}
-              </span>
-            </div>
-
-            {/* note */}
-            <div style={{
-              fontSize: 12, color: theme.textLight,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
+          isMobile ? (
+            // ── Mobile card ──
+            <div key={a.id} style={{
+              padding: '14px 16px',
+              borderBottom: i < filtered.length - 1 ? `1px solid ${theme.border}` : 'none',
+              display: 'flex', flexDirection: 'column', gap: 8,
             }}>
-              {a.note || '—'}
-            </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: theme.textDark }}>
+                    {a.student_name || '—'}
+                  </div>
+                  <div style={{ fontSize: 11, color: theme.textLight, marginTop: 2, wordBreak: 'break-all' }}>
+                    {a.student_email || '—'}
+                  </div>
+                </div>
+                <span style={{
+                  padding: '3px 10px', borderRadius: 20,
+                  fontSize: 11, fontWeight: 600, flexShrink: 0,
+                  background: statusStyle(a.status).bg,
+                  color: statusStyle(a.status).color,
+                }}>
+                  {a.status || 'pending'}
+                </span>
+              </div>
 
-            {/* actions */}
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 16, fontSize: 12, color: theme.textMid, flexWrap: 'wrap' }}>
+                <span><b style={{ color: theme.textMuted, fontWeight: 600 }}>Type: </b>{a.type || '—'}</span>
+                <span><b style={{ color: theme.textMuted, fontWeight: 600 }}>When: </b>{a.date || '—'} {a.time || ''}</span>
+              </div>
 
-              {/* show Accept/Reject only if pending */}
-              {a.status === 'pending' && (
-                <>
+              {a.note && (
+                <div style={{ fontSize: 12, color: theme.textLight }}>
+                  <b style={{ color: theme.textMuted, fontWeight: 600 }}>Note: </b>{a.note}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                {a.status === 'pending' && (
+                  <>
+                    <button
+                      onClick={() => acceptAppointment(a.id)}
+                      style={{
+                        flex: 1, minWidth: 90,
+                        padding: '7px 10px',
+                        background: '#dcfce7',
+                        border: 'none', borderRadius: 6,
+                        fontSize: 12, fontWeight: 600,
+                        color: '#15803d', cursor: 'pointer',
+                      }}
+                    >
+                       Accept
+                    </button>
+                    <button
+                      onClick={() => rejectAppointment(a.id)}
+                      style={{
+                        flex: 1, minWidth: 90,
+                        padding: '7px 10px',
+                        background: '#fee2e2',
+                        border: 'none', borderRadius: 6,
+                        fontSize: 12, fontWeight: 600,
+                        color: '#b91c1c', cursor: 'pointer',
+                      }}
+                    >
+                       Reject
+                    </button>
+                  </>
+                )}
+
+                {a.status === 'confirmed' && (
                   <button
-                    onClick={() => acceptAppointment(a.id)}
+                    onClick={() => completeAppointment(a)}
                     style={{
-                      padding: '5px 10px',
-                      background: '#dcfce7',
+                      flex: 1, minWidth: 90,
+                      padding: '7px 10px',
+                      background: '#dbeafe',
                       border: 'none', borderRadius: 6,
                       fontSize: 12, fontWeight: 600,
-                      color: '#15803d', cursor: 'pointer',
+                      color: '#1d4ed8', cursor: 'pointer',
                     }}
                   >
-                     Accept
+                     Complete
                   </button>
+                )}
+
+                {a.status !== 'completed' && (
                   <button
-                    onClick={() => rejectAppointment(a.id)}
+                    onClick={() => openReschedule(a)}
+                    style={{
+                      flex: 1, minWidth: 90,
+                      padding: '7px 10px',
+                      background: theme.pageBg,
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: 6,
+                      fontSize: 12, color: theme.textMid,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Reschedule
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            // ── Desktop row ──
+            <div key={a.id} style={{
+              display: 'grid',
+              gridTemplateColumns: tableCols,
+              padding: '13px 16px',
+              borderBottom: i < filtered.length - 1
+                ? `1px solid ${theme.border}` : 'none',
+              alignItems: 'center',
+            }}
+              onMouseEnter={e =>
+                e.currentTarget.style.background = theme.pageBg}
+              onMouseLeave={e =>
+                e.currentTarget.style.background = 'transparent'}
+            >
+              {/* student */}
+              <div>
+                <div style={{
+                  fontSize: 13, fontWeight: 600,
+                  color: theme.textDark,
+                }}>
+                  {a.student_name || '—'}
+                </div>
+                <div style={{
+                  fontSize: 11, color: theme.textLight,
+                  marginTop: 2,
+                }}>
+                  {a.student_email || '—'}
+                </div>
+              </div>
+
+              {/* type */}
+              <div style={{ fontSize: 13, color: theme.textMid }}>
+                {a.type || '—'}
+              </div>
+
+              {/* date + time */}
+              <div>
+                <div style={{ fontSize: 13, color: theme.textMid }}>
+                  {a.date || '—'}
+                </div>
+                <div style={{ fontSize: 12, color: theme.textLight }}>
+                  {a.time || '—'}
+                </div>
+              </div>
+
+              {/* status badge */}
+              <div>
+                <span style={{
+                  padding: '3px 10px',
+                  borderRadius: 20,
+                  fontSize: 11, fontWeight: 600,
+                  background: statusStyle(a.status).bg,
+                  color: statusStyle(a.status).color,
+                }}>
+                  {a.status || 'pending'}
+                </span>
+              </div>
+
+              {/* note */}
+              <div style={{
+                fontSize: 12, color: theme.textLight,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}>
+                {a.note || '—'}
+              </div>
+
+              {/* actions */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+
+                {/* show Accept/Reject only if pending */}
+                {a.status === 'pending' && (
+                  <>
+                    <button
+                      onClick={() => acceptAppointment(a.id)}
+                      style={{
+                        padding: '5px 10px',
+                        background: '#dcfce7',
+                        border: 'none', borderRadius: 6,
+                        fontSize: 12, fontWeight: 600,
+                        color: '#15803d', cursor: 'pointer',
+                      }}
+                    >
+                       Accept
+                    </button>
+                    <button
+                      onClick={() => rejectAppointment(a.id)}
+                      style={{
+                        padding: '5px 10px',
+                        background: '#fee2e2',
+                        border: 'none', borderRadius: 6,
+                        fontSize: 12, fontWeight: 600,
+                        color: '#b91c1c', cursor: 'pointer',
+                      }}
+                    >
+                       Reject
+                    </button>
+                  </>
+                )}
+
+                {/* show Complete only if confirmed */}
+                {a.status === 'confirmed' && (
+                  <button
+                    onClick={() => completeAppointment(a)}
                     style={{
                       padding: '5px 10px',
-                      background: '#fee2e2',
+                      background: '#dbeafe',
                       border: 'none', borderRadius: 6,
                       fontSize: 12, fontWeight: 600,
-                      color: '#b91c1c', cursor: 'pointer',
+                      color: '#1d4ed8', cursor: 'pointer',
                     }}
                   >
-                     Reject
+                     Complete
                   </button>
-                </>
-              )}
+                )}
 
-              {/* show Complete only if confirmed */}
-              {a.status === 'confirmed' && (
-                <button
-                  onClick={() => completeAppointment(a)}
-                  style={{
-                    padding: '5px 10px',
-                    background: '#dbeafe',
-                    border: 'none', borderRadius: 6,
-                    fontSize: 12, fontWeight: 600,
-                    color: '#1d4ed8', cursor: 'pointer',
-                  }}
-                >
-                   Complete
-                </button>
-              )}
+                {/* reschedule — always available except completed */}
+                {a.status !== 'completed' && (
+                  <button
+                    onClick={() => openReschedule(a)}
+                    style={{
+                      padding: '5px 10px',
+                      background: theme.pageBg,
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: 6,
+                      fontSize: 12, color: theme.textMid,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Reschedule
+                  </button>
+                )}
+              </div>
 
-              {/* reschedule — always available except completed */}
-              {a.status !== 'completed' && (
-                <button
-                  onClick={() => openReschedule(a)}
-                  style={{
-                    padding: '5px 10px',
-                    background: theme.pageBg,
-                    border: `3px solid ${theme.border}`,
-                    borderRadius: 6,
-                    fontSize: 12, color: theme.textMid,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Reschedule
-                </button>
-              )}
             </div>
-
-          </div>
+          )
         ))}
       </div>
 
       {/* ── reschedule modal ── */}
       {rescheduleId && (
-        <div style={{
-          position: 'fixed', inset: 0,
-          background: 'rgba(75, 40, 40, 0.4)',
-          display: 'flex', alignItems: 'center',
-          justifyContent: 'center', zIndex: 200,
-        }}>
-          <div style={{
-            background: '#fff',
-            border: `1px solid ${theme.border}`,
-            borderRadius: 14, padding: 28, width: 380,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
-          }}>
+        <div
+          onClick={() => setRescheduleId(null)}
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(75, 40, 40, 0.4)',
+            display: 'flex', alignItems: isMobile ? 'flex-end' : 'center',
+            justifyContent: 'center', zIndex: 200,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff',
+              border: `1px solid ${theme.border}`,
+              borderRadius: isMobile ? '14px 14px 0 0' : 14,
+              padding: isMobile ? 20 : 28,
+              width: isMobile ? '100%' : 380,
+              boxSizing: 'border-box',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+            }}
+          >
             <h3 style={{
               fontSize: 16, fontWeight: 700,
               color: theme.textDark, marginBottom: 20,
@@ -465,7 +610,7 @@ export default function Appointments() {
                   border: `1px solid ${theme.border}`,
                   borderRadius: 8, fontSize: 13,
                   color: theme.textMid, outline: 'none',
-                  fontFamily: 'inherit',
+                  fontFamily: 'inherit', boxSizing: 'border-box',
                 }}
               />
             </div>
@@ -489,7 +634,7 @@ export default function Appointments() {
                   border: `1px solid ${theme.border}`,
                   borderRadius: 8, fontSize: 13,
                   color: theme.textMid, outline: 'none',
-                  fontFamily: 'inherit',
+                  fontFamily: 'inherit', boxSizing: 'border-box',
                 }}
               >
                 <option value="">Select time...</option>
@@ -506,6 +651,7 @@ export default function Appointments() {
 
             <div style={{
               display: 'flex', gap: 10,
+              flexDirection: isMobile ? 'column-reverse' : 'row',
               justifyContent: 'flex-end',
             }}>
               <button
@@ -516,6 +662,7 @@ export default function Appointments() {
                   border: `1px solid ${theme.border}`,
                   borderRadius: 8, fontSize: 13,
                   color: theme.textMid, cursor: 'pointer',
+                  width: isMobile ? '100%' : 'auto',
                 }}
               >
                 Cancel
@@ -528,6 +675,7 @@ export default function Appointments() {
                   border: 'none', borderRadius: 8,
                   fontSize: 13, fontWeight: 600,
                   color: '#fff', cursor: 'pointer',
+                  width: isMobile ? '100%' : 'auto',
                 }}
               >
                 Save & Confirm
@@ -539,18 +687,28 @@ export default function Appointments() {
 
       {/* ── admin schedule new appointment modal ── */}
       {showModal && (
-        <div style={{
-          position: 'fixed', inset: 0,
-          background: 'rgba(0,0,0,0.4)',
-          display: 'flex', alignItems: 'center',
-          justifyContent: 'center', zIndex: 200,
-        }}>
-          <div style={{
-            background: '#fff',
-            border: `1px solid ${theme.border}`,
-            borderRadius: 14, padding: 28, width: 440,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
-          }}>
+        <div
+          onClick={() => setShowModal(false)}
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(0,0,0,0.4)',
+            display: 'flex', alignItems: isMobile ? 'flex-end' : 'center',
+            justifyContent: 'center', zIndex: 200,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff',
+              border: `1px solid ${theme.border}`,
+              borderRadius: isMobile ? '14px 14px 0 0' : 14,
+              padding: isMobile ? 20 : 28,
+              width: isMobile ? '100%' : 440,
+              maxHeight: '90vh', overflowY: 'auto',
+              boxSizing: 'border-box',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+            }}
+          >
 
             <div style={{
               display: 'flex',
@@ -597,7 +755,7 @@ export default function Appointments() {
                     border: `1px solid ${theme.border}`,
                     borderRadius: 8, fontSize: 13,
                     color: theme.textMid, outline: 'none',
-                    fontFamily: 'inherit',
+                    fontFamily: 'inherit', boxSizing: 'border-box',
                   }}
                 />
               </div>
@@ -621,7 +779,7 @@ export default function Appointments() {
                   border: `1px solid ${theme.border}`,
                   borderRadius: 8, fontSize: 13,
                   color: theme.textMid, outline: 'none',
-                  fontFamily: 'inherit',
+                  fontFamily: 'inherit', boxSizing: 'border-box',
                 }}
               >
                 <option value="">Select type...</option>
@@ -633,8 +791,12 @@ export default function Appointments() {
               </select>
             </div>
 
-            {/* date + time */}
-            <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+            {/* date + time — stack on phone instead of squeezing side by side */}
+            <div style={{
+              display: 'flex',
+              flexDirection: isMobile ? 'column' : 'row',
+              gap: 10, marginBottom: 14,
+            }}>
               <div style={{ flex: 1 }}>
                 <label style={{
                   display: 'block', fontSize: 11,
@@ -653,7 +815,7 @@ export default function Appointments() {
                     border: `1px solid ${theme.border}`,
                     borderRadius: 8, fontSize: 13,
                     color: theme.textMid, outline: 'none',
-                    fontFamily: 'inherit',
+                    fontFamily: 'inherit', boxSizing: 'border-box',
                   }}
                 />
               </div>
@@ -674,7 +836,7 @@ export default function Appointments() {
                     border: `1px solid ${theme.border}`,
                     borderRadius: 8, fontSize: 13,
                     color: theme.textMid, outline: 'none',
-                    fontFamily: 'inherit',
+                    fontFamily: 'inherit', boxSizing: 'border-box',
                   }}
                 >
                   <option value="">Select...</option>
@@ -710,13 +872,14 @@ export default function Appointments() {
                   border: `1px solid ${theme.border}`,
                   borderRadius: 8, fontSize: 13,
                   color: theme.textMid, outline: 'none',
-                  resize: 'none', fontFamily: 'inherit',
+                  resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
                 }}
               />
             </div>
 
             <div style={{
               display: 'flex', gap: 10,
+              flexDirection: isMobile ? 'column-reverse' : 'row',
               justifyContent: 'flex-end',
             }}>
               <button
@@ -727,6 +890,7 @@ export default function Appointments() {
                   border: `1px solid ${theme.border}`,
                   borderRadius: 8, fontSize: 13,
                   color: theme.textMid, cursor: 'pointer',
+                  width: isMobile ? '100%' : 'auto',
                 }}
               >
                 Cancel
@@ -739,6 +903,7 @@ export default function Appointments() {
                   border: 'none', borderRadius: 8,
                   fontSize: 13, fontWeight: 600,
                   color: '#fff', cursor: 'pointer',
+                  width: isMobile ? '100%' : 'auto',
                 }}
               >
                 Schedule

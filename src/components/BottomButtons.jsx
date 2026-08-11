@@ -64,6 +64,47 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
     setSubmitting(true)
 
     try {
+      // ── check duplicate email before creating anything ──
+      if (form.email) {
+        const cleanEmail = form.email.toLowerCase().trim()
+
+        const { data: existingApplicant, error: applicantCheckError } = await supabase
+          .from('applicants')
+          .select('id')
+          .eq('email', cleanEmail)
+          .maybeSingle()
+
+        if (applicantCheckError) {
+          alert('❌ Error checking existing applicants: ' + applicantCheckError.message)
+          setSubmitting(false)
+          return
+        }
+
+        if (existingApplicant) {
+          alert(`❌ An applicant with email "${form.email}" already exists.\n\nPlease use a different email address.`)
+          setSubmitting(false)
+          return
+        }
+
+        const { data: existingProfile, error: profileCheckError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('email', cleanEmail)
+          .maybeSingle()
+
+        if (profileCheckError) {
+          alert('❌ Error checking existing accounts: ' + profileCheckError.message)
+          setSubmitting(false)
+          return
+        }
+
+        if (existingProfile) {
+          alert(`❌ A user account with email "${form.email}" already exists.\n\nThis person may already have a student portal login.`)
+          setSubmitting(false)
+          return
+        }
+      }
+
       const { data: applicant, error } = await supabase
         .from('applicants')
         .insert({
@@ -77,7 +118,16 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
         .select()
         .single()
 
-      if (error) throw error
+      if (error) {
+        // Catches the case where the DB unique constraint rejects it even
+        // if the check above somehow missed it (race condition safety net).
+        if (error.code === '23505') {
+          alert(`❌ An applicant with email "${form.email}" already exists.`)
+          setSubmitting(false)
+          return
+        }
+        throw error
+      }
 
       let result = null
       if (form.email && form.phone) {

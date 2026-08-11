@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../supabase'
 import StudentLayout from './StudentLayout'
+import { useIsMobile } from '../../hooks/useIsMobile'
+import {
+  User, Lock, Pencil, Eye, EyeOff,
+  AlertTriangle, Mail, Check, X,
+} from 'lucide-react'
 
 // ── Password strength ─────────────────────────────────────────────────────────
 function getStrength(pw) {
@@ -45,8 +50,8 @@ const lbl = {
   marginBottom: 5,
 }
 
-// ── Section wrapper ───────────────────────────────────────────────────────────
-function Section({ title, subtitle, icon, children }) {
+// ── Section wrapper — icon is now a lucide component, not emoji ─────────────
+function Section({ title, subtitle, Icon, iconBg, iconColor, isMobile, children }) {
   return (
     <div style={{
       background: '#fff',
@@ -57,13 +62,20 @@ function Section({ title, subtitle, icon, children }) {
       marginBottom: 16,
     }}>
       <div style={{
-        padding: '16px 22px',
+        padding: isMobile ? '14px 16px' : '16px 22px',
         borderBottom: '1px solid #f3f4f6',
         display: 'flex',
         alignItems: 'center',
         gap: 10,
       }}>
-        <span style={{ fontSize: 18 }}>{icon}</span>
+        <div style={{
+          width: 32, height: 32, borderRadius: 9,
+          background: iconBg,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          <Icon size={16} color={iconColor} strokeWidth={2.2} />
+        </div>
         <div>
           <div style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>{title}</div>
           {subtitle && (
@@ -71,13 +83,14 @@ function Section({ title, subtitle, icon, children }) {
           )}
         </div>
       </div>
-      <div style={{ padding: '20px 22px' }}>{children}</div>
+      <div style={{ padding: isMobile ? '16px' : '20px 22px' }}>{children}</div>
     </div>
   )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function StudentProfile() {
+  const isMobile = useIsMobile()
 
   const [profile,  setProfile]  = useState(null)
   const [loading,  setLoading]  = useState(true)
@@ -132,11 +145,11 @@ export default function StudentProfile() {
     setSavingInfo(false)
 
     if (error) {
-      setInfoMsg('❌ ' + error.message)
+      setInfoMsg('error:' + error.message)
     } else {
       setProfile(p => ({ ...p, name: editName.trim(), phone_new: editPhone.trim() }))
       localStorage.setItem('profile', JSON.stringify({ ...profile, name: editName.trim() }))
-      setInfoMsg('✅ Profile updated!')
+      setInfoMsg('success:Profile updated!')
       setEditMode(false)
       setTimeout(() => setInfoMsg(''), 3000)
     }
@@ -163,7 +176,7 @@ export default function StudentProfile() {
 
     if (signInErr) {
       setSavingPw(false)
-      return setPwMsg({ text: '❌ Current password is incorrect.', ok: false })
+      return setPwMsg({ text: 'Current password is incorrect.', ok: false })
     }
 
     // update to new password
@@ -174,9 +187,9 @@ export default function StudentProfile() {
     setSavingPw(false)
 
     if (updateErr) {
-      setPwMsg({ text: '❌ ' + updateErr.message, ok: false })
+      setPwMsg({ text: updateErr.message, ok: false })
     } else {
-      setPwMsg({ text: '✅ Password changed successfully!', ok: true })
+      setPwMsg({ text: 'Password changed successfully!', ok: true })
       setPwForm({ current: '', next: '', confirm: '' })
     }
   }
@@ -192,6 +205,9 @@ export default function StudentProfile() {
     )
   }
 
+  const [infoStatus, infoText] = infoMsg ? infoMsg.split(':') : [null, '']
+  const infoIsSuccess = infoStatus === 'success'
+
   // ── RENDER ─────────────────────────────────────────────────────────────────
   return (
     <StudentLayout>
@@ -203,7 +219,7 @@ export default function StudentProfile() {
 
         {/* Page heading */}
         <div style={{ marginBottom: 20 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>
+          <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>
             My Profile
           </h1>
           <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
@@ -215,13 +231,16 @@ export default function StudentProfile() {
             PERSONAL INFORMATION
             ══════════════════════════════════════ */}
         <Section
-          icon="👤"
+          Icon={User}
+          iconBg="#ede9fe"
+          iconColor="#7c3aed"
           title="Personal Information"
           subtitle="Your registered details — name and phone can be updated"
+          isMobile={isMobile}
         >
           <div style={{
             display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
+            gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
             gap: 14,
             marginBottom: 16,
           }}>
@@ -280,20 +299,27 @@ export default function StudentProfile() {
           {/* info message */}
           {infoMsg && (
             <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
               padding: '9px 14px',
               borderRadius: 8,
               fontSize: 13,
               marginBottom: 14,
-              background: infoMsg.startsWith('✅') ? '#f0fdf4' : '#fef2f2',
-              color:      infoMsg.startsWith('✅') ? '#15803d' : '#b91c1c',
-              border: `1px solid ${infoMsg.startsWith('✅') ? '#bbf7d0' : '#fecaca'}`,
+              background: infoIsSuccess ? '#f0fdf4' : '#fef2f2',
+              color:      infoIsSuccess ? '#15803d' : '#b91c1c',
+              border: `1px solid ${infoIsSuccess ? '#bbf7d0' : '#fecaca'}`,
             }}>
-              {infoMsg}
+              {infoIsSuccess
+                ? <Check size={15} strokeWidth={2.6} />
+                : <X size={15} strokeWidth={2.6} />}
+              {infoText}
             </div>
           )}
 
           {/* action buttons */}
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <div style={{
+            display: 'flex', gap: 8, justifyContent: 'flex-end',
+            flexDirection: isMobile ? 'column-reverse' : 'row',
+          }}>
             {editMode ? (
               <>
                 <button
@@ -307,6 +333,7 @@ export default function StudentProfile() {
                     color: '#6b7280',
                     cursor: 'pointer',
                     fontFamily: 'inherit',
+                    width: isMobile ? '100%' : 'auto',
                   }}
                 >
                   Cancel
@@ -324,6 +351,7 @@ export default function StudentProfile() {
                     color: '#fff',
                     cursor: savingInfo ? 'not-allowed' : 'pointer',
                     fontFamily: 'inherit',
+                    width: isMobile ? '100%' : 'auto',
                   }}
                 >
                   {savingInfo ? 'Saving…' : 'Save Changes'}
@@ -342,9 +370,12 @@ export default function StudentProfile() {
                   color: '#1a56db',
                   cursor: 'pointer',
                   fontFamily: 'inherit',
+                  width: isMobile ? '100%' : 'auto',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 }}
               >
-                ✏️ Edit Profile
+                <Pencil size={14} strokeWidth={2.4} />
+                Edit Profile
               </button>
             )}
           </div>
@@ -354,11 +385,14 @@ export default function StudentProfile() {
             CHANGE PASSWORD
             ══════════════════════════════════════ */}
         <Section
-          icon="🔒"
+          Icon={Lock}
+          iconBg="#fef3c7"
+          iconColor="#b45309"
           title="Change Password"
           subtitle="Keep your account secure — use a strong unique password"
+          isMobile={isMobile}
         >
-          <div style={{ maxWidth: 420 }}>
+          <div style={{ maxWidth: isMobile ? '100%' : 420 }}>
 
             {/* current password */}
             <div style={{ marginBottom: 14 }}>
@@ -377,11 +411,11 @@ export default function StudentProfile() {
                     position: 'absolute', right: 12, top: '50%',
                     transform: 'translateY(-50%)',
                     background: 'none', border: 'none',
-                    cursor: 'pointer', fontSize: 14,
-                    color: '#9ca3af', padding: 0,
+                    cursor: 'pointer', padding: 0,
+                    display: 'flex', color: '#9ca3af',
                   }}
                 >
-                  {showPw.current ? '🙈' : '👁️'}
+                  {showPw.current ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
             </div>
@@ -403,11 +437,11 @@ export default function StudentProfile() {
                     position: 'absolute', right: 12, top: '50%',
                     transform: 'translateY(-50%)',
                     background: 'none', border: 'none',
-                    cursor: 'pointer', fontSize: 14,
-                    color: '#9ca3af', padding: 0,
+                    cursor: 'pointer', padding: 0,
+                    display: 'flex', color: '#9ca3af',
                   }}
                 >
-                  {showPw.next ? '🙈' : '👁️'}
+                  {showPw.next ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
             </div>
@@ -457,23 +491,25 @@ export default function StudentProfile() {
                     position: 'absolute', right: 12, top: '50%',
                     transform: 'translateY(-50%)',
                     background: 'none', border: 'none',
-                    cursor: 'pointer', fontSize: 14,
-                    color: '#9ca3af', padding: 0,
+                    cursor: 'pointer', padding: 0,
+                    display: 'flex', color: '#9ca3af',
                   }}
                 >
-                  {showPw.confirm ? '🙈' : '👁️'}
+                  {showPw.confirm ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
 
               {/* match / no match indicator */}
               {pwForm.confirm && pwForm.next !== pwForm.confirm && (
-                <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>
-                  ✕ Passwords do not match
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#ef4444', marginTop: 4 }}>
+                  <X size={12} strokeWidth={2.8} />
+                  Passwords do not match
                 </div>
               )}
               {pwForm.confirm && pwForm.next === pwForm.confirm && (
-                <div style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>
-                  ✓ Passwords match
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#16a34a', marginTop: 4 }}>
+                  <Check size={12} strokeWidth={2.8} />
+                  Passwords match
                 </div>
               )}
             </div>
@@ -481,6 +517,7 @@ export default function StudentProfile() {
             {/* feedback message */}
             {pwMsg.text && (
               <div style={{
+                display: 'flex', alignItems: 'center', gap: 8,
                 padding: '9px 14px',
                 borderRadius: 8,
                 fontSize: 13,
@@ -489,6 +526,9 @@ export default function StudentProfile() {
                 color:      pwMsg.ok ? '#15803d' : '#b91c1c',
                 border: `1px solid ${pwMsg.ok ? '#bbf7d0' : '#fecaca'}`,
               }}>
+                {pwMsg.ok
+                  ? <Check size={15} strokeWidth={2.6} />
+                  : <X size={15} strokeWidth={2.6} />}
                 {pwMsg.text}
               </div>
             )}
@@ -507,9 +547,12 @@ export default function StudentProfile() {
                 cursor: savingPw ? 'not-allowed' : 'pointer',
                 fontFamily: 'inherit',
                 boxShadow: savingPw ? 'none' : '0 2px 8px rgba(26,86,219,.25)',
+                width: isMobile ? '100%' : 'auto',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
               }}
             >
-              {savingPw ? 'Updating…' : '🔒 Update Password'}
+              <Lock size={14} strokeWidth={2.4} />
+              {savingPw ? 'Updating…' : 'Update Password'}
             </button>
 
           </div>
@@ -522,13 +565,21 @@ export default function StudentProfile() {
           background: '#fff',
           border: '1px solid #fecaca',
           borderRadius: 14,
-          padding: '16px 22px',
+          padding: isMobile ? '16px' : '16px 22px',
           display: 'flex',
-          alignItems: 'center',
+          flexDirection: isMobile ? 'column' : 'row',
+          alignItems: isMobile ? 'flex-start' : 'center',
           gap: 14,
           boxShadow: '0 1px 4px rgba(0,0,0,.04)',
         }}>
-          <span style={{ fontSize: 22, flexShrink: 0 }}>⚠️</span>
+          <div style={{
+            width: 36, height: 36, borderRadius: 9,
+            background: '#fef2f2',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+            <AlertTriangle size={18} color="#dc2626" strokeWidth={2.2} />
+          </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: '#b91c1c', marginBottom: 3 }}>
               Need to update your email, course or country?
@@ -551,9 +602,14 @@ export default function StudentProfile() {
               textDecoration: 'none',
               whiteSpace: 'nowrap',
               flexShrink: 0,
+              width: isMobile ? '100%' : 'auto',
+              textAlign: 'center',
+              boxSizing: 'border-box',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             }}
           >
-            📧 Contact Admin
+            <Mail size={13} strokeWidth={2.4} />
+            Contact Admin
           </a>
         </div>
 

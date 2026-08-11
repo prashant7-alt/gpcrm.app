@@ -2,29 +2,66 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import StudentLayout from './StudentLayout'
+import { useIsMobile } from '../../hooks/useIsMobile'
+import {
+  ClipboardList,
+  Phone,
+  UserRound,
+  FolderOpen,
+  GraduationCap,
+  Plane,
+  BookOpen,
+  PlaneTakeoff,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  Check,
+} from 'lucide-react'
 
 const STAGES = [
-  { key: 'New',            label: 'Application Received', icon: '📋', desc: 'Your application has been received by Global Pathway.' },
-  { key: 'Inquiring',      label: 'Initial Inquiry',       icon: '📞', desc: 'Our team has reviewed your inquiry and will contact you shortly.' },
-  { key: 'Counseling',     label: 'Counseling Session',    icon: '🧑‍💼', desc: 'You have had a counseling session with our advisor.' },
-  { key: 'Documentation',  label: 'Document Collection',   icon: '📁', desc: 'Your documents are being collected and verified.' },
-  { key: 'Applied',        label: 'University Applied',    icon: '🎓', desc: 'Your university application has been submitted.' },
-  { key: 'Visa Process',   label: 'Visa Processing',       icon: '🛂', desc: 'Your visa application is being processed.' },
-  { key: 'Class/Enrolled', label: 'Enrolled',              icon: '📚', desc: 'You have been enrolled in your program.' },
-  { key: 'Abroad',         label: 'Departed Abroad',       icon: '✈️', desc: 'Congratulations! You have successfully departed.' },
+  { key: 'New',            label: 'Application Received', Icon: ClipboardList, desc: 'Your application has been received by Global Pathway.' },
+  { key: 'Inquiring',      label: 'Initial Inquiry',       Icon: Phone,         desc: 'Our team has reviewed your inquiry and will contact you shortly.' },
+  { key: 'Counseling',     label: 'Counseling Session',    Icon: UserRound,     desc: 'You have had a counseling session with our advisor.' },
+  { key: 'Documentation',  label: 'Document Collection',   Icon: FolderOpen,    desc: 'Your documents are being collected and verified.' },
+  { key: 'Applied',        label: 'University Applied',    Icon: GraduationCap, desc: 'Your university application has been submitted.' },
+  { key: 'Visa Process',   label: 'Visa Processing',       Icon: Plane,         desc: 'Your visa application is being processed.' },
+  { key: 'Class/Enrolled', label: 'Enrolled',              Icon: BookOpen,      desc: 'You have been enrolled in your program.' },
+  { key: 'Abroad',         label: 'Departed Abroad',       Icon: PlaneTakeoff,  desc: 'Congratulations! You have successfully departed.' },
 ]
 
-export default function StudentVisaStatus() {
+// Statuses from the admin dropdown that aren't part of the linear pipeline —
+// shown as a dedicated banner instead of a pipeline position.
+const SPECIAL_STATUSES = {
+  Pending: {
+    Icon: Clock,
+    title: 'Pending Review',
+    desc: 'Your application is under review. We will update you as soon as a decision is made.',
+    bg: '#fffbeb', border: '#fde68a', labelColor: '#a16207', textColor: '#92400e', iconColor: '#a16207',
+  },
+  Approved: {
+    Icon: CheckCircle2,
+    title: 'Approved',
+    desc: 'Great news — your application has been approved! Our team will reach out with next steps.',
+    bg: '#f0fdf4', border: '#bbf7d0', labelColor: '#15803d', textColor: '#166534', iconColor: '#15803d',
+  },
+  Rejected: {
+    Icon: XCircle,
+    title: 'Application Rejected',
+    desc: 'Unfortunately your application was not approved. Please contact Global Pathway to discuss next steps.',
+    bg: '#fef2f2', border: '#fecaca', labelColor: '#b91c1c', textColor: '#991b1b', iconColor: '#b91c1c',
+  },
+}
 
+export default function StudentVisaStatus() {
+  const isMobile = useIsMobile()
   const navigate = useNavigate()
 
-  // ✅ FIX: profile is now state, loaded safely inside useEffect
-  const [profile,   setProfile]  = useState(null)
+  const [profile,   setProfile]   = useState(null)
   const [applicant, setApplicant] = useState(null)
   const [loading,   setLoading]   = useState(true)
   const [loadError, setLoadError] = useState(null)
 
-  // ✅ Step 1: Load profile from localStorage safely
+  // Step 1 — load profile from localStorage safely
   useEffect(() => {
     const stored = localStorage.getItem('profile')
     if (!stored) {
@@ -39,7 +76,7 @@ export default function StudentVisaStatus() {
     setProfile(parsed)
   }, [])
 
-  // ✅ Step 2: Only runs after profile is ready
+  // Step 2 — only runs after profile is ready
   useEffect(() => {
     if (!profile) return
 
@@ -52,7 +89,7 @@ export default function StudentVisaStatus() {
         event: 'UPDATE', schema: 'public', table: 'applicants',
       }, (payload) => {
         if (
-          String(payload.new.id)    === String(profile.applicant_id) ||
+          String(payload.new.id) === String(profile.applicant_id) ||
           payload.new.email?.toLowerCase() === profile.email?.toLowerCase()
         ) {
           setApplicant(prev => ({ ...prev, ...payload.new }))
@@ -61,7 +98,7 @@ export default function StudentVisaStatus() {
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
-  }, [profile]) // ← depends on profile being set
+  }, [profile])
 
   async function load() {
     setLoading(true)
@@ -70,7 +107,7 @@ export default function StudentVisaStatus() {
     let data = null
     const errors = []
 
-    // Method 1 — use applicant_id
+    // Method 1 — use applicant_id (most reliable, always prefer this)
     if (profile.applicant_id != null && profile.applicant_id !== '') {
       const idNum = parseInt(profile.applicant_id, 10)
       if (!Number.isNaN(idNum)) {
@@ -86,7 +123,7 @@ export default function StudentVisaStatus() {
       }
     }
 
-    // Method 2 — email match fallback
+    // Method 2 — email match fallback (still unique per applicant)
     if (!data && profile.email) {
       const { data: d, error } = await supabase
         .from('applicants')
@@ -97,42 +134,37 @@ export default function StudentVisaStatus() {
       data = d
     }
 
-    // Method 3 — name match fallback
-    if (!data && profile.name) {
-      const { data: d, error } = await supabase
-        .from('applicants')
-        .select('*')
-        .ilike('name', profile.name.trim())
-        .maybeSingle()
-      if (error) errors.push(['name lookup', error])
-      data = d
-    }
+    // NOTE: there is intentionally no "Method 3" name-based fallback here.
+    // Names are not unique, and matching on name risks showing one student
+    // another student's application data. If applicant_id and email both
+    // fail to find a record, we correctly show "No application found"
+    // below rather than guessing based on name.
 
     if (errors.length) {
       errors.forEach(([label, err]) => console.error(`[VisaStatus] ${label} failed:`, err))
       setLoadError(errors[errors.length - 1][1]?.message || 'Failed to load your application.')
     }
 
-    console.log('[VisaStatus] profile from localStorage:', profile)
-    console.log('[VisaStatus] resolved applicant row:', data)
-
     setApplicant(data || null)
     setLoading(false)
   }
 
-  // ✅ Guard: don't render anything until profile is confirmed
+  // Guard — don't render anything until profile is confirmed
   if (!profile) return null
 
-  const activeIndex = applicant
-    ? Math.max(0, STAGES.findIndex(s => s.key === applicant.status))
-    : 0
+  const isSpecial   = applicant && SPECIAL_STATUSES[applicant.status]
+  const specialInfo = isSpecial ? SPECIAL_STATUSES[applicant.status] : null
+
+  // Only compute a pipeline position when status is an actual pipeline stage
+  const stageIndex = applicant ? STAGES.findIndex(s => s.key === applicant.status) : -1
+  const activeIndex = stageIndex >= 0 ? stageIndex : 0
 
   return (
     <StudentLayout>
       <div style={{ maxWidth: 700 }}>
 
-        <div style={{ marginBottom: 28 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>
+        <div style={{ marginBottom: isMobile ? 20 : 28 }}>
+          <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>
             Visa Pipeline
           </h1>
           <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
@@ -147,7 +179,7 @@ export default function StudentVisaStatus() {
         {!loading && loadError && (
           <div style={{
             background: '#fef2f2', border: '1px solid #fecaca',
-            borderRadius: 12, padding: 24, marginBottom: 16,
+            borderRadius: 12, padding: isMobile ? 16 : 24, marginBottom: 16,
             fontSize: 13, color: '#991b1b',
           }}>
             <strong>Couldn't load your application:</strong> {loadError}
@@ -161,9 +193,9 @@ export default function StudentVisaStatus() {
         {!loading && !applicant && !loadError && (
           <div style={{
             background: '#fff', border: '1px solid #e5e7eb',
-            borderRadius: 12, padding: 60, textAlign: 'center',
+            borderRadius: 12, padding: isMobile ? '48px 20px' : 60, textAlign: 'center',
           }}>
-            <div style={{ fontSize: 48, marginBottom: 14 }}>📋</div>
+            <ClipboardList size={44} color="#d1d5db" style={{ marginBottom: 14 }} />
             <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 6 }}>
               No application found
             </div>
@@ -174,53 +206,115 @@ export default function StudentVisaStatus() {
           </div>
         )}
 
-        {!loading && applicant && (
-          <>
-            {/* Current status banner */}
-            <div style={{
-              background: activeIndex === STAGES.length - 1 ? '#f0fdf4' : '#eff6ff',
-              border: `1px solid ${activeIndex === STAGES.length - 1 ? '#bbf7d0' : '#bfdbfe'}`,
-              borderRadius: 12, padding: '16px 20px', marginBottom: 28,
-              display: 'flex', alignItems: 'center', gap: 14,
-            }}>
-              <div style={{ fontSize: 36 }}>{STAGES[activeIndex]?.icon}</div>
-              <div>
-                <div style={{
-                  fontSize: 11, fontWeight: 600,
-                  color: activeIndex === STAGES.length - 1 ? '#15803d' : '#1d4ed8',
-                  textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4,
-                }}>
-                  Current Status
-                </div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>
-                  {STAGES[activeIndex]?.label}
-                </div>
-                <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
-                  {STAGES[activeIndex]?.desc}
-                </div>
+        {/* Special status banner — Pending / Approved / Rejected */}
+        {!loading && applicant && isSpecial && (
+          <div style={{
+            background: specialInfo.bg,
+            border: `1px solid ${specialInfo.border}`,
+            borderRadius: 12,
+            padding: isMobile ? '14px 16px' : '16px 20px',
+            marginBottom: 20,
+            display: 'flex',
+            flexDirection: isMobile ? 'column' : 'row',
+            alignItems: isMobile ? 'flex-start' : 'center',
+            gap: isMobile ? 8 : 14,
+          }}>
+            <specialInfo.Icon size={isMobile ? 28 : 34} color={specialInfo.iconColor} strokeWidth={1.75} />
+            <div>
+              <div style={{
+                fontSize: 11, fontWeight: 600, color: specialInfo.labelColor,
+                textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4,
+              }}>
+                Current Status
+              </div>
+              <div style={{ fontSize: isMobile ? 16 : 18, fontWeight: 700, color: '#111827' }}>
+                {specialInfo.title}
+              </div>
+              <div style={{ fontSize: 13, color: specialInfo.textColor, marginTop: 4 }}>
+                {specialInfo.desc}
               </div>
             </div>
+          </div>
+        )}
 
-            {/* Vertical pipeline steps */}
+        {!loading && applicant && (
+          <>
+            {/* Pipeline banner — only for statuses that are actual pipeline stages */}
+            {!isSpecial && (
+              <div style={{
+                background: activeIndex === STAGES.length - 1 ? '#f0fdf4' : '#eff6ff',
+                border: `1px solid ${activeIndex === STAGES.length - 1 ? '#bbf7d0' : '#bfdbfe'}`,
+                borderRadius: 12,
+                padding: isMobile ? '14px 16px' : '16px 20px',
+                marginBottom: isMobile ? 20 : 28,
+                display: 'flex',
+                flexDirection: isMobile ? 'column' : 'row',
+                alignItems: isMobile ? 'flex-start' : 'center',
+                gap: isMobile ? 8 : 14,
+              }}>
+                {STAGES[activeIndex] && (() => {
+                  const ActiveIcon = STAGES[activeIndex].Icon
+                  return (
+                    <ActiveIcon
+                      size={isMobile ? 28 : 34}
+                      color={activeIndex === STAGES.length - 1 ? '#15803d' : '#1d4ed8'}
+                      strokeWidth={1.75}
+                    />
+                  )
+                })()}
+                <div>
+                  <div style={{
+                    fontSize: 11, fontWeight: 600,
+                    color: activeIndex === STAGES.length - 1 ? '#15803d' : '#1d4ed8',
+                    textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4,
+                  }}>
+                    Current Status
+                  </div>
+                  <div style={{ fontSize: isMobile ? 16 : 18, fontWeight: 700, color: '#111827' }}>
+                    {STAGES[activeIndex]?.label}
+                  </div>
+                  <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
+                    {STAGES[activeIndex]?.desc}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Vertical pipeline steps — always shown so students can see the full journey,
+                even while in a special (Pending/Approved/Rejected) state */}
             <div style={{
               background: '#fff', border: '1px solid #e5e7eb',
-              borderRadius: 12, padding: '24px 28px',
+              borderRadius: 12, padding: isMobile ? '18px 16px' : '24px 28px',
+              opacity: isSpecial ? 0.6 : 1,
             }}>
+              {isSpecial && (
+                <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 16 }}>
+                  Pipeline progress will resume once your application moves past the {applicant.status.toLowerCase()} stage.
+                </div>
+              )}
               {STAGES.map((stage, i) => {
-                const isDone    = i < activeIndex
-                const isActive  = i === activeIndex
-                const isPending = i > activeIndex
+                const isDone    = !isSpecial && i < activeIndex
+                const isActive  = !isSpecial && i === activeIndex
+                const isPending = isSpecial || i > activeIndex
+                const StageIcon = stage.Icon
                 return (
-                  <div key={stage.key} style={{ display: 'flex', gap: 16 }}>
+                  <div key={stage.key} style={{ display: 'flex', gap: isMobile ? 10 : 16 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
                       <div style={{
-                        width: 40, height: 40, borderRadius: '50%',
+                        width: isMobile ? 34 : 40, height: isMobile ? 34 : 40, borderRadius: '50%',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 18, flexShrink: 0, zIndex: 1,
+                        flexShrink: 0, zIndex: 1,
                         background: isDone ? '#dcfce7' : isActive ? '#dbeafe' : '#f3f4f6',
                         border: `2px solid ${isDone ? '#16a34a' : isActive ? '#2563eb' : '#e5e7eb'}`,
                       }}>
-                        {isDone ? '✅' : stage.icon}
+                        {isDone
+                          ? <Check size={isMobile ? 17 : 20} color="#16a34a" strokeWidth={2.5} />
+                          : <StageIcon
+                              size={isMobile ? 17 : 20}
+                              color={isActive ? '#2563eb' : '#9ca3af'}
+                              strokeWidth={1.75}
+                            />
+                        }
                       </div>
                       {i < STAGES.length - 1 && (
                         <div style={{
@@ -232,7 +326,7 @@ export default function StudentVisaStatus() {
                     </div>
                     <div style={{
                       paddingBottom: i < STAGES.length - 1 ? 20 : 0,
-                      paddingTop: 8, flex: 1,
+                      paddingTop: 8, flex: 1, minWidth: 0,
                     }}>
                       <div style={{
                         fontSize: 14,
@@ -246,6 +340,7 @@ export default function StudentVisaStatus() {
                             marginLeft: 8, fontSize: 11,
                             background: '#dcfce7', color: '#15803d',
                             padding: '2px 8px', borderRadius: 20, fontWeight: 600,
+                            display: 'inline-block', marginTop: isMobile ? 4 : 0,
                           }}>Completed</span>
                         )}
                         {isActive && (
@@ -253,6 +348,7 @@ export default function StudentVisaStatus() {
                             marginLeft: 8, fontSize: 11,
                             background: '#dbeafe', color: '#1d4ed8',
                             padding: '2px 8px', borderRadius: 20, fontWeight: 600,
+                            display: 'inline-block', marginTop: isMobile ? 4 : 0,
                           }}>Current</span>
                         )}
                       </div>
@@ -268,7 +364,7 @@ export default function StudentVisaStatus() {
             {/* Applicant details */}
             <div style={{
               background: '#fff', border: '1px solid #e5e7eb',
-              borderRadius: 12, padding: '16px 20px', marginTop: 16,
+              borderRadius: 12, padding: isMobile ? '14px 16px' : '16px 20px', marginTop: 16,
             }}>
               <div style={{
                 fontSize: 12, fontWeight: 600, color: '#9ca3af',
@@ -287,7 +383,9 @@ export default function StudentVisaStatus() {
                     <span style={{ width: 70, color: '#6b7280', fontWeight: 600, flexShrink: 0 }}>
                       {row.label}
                     </span>
-                    <span style={{ color: '#111827' }}>{row.value || '—'}</span>
+                    <span style={{ color: '#111827', wordBreak: 'break-word', minWidth: 0 }}>
+                      {row.value || '—'}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -297,8 +395,10 @@ export default function StudentVisaStatus() {
               marginTop: 14, padding: '10px 14px',
               background: '#fffbeb', border: '1px solid #fde68a',
               borderRadius: 8, fontSize: 12, color: '#92400e',
+              display: 'flex', alignItems: 'center', gap: 8,
             }}>
-              ⚡ This page updates automatically when your advisor changes your status.
+              <Clock size={14} color="#92400e" strokeWidth={2} />
+              This page updates automatically when your advisor changes your status.
             </div>
           </>
         )}

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import theme from '../theme'
 import BottomButtons from '../components/BottomButtons'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 const statusStyle = (status) => {
   if (status === 'Converted') return { bg: '#dcfce7', color: '#15803d' }
@@ -11,6 +12,7 @@ const statusStyle = (status) => {
 }
 
 export default function Visitors() {
+  const isMobile = useIsMobile()
 
   const [visitors,  setVisitors]  = useState([])
   const [search,    setSearch]    = useState('')
@@ -109,35 +111,40 @@ export default function Visitors() {
     return matchSearch && matchPurpose && matchInterest
   })
 
+  const tableCols = '36px 2fr 1.5fr 1.5fr 1.5fr 1.5fr 1fr 1fr 1fr'
+
   return (
     <div>
 
       {/* header */}
       <div style={{
         display: 'flex',
+        flexDirection: isMobile ? 'column' : 'row',
         justifyContent: 'space-between',
-        alignItems: 'flex-start',
+        alignItems: isMobile ? 'stretch' : 'flex-start',
+        gap: isMobile ? 12 : 0,
         marginBottom: 20,
       }}>
         <div>
           <h1 style={{
-            fontSize: 20, fontWeight: 700,
+            fontSize: isMobile ? 18 : 20, fontWeight: 700,
             color: theme.textDark, margin: 0,
           }}>
-    
+
           </h1>
           <p style={{ fontSize: 13, color: theme.textLight, marginTop: 4 }}>
-          
+
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flexDirection: isMobile ? 'column' : 'row' }}>
           <button style={{
             padding: '8px 16px',
             background: theme.cardBg,
             border: `1px solid ${theme.border}`,
             borderRadius: 8, fontSize: 13,
             color: theme.textMid, cursor: 'pointer',
+            width: isMobile ? '100%' : 'auto',
           }}>
              Export
           </button>
@@ -151,6 +158,7 @@ export default function Visitors() {
               border: 'none', borderRadius: 8,
               fontSize: 13, fontWeight: 600,
               color: '#fff', cursor: 'pointer',
+              width: isMobile ? '100%' : 'auto',
             }}
           >
             + Log Visitor
@@ -161,22 +169,21 @@ export default function Visitors() {
       {/* stat cards */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(4, 1fr)',
-        gap: 100, marginBottom: 20,
+        gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
+        gap: isMobile ? 10 : 20, marginBottom: 20,
       }}>
         {stats.map(s => (
           <div key={s.label} style={{
             background: theme.cardBg,
-            border: `6px solid ${theme.border}`,
-            borderTop: `3px solid ${s.top}`,
-            borderRadius: 10, padding: 16,
-            display: 'flex', alignItems: 'center', gap: 14,
+            border: `1px solid ${theme.border}`,
+            borderRadius: 10, padding: isMobile ? 12 : 16,
+            display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 14,
           }}>
             <div style={{
-              width: 44, height: 44, borderRadius: 10,
+              width: isMobile ? 34 : 44, height: isMobile ? 34 : 44, borderRadius: 10,
               background: s.iconBg,
               display: 'flex', alignItems: 'center',
-              justifyContent: 'center', fontSize: 22, flexShrink: 0,
+              justifyContent: 'center', fontSize: isMobile ? 16 : 22, flexShrink: 0,
             }}>
               {s.icon}
             </div>
@@ -185,7 +192,7 @@ export default function Visitors() {
                 {s.label}
               </div>
               <div style={{
-                fontSize: 28, fontWeight: 800,
+                fontSize: isMobile ? 20 : 28, fontWeight: 800,
                 color: s.color, lineHeight: 1,
               }}>
                 {s.value}
@@ -208,7 +215,7 @@ export default function Visitors() {
             display: 'flex', alignItems: 'center', gap: 8,
             background: theme.pageBg,
             border: `1px solid ${theme.border}`,
-            borderRadius: 8, padding: '8px 14px', maxWidth: 380,
+            borderRadius: 8, padding: '8px 14px', maxWidth: isMobile ? '100%' : 380,
           }}>
             <span style={{ color: theme.textMuted }}></span>
             <input
@@ -224,67 +231,73 @@ export default function Visitors() {
           </div>
         </div>
 
-        {/* purpose filter */}
-        <div style={{ padding: '10px 16px', borderBottom: `1px solid ${theme.border}` }}>
-          <select
-            value={purpose}
-            onChange={e => setPurpose(e.target.value)}
-            style={{
-              width: '100%', background: 'none',
-              border: 'none', outline: 'none',
-              fontSize: 13, color: theme.textMid, cursor: 'pointer',
-            }}
-          >
-            <option>All Purposes</option>
-            <option>Study Abroad</option>
-            <option>Visa Inquiry</option>
-            <option>Document Help</option>
-            <option>General Info</option>
-          </select>
-        </div>
-
-        {/* interest filter */}
-        <div style={{ padding: '10px 16px', borderBottom: `1px solid ${theme.border}` }}>
-          <select
-            value={interest}
-            onChange={e => setInterest(e.target.value)}
-            style={{
-              width: '100%', background: 'none',
-              border: 'none', outline: 'none',
-              fontSize: 13, color: theme.textMid, cursor: 'pointer',
-            }}
-          >
-            <option>All Interest</option>
-            <option>UK</option>
-            <option>Australia</option>
-            <option>Canada</option>
-            <option>USA</option>
-            <option>Japan</option>
-            <option>Korea</option>
-          </select>
-        </div>
-
-        {/* table header */}
+        {/* purpose + interest filters — side by side on phone to save vertical space */}
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: '36px 2fr 1.5fr 1.5fr 1.5fr 1.5fr 1fr 1fr 1fr',
-          padding: '10px 16px',
-          background: theme.pageBg,
-          borderBottom: `1px solid ${theme.border}`,
+          display: isMobile ? 'grid' : 'block',
+          gridTemplateColumns: isMobile ? '1fr 1fr' : undefined,
         }}>
-          <input type="checkbox" style={{ cursor: 'pointer' }}/>
-          {['Visitor','Phone','Purpose','Interest',
-            'Country','Date','Status','Actions'].map(h => (
-            <span key={h} style={{
-              fontSize: 11, fontWeight: 600,
-              color: theme.textMuted,
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-            }}>
-              {h}
-            </span>
-          ))}
+          <div style={{ padding: '10px 16px', borderBottom: `1px solid ${theme.border}`, borderRight: isMobile ? `1px solid ${theme.border}` : 'none' }}>
+            <select
+              value={purpose}
+              onChange={e => setPurpose(e.target.value)}
+              style={{
+                width: '100%', background: 'none',
+                border: 'none', outline: 'none',
+                fontSize: 13, color: theme.textMid, cursor: 'pointer',
+              }}
+            >
+              <option>All Purposes</option>
+              <option>Study Abroad</option>
+              <option>Visa Inquiry</option>
+              <option>Document Help</option>
+              <option>General Info</option>
+            </select>
+          </div>
+
+          <div style={{ padding: '10px 16px', borderBottom: `1px solid ${theme.border}` }}>
+            <select
+              value={interest}
+              onChange={e => setInterest(e.target.value)}
+              style={{
+                width: '100%', background: 'none',
+                border: 'none', outline: 'none',
+                fontSize: 13, color: theme.textMid, cursor: 'pointer',
+              }}
+            >
+              <option>All Interest</option>
+              <option>UK</option>
+              <option>Australia</option>
+              <option>Canada</option>
+              <option>USA</option>
+              <option>Japan</option>
+              <option>Korea</option>
+            </select>
+          </div>
         </div>
+
+        {/* table header — desktop only */}
+        {!isMobile && (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: tableCols,
+            padding: '10px 16px',
+            background: theme.pageBg,
+            borderBottom: `1px solid ${theme.border}`,
+          }}>
+            <input type="checkbox" style={{ cursor: 'pointer' }}/>
+            {['Visitor','Phone','Purpose','Interest',
+              'Country','Date','Status','Actions'].map(h => (
+              <span key={h} style={{
+                fontSize: 11, fontWeight: 600,
+                color: theme.textMuted,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}>
+                {h}
+              </span>
+            ))}
+          </div>
+        )}
 
         {loading && (
           <p style={{ padding: 20, color: theme.textLight, fontSize: 13 }}>
@@ -299,7 +312,7 @@ export default function Visitors() {
             color: theme.textLight,
           }}>
             <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.3 }}>
-              
+
             </div>
             <div style={{
               fontSize: 15, fontWeight: 600,
@@ -315,90 +328,162 @@ export default function Visitors() {
 
         {/* visitor rows */}
         {filtered.map((v, i) => (
-          <div
-            key={v.id}
-            style={{
-              display: 'grid',
-              gridTemplateColumns:
-                '36px 2fr 1.5fr 1.5fr 1.5fr 1.5fr 1fr 1fr 1fr',
-              padding: '12px 16px',
-              borderBottom: i < filtered.length - 1
-                ? `1px solid ${theme.border}` : 'none',
-              alignItems: 'center',
-            }}
-            onMouseEnter={e =>
-              e.currentTarget.style.background = theme.pageBg}
-            onMouseLeave={e =>
-              e.currentTarget.style.background = 'transparent'}
-          >
-            <input type="checkbox" style={{ cursor: 'pointer' }}/>
-            <div style={{ fontSize: 13, fontWeight: 500, color: theme.textDark }}>
-              {v.name || '—'}
+          isMobile ? (
+            // ── Mobile card ──
+            <div
+              key={v.id}
+              style={{
+                padding: '14px 16px',
+                borderBottom: i < filtered.length - 1 ? `1px solid ${theme.border}` : 'none',
+                display: 'flex', flexDirection: 'column', gap: 8,
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: theme.textDark }}>
+                    {v.name || '—'}
+                  </div>
+                  <div style={{ fontSize: 11, color: theme.textLight, marginTop: 2 }}>
+                    {v.phone || '—'}
+                  </div>
+                </div>
+                <span style={{
+                  padding: '3px 10px', borderRadius: 20,
+                  fontSize: 11, fontWeight: 600, flexShrink: 0,
+                  background: statusStyle(v.status).bg,
+                  color: statusStyle(v.status).color,
+                }}>
+                  {v.status || 'New'}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: 16, fontSize: 12, color: theme.textMid, flexWrap: 'wrap' }}>
+                <span><b style={{ color: theme.textMuted, fontWeight: 600 }}>Purpose: </b>{v.purpose || '—'}</span>
+                <span><b style={{ color: theme.textMuted, fontWeight: 600 }}>Interest: </b>{v.interest || '—'}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 16, fontSize: 12, color: theme.textMid, flexWrap: 'wrap' }}>
+                <span><b style={{ color: theme.textMuted, fontWeight: 600 }}>Country: </b>{v.country || '—'}</span>
+                <span style={{ color: theme.textLight }}>
+                  {v.created_at ? new Date(v.created_at).toLocaleDateString() : '—'}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                <button style={{
+                  flex: 1, padding: '7px 10px',
+                  background: theme.primaryLight,
+                  border: 'none', borderRadius: 6,
+                  fontSize: 12, fontWeight: 600,
+                  color: theme.primary, cursor: 'pointer',}}>
+                  View
+                </button>
+                <button style={{
+                  flex: 1, padding: '7px 10px',
+                  background: theme.pageBg,
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: 6, fontSize: 12,
+                  color: theme.textDark, cursor: 'pointer',
+                }}>
+                  Edit
+                </button>
+              </div>
             </div>
-            <div style={{ fontSize: 13, color: theme.textMid }}>
-              {v.phone || '—'}
+          ) : (
+            // ── Desktop row ──
+            <div
+              key={v.id}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: tableCols,
+                padding: '12px 16px',
+                borderBottom: i < filtered.length - 1
+                  ? `1px solid ${theme.border}` : 'none',
+                alignItems: 'center',
+              }}
+              onMouseEnter={e =>
+                e.currentTarget.style.background = theme.pageBg}
+              onMouseLeave={e =>
+                e.currentTarget.style.background = 'transparent'}
+            >
+              <input type="checkbox" style={{ cursor: 'pointer' }}/>
+              <div style={{ fontSize: 13, fontWeight: 500, color: theme.textDark }}>
+                {v.name || '—'}
+              </div>
+              <div style={{ fontSize: 13, color: theme.textMid }}>
+                {v.phone || '—'}
+              </div>
+              <div style={{ fontSize: 13, color: theme.textMid }}>
+                {v.purpose || '—'}
+              </div>
+              <div style={{ fontSize: 13, color: theme.textMid }}>
+                {v.interest || '—'}
+              </div>
+              <div style={{ fontSize: 13, color: theme.textMid }}>
+                {v.country || '—'}
+              </div>
+              <div style={{ fontSize: 12, color: theme.textLight }}>
+                {v.created_at
+                  ? new Date(v.created_at).toLocaleDateString()
+                  : '—'}
+              </div>
+              <div>
+                <span style={{
+                  padding: '3px 10px', borderRadius: 20,
+                  fontSize: 11, fontWeight: 600,
+                  background: statusStyle(v.status).bg,
+                  color: statusStyle(v.status).color,
+                }}>
+                  {v.status || 'New'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button style={{
+                  padding: '5px 10px',
+                  background: theme.primaryLight,
+                  border: 'none', borderRadius: 6,
+                  fontSize: 12, fontWeight: 600,
+                  color: theme.primary, cursor: 'pointer',}}>
+                  View
+                </button>
+                <button style={{
+                  padding: '5px 10px',
+                  background: theme.pageBg,
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: 6, fontSize: 12,
+                  color: theme.textDark, cursor: 'pointer',
+                }}>
+                  edit
+                </button>
+              </div>
             </div>
-            <div style={{ fontSize: 13, color: theme.textMid }}>
-              {v.purpose || '—'}
-            </div>
-            <div style={{ fontSize: 13, color: theme.textMid }}>
-              {v.interest || '—'}
-            </div>
-            <div style={{ fontSize: 13, color: theme.textMid }}>
-              {v.country || '—'}
-            </div>
-            <div style={{ fontSize: 12, color: theme.textLight }}>
-              {v.created_at
-                ? new Date(v.created_at).toLocaleDateString()
-                : '—'}
-            </div>
-            <div>
-              <span style={{
-                padding: '3px 10px', borderRadius: 20,
-                fontSize: 11, fontWeight: 600,
-                background: statusStyle(v.status).bg,
-                color: statusStyle(v.status).color,
-              }}>
-                {v.status || 'New'}
-              </span>
-            </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button style={{
-                padding: '5px 10px',
-                background: theme.primaryLight,
-                border: 'none', borderRadius: 6,
-                fontSize: 12, fontWeight: 600,
-                color: theme.primary, cursor: 'pointer',}}>
-                View
-              </button>
-              <button style={{
-                padding: '5px 10px',
-                background: theme.pageBg,
-                border: `1px solid ${theme.border}`,
-                borderRadius: 6, fontSize: 12,
-                color: theme.textDark, cursor: 'pointer',
-              }}>
-                edit
-              </button>
-            </div>
-          </div>
+          )
         ))}
       </div>
 
       {/* log visitor modal */}
       {showModal && (
-        <div style={{
-          position: 'fixed', inset: 0,
-          background: 'rgba(0,0,0,0.4)',
-          display: 'flex', alignItems: 'center',
-          justifyContent: 'center', zIndex: 200,
-        }}>
-          <div style={{
-            background: '#fff',
-            border: `1px solid ${theme.border}`,
-            borderRadius: 14, padding: 28, width: 440,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
-          }}>
+        <div
+          onClick={() => setShowModal(false)}
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(0,0,0,0.4)',
+            display: 'flex', alignItems: isMobile ? 'flex-end' : 'center',
+            justifyContent: 'center', zIndex: 200,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff',
+              border: `1px solid ${theme.border}`,
+              borderRadius: isMobile ? '14px 14px 0 0' : 14,
+              padding: isMobile ? 20 : 28,
+              width: isMobile ? '100%' : 440,
+              maxHeight: '90vh', overflowY: 'auto',
+              boxSizing: 'border-box',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+            }}
+          >
 
             {/* modal header */}
             <div style={{
@@ -447,7 +532,7 @@ export default function Visitors() {
                     border: `1px solid ${theme.border}`,
                     borderRadius: 8, fontSize: 13,
                     color: theme.textMid, outline: 'none',
-                    fontFamily: 'inherit',
+                    fontFamily: 'inherit', boxSizing: 'border-box',
                   }}
                 />
               </div>
@@ -471,7 +556,7 @@ export default function Visitors() {
                   border: `1px solid ${theme.border}`,
                   borderRadius: 8, fontSize: 13,
                   color: theme.textMid, outline: 'none',
-                  fontFamily: 'inherit',
+                  fontFamily: 'inherit', boxSizing: 'border-box',
                 }}
               >
                 <option value="">Select purpose...</option>
@@ -500,7 +585,7 @@ export default function Visitors() {
                   border: `1px solid ${theme.border}`,
                   borderRadius: 8, fontSize: 13,
                   color: theme.textMid, outline: 'none',
-                  fontFamily: 'inherit',
+                  fontFamily: 'inherit', boxSizing: 'border-box',
                 }}
               >
                 <option value="">Select country...</option>
@@ -531,7 +616,7 @@ export default function Visitors() {
                   border: `1px solid ${theme.border}`,
                   borderRadius: 8, fontSize: 13,
                   color: theme.textMid, outline: 'none',
-                  fontFamily: 'inherit',
+                  fontFamily: 'inherit', boxSizing: 'border-box',
                 }}
               >
                 <option>New</option>
@@ -544,6 +629,7 @@ export default function Visitors() {
             {/* buttons */}
             <div style={{
               display: 'flex', gap: 10,
+              flexDirection: isMobile ? 'column-reverse' : 'row',
               justifyContent: 'flex-end', marginTop: 20,
             }}>
               <button
@@ -554,6 +640,7 @@ export default function Visitors() {
                   border: `1px solid ${theme.border}`,
                   borderRadius: 8, fontSize: 13,
                   color: theme.textMid, cursor: 'pointer',
+                  width: isMobile ? '100%' : 'auto',
                 }}
               >
                 Cancel
@@ -566,6 +653,7 @@ export default function Visitors() {
                   border: 'none', borderRadius: 8,
                   fontSize: 13, fontWeight: 600,
                   color: '#fff', cursor: 'pointer',
+                  width: isMobile ? '100%' : 'auto',
                 }}
               >
                 Save Visitor

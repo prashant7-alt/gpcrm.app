@@ -1,59 +1,92 @@
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+// supabase/functions/khalti-verify/index.ts
+import { createClient } from 'jsr:@supabase/supabase-js@2'
+
+const KHALTI_SECRET = Deno.env.get('KHALTI_SECRET_KEY') ?? ''
+const SUPABASE_URL  = Deno.env.get('SUPABASE_URL')       ?? ''
+const SERVICE_KEY   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+
+const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
+})
+
+const cors = {
+  'Access-Control-Allow-Origin':  '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
 
   try {
-    const { pidx } = await req.json()
+    const body = await req.json()
+    const { pidx, payment_id, simulate } = body
 
-    if (!pidx) {
-      return new Response(
-        JSON.stringify({ error: 'pidx is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    console.log('[khalti-verify] received:', { pidx, payment_id, simulate })
+
+    // ── SIMULATE MODE ──────────────────────────────────────────
+    if (simulate) {
+      if (!payment_id) {
+        return Response.json({ completed: false, error: 'payment_id required' }, { headers: cors })
+      }
+      // ✅ pending_verification so admin still clicks Mark Paid + email fires
+      const { error } = await supabase
+        .from('payments')
+        .update({
+          status:  'pending_verification',
+          method:  'Khalti',
+          txn_ref: pidx || `SIM-${Date.now()}`,
+        })
+        .eq('id', payment_id)
+
+      if (error) {
+        console.error('[khalti-verify] simulate DB error:', error)
+        return Response.json({ completed: false, error: error.message }, { headers: cors })
+      }
+      return Response.json({ completed: true, simulated: true }, { headers: cors })
     }
 
-    const KHALTI_SECRET_KEY = Deno.env.get('KHALTI_SECRET_KEY')
+    // ── REAL VERIFICATION ──────────────────────────────────────
+    if (!pidx) {
+      return Response.json({ completed: false, error: 'pidx required' }, { headers: cors })
+    }
 
-    const response = await fetch('https://a.khalti.com/api/v2/epayment/lookup/', {
-      method: 'POST',
+    const khaltiRes = await fetch('https://a.khalti.com/api/v2/epayment/lookup/', {
+      method:  'POST',
       headers: {
-        'Authorization': `Key ${KHALTI_SECRET_KEY}`,
+        'Authorization': `Key ${KHALTI_SECRET}`,
         'Content-Type':  'application/json',
       },
       body: JSON.stringify({ pidx }),
     })
 
-    const data = await response.json()
+    const khaltiData = await khaltiRes.json()
+    console.log('[khalti-verify] Khalti response:', khaltiData)
 
-    if (!response.ok) {
-      return new Response(
-        JSON.stringify({ error: data }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    const isCompleted = khaltiData.status === 'Completed'
+
+    if (isCompleted && payment_id) {
+      // ✅ pending_verification NOT paid — admin confirms + email fires
+      const { error } = await supabase
+        .from('payments')
+        .update({
+          status:  'pending_verification',
+          method:  'Khalti',
+          txn_ref: pidx,
+          amount:  khaltiData.total_amount / 100,
+        })
+        .eq('id', payment_id)
+
+      if (error) console.error('[khalti-verify] DB update error:', error)
     }
 
-    // status will be 'Completed' if paid
-    return new Response(
-      JSON.stringify({
-        status:     data.status,
-        pidx:       data.pidx,
-        amount:     data.total_amount / 100,
-        payment_id: data.purchase_order_id,
-        completed:  data.status === 'Completed',
-      }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return Response.json({
+      completed: isCompleted,
+      status:    khaltiData.status,
+      amount:    khaltiData.total_amount,
+    }, { headers: cors })
 
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: err.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    console.error('[khalti-verify] error:', err)
+    return Response.json({ completed: false, error: String(err) }, { headers: cors })
   }
 })

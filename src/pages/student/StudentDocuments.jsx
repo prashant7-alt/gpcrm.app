@@ -1,14 +1,33 @@
 /**
- * StudentDocumentUpload.jsx
+ * StudentDocuments.jsx
  * ─────────────────────────────────────────────────────────────────────────────
  * Student-facing document upload portal — 12 document types
  * Students can upload AND delete their own files
- * FILE LOCATION: src/pages/student/StudentDocumentUpload.jsx
+ * FILE LOCATION: src/pages/student/StudentDocuments.jsx
+ *
+ * ✅ CHANGED: no more separate name+email login form. The student is already
+ * authenticated by <StudentRoute> before reaching this page, so we read their
+ * profile straight from localStorage (same pattern as StudentPayments.jsx)
+ * and look up their documents by that email automatically.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
+import {
+  FolderOpen,
+  GraduationCap,
+  ClipboardList,
+  Paperclip,
+  CheckCircle2,
+  FileText,
+  FileQuestion,
+  MessageSquare,
+  Trash2,
+  Loader2,
+  PartyPopper,
+} from 'lucide-react'
 
 // ─── ALL 12 DOCUMENT TYPES ────────────────────────────────────────────────────
 // MUST match Documents.jsx (admin) exactly — same order, same spelling
@@ -42,14 +61,12 @@ const card = {
 
 // ─── COMPONENT ────────────────────────────────────────────────────────────────
 
-export default function StudentDocumentUpload() {
+export default function StudentDocuments() {
+  const navigate = useNavigate()
+  const profile  = JSON.parse(localStorage.getItem('profile') || '{}')
 
-  const [step, setStep] = useState('login')
-
-  const [name,     setName]     = useState('')
-  const [email,    setEmail]    = useState('')
-  const [looking,  setLooking]  = useState(false)
-  const [loginErr, setLoginErr] = useState('')
+  // ✅ 'loading' → 'ready' → 'not_found'  (replaces the old 'login' / 'docs' steps)
+  const [status, setStatus] = useState('loading')
 
   const [docs,    setDocs]    = useState([])
   const [student, setStudent] = useState(null)
@@ -58,39 +75,31 @@ export default function StudentDocumentUpload() {
   const [deleting,   setDeleting]   = useState({})  // { [doc.id]: true } while deleting
   const [uploadSuccess, setUploadSuccess] = useState({})
 
-  // ── Look up the student by name + email ────────────────
-  async function findStudent(e) {
-    e.preventDefault()
-    if (!name.trim() || !email.trim()) {
-      setLoginErr('Please enter both your full name and email.')
+  useEffect(() => {
+    if (!profile.id) { navigate('/login'); return }
+    loadByProfile()
+  }, [])
+
+  // ── Look up this logged-in student's documents by their profile email ──
+  async function loadByProfile() {
+    if (!profile.email) {
+      setStatus('not_found')
       return
     }
-    setLooking(true)
-    setLoginErr('')
 
     const { data, error } = await supabase
       .from('student_documents')
       .select('*')
-      .ilike('student_name',  name.trim())
-      .ilike('student_email', email.trim().toLowerCase())
+      .ilike('student_email', profile.email.trim().toLowerCase())
 
-    setLooking(false)
-
-    if (error) {
-      setLoginErr('Something went wrong. Please try again.')
-      return
-    }
-    if (!data || data.length === 0) {
-      setLoginErr(
-        "We couldn't find your record. Please check your name and email, " +
-        "or contact Global Pathway to ensure you've been registered."
-      )
+    if (error || !data || data.length === 0) {
+      setStatus('not_found')
       return
     }
 
     setDocs(data)
     setStudent({ name: data[0].student_name, email: data[0].student_email })
-    setStep('docs')
+    setStatus('ready')
   }
 
   // ── Reload this student's docs ─────────────────────────
@@ -99,7 +108,6 @@ export default function StudentDocumentUpload() {
     const { data } = await supabase
       .from('student_documents')
       .select('*')
-      .ilike('student_name',  student.name)
       .ilike('student_email', student.email)
     setDocs(data || [])
   }
@@ -187,6 +195,42 @@ export default function StudentDocumentUpload() {
   const pct      = total ? Math.round(((verified + received) / total) * 100) : 0
 
   // ─── RENDER ───────────────────────────────────────────────────────────────
+
+  if (status === 'loading') {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #f0f4ff 0%, #fafbff 50%, #f0fdf4 100%)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontFamily: "'Segoe UI', Arial, sans-serif",
+      }}>
+        <div style={{ fontSize: 14, color: '#6b7280' }}>Loading your documents…</div>
+      </div>
+    )
+  }
+
+  if (status === 'not_found') {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #f0f4ff 0%, #fafbff 50%, #f0fdf4 100%)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontFamily: "'Segoe UI', Arial, sans-serif", padding: 20,
+      }}>
+        <div style={{ ...card, padding: '36px 32px', maxWidth: 460, textAlign: 'center' }}>
+          <FolderOpen size={40} color="#d1d5db" style={{ marginBottom: 14 }} />
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 8 }}>
+            No document checklist yet
+          </h2>
+          <p style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.6 }}>
+            Your counsellor hasn't set up your document list yet. Please contact
+            Global Pathway to get registered for document tracking.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -203,7 +247,7 @@ export default function StudentDocumentUpload() {
           borderRadius: 12, padding: '10px 22px',
           boxShadow: '0 1px 6px rgba(0,0,0,0.06)',
         }}>
-          <span style={{ fontSize: 22 }}>🎓</span>
+          <GraduationCap size={22} color="#1a56db" />
           <span style={{ fontSize: 16, fontWeight: 700, color: '#1a56db' }}>
             Global Pathway
           </span>
@@ -216,386 +260,283 @@ export default function StudentDocumentUpload() {
         </div>
       </div>
 
-      {/* ════════════════════════════════════════════════
-          STEP 1 — LOGIN
-          ════════════════════════════════════════════════ */}
-      {step === 'login' && (
-        <div style={{ maxWidth: 460, margin: '0 auto' }}>
-          <div style={{ ...card, padding: '36px 32px' }}>
+      <div style={{ maxWidth: 920, margin: '0 auto' }}>
 
-            <div style={{ textAlign: 'center', marginBottom: 28 }}>
-              <div style={{
-                width: 56, height: 56, borderRadius: 16,
-                background: '#eff6ff', border: '1px solid #bfdbfe',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 26, margin: '0 auto 14px',
-              }}>📁</div>
-              <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: 0 }}>
-                Upload Your Documents
-              </h1>
-              <p style={{ fontSize: 13, color: '#6b7280', marginTop: 6, lineHeight: 1.55 }}>
-                Enter your registered name and email to access your document checklist.
-              </p>
+        {/* Student header */}
+        <div style={{
+          ...card, padding: '20px 26px', marginBottom: 18,
+          display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+        }}>
+          <div style={{
+            width: 48, height: 48, borderRadius: 14,
+            background: '#eff6ff', border: '1px solid #bfdbfe',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 20, fontWeight: 700, color: '#1a56db', flexShrink: 0,
+          }}>
+            {student.name.charAt(0).toUpperCase()}
+          </div>
+
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>
+              {student.name}
             </div>
+            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+              {student.email}
+            </div>
+          </div>
 
-            <form onSubmit={findStudent}>
-              <div style={{ marginBottom: 14 }}>
-                <label style={{
-                  display: 'block', fontSize: 11, fontWeight: 700,
-                  color: '#6b7280', textTransform: 'uppercase',
-                  letterSpacing: '0.06em', marginBottom: 5,
-                }}>Full Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Ram Kumar Sharma"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  required
-                  style={{
-                    width: '100%', padding: '10px 13px',
-                    border: '1px solid #d1d5db', borderRadius: 8,
-                    fontSize: 14, color: '#111827', outline: 'none',
-                    boxSizing: 'border-box', fontFamily: 'inherit',
-                  }}
-                />
-              </div>
-
-              <div style={{ marginBottom: 20 }}>
-                <label style={{
-                  display: 'block', fontSize: 11, fontWeight: 700,
-                  color: '#6b7280', textTransform: 'uppercase',
-                  letterSpacing: '0.06em', marginBottom: 5,
-                }}>Email Address</label>
-                <input
-                  type="email"
-                  placeholder="e.g. ram@email.com"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  required
-                  style={{
-                    width: '100%', padding: '10px 13px',
-                    border: '1px solid #d1d5db', borderRadius: 8,
-                    fontSize: 14, color: '#111827', outline: 'none',
-                    boxSizing: 'border-box', fontFamily: 'inherit',
-                  }}
-                />
-              </div>
-
-              {loginErr && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Chip label={`${verified} Verified`} bg="#dcfce7" color="#15803d" />
+              <Chip label={`${received} Uploaded`} bg="#dbeafe" color="#1d4ed8" />
+              <Chip label={`${missing} Missing`}   bg="#fee2e2" color="#b91c1c" />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{
+                width: 160, height: 6,
+                background: '#e5e7eb', borderRadius: 99, overflow: 'hidden',
+              }}>
                 <div style={{
-                  background: '#fef2f2', border: '1px solid #fecaca',
-                  borderRadius: 8, padding: '10px 14px',
-                  fontSize: 13, color: '#b91c1c', marginBottom: 16, lineHeight: 1.5,
-                }}>
-                  ⚠️ {loginErr}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={looking}
-                style={{
-                  width: '100%', padding: '11px 0',
-                  background: looking ? '#9ca3af' : '#1a56db',
-                  border: 'none', borderRadius: 9,
-                  fontSize: 14, fontWeight: 700, color: '#fff',
-                  cursor: looking ? 'not-allowed' : 'pointer',
-                  fontFamily: 'inherit', transition: 'background 0.2s',
-                }}
-              >
-                {looking ? 'Looking up your record…' : 'View My Documents →'}
-              </button>
-            </form>
-
-            <div style={{
-              marginTop: 20, padding: '12px 14px',
-              background: '#f9fafb', borderRadius: 8,
-              fontSize: 12, color: '#6b7280', lineHeight: 1.6,
-            }}>
-              📞 <strong>Need help?</strong> Contact Global Pathway if your name/email
-              isn't recognised — your counsellor needs to register you first.
+                  width: `${pct}%`, height: '100%',
+                  background: pct === 100 ? '#16a34a' : '#1a56db',
+                  borderRadius: 99, transition: 'width 0.4s',
+                }} />
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>
+                {pct}% complete
+              </span>
             </div>
           </div>
         </div>
-      )}
 
-      {/* ════════════════════════════════════════════════
-          STEP 2 — DOCUMENT CHECKLIST
-          ════════════════════════════════════════════════ */}
-      {step === 'docs' && student && (
-        <div style={{ maxWidth: 920, margin: '0 auto' }}>
-
-          {/* Student header */}
-          <div style={{
-            ...card, padding: '20px 26px', marginBottom: 18,
-            display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
-          }}>
-            <div style={{
-              width: 48, height: 48, borderRadius: 14,
-              background: '#eff6ff', border: '1px solid #bfdbfe',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 20, fontWeight: 700, color: '#1a56db', flexShrink: 0,
-            }}>
-              {student.name.charAt(0).toUpperCase()}
-            </div>
-
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>
-                {student.name}
-              </div>
-              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
-                {student.email}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <Chip label={`${verified} Verified`} bg="#dcfce7" color="#15803d" />
-                <Chip label={`${received} Uploaded`} bg="#dbeafe" color="#1d4ed8" />
-                <Chip label={`${missing} Missing`}   bg="#fee2e2" color="#b91c1c" />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{
-                  width: 160, height: 6,
-                  background: '#e5e7eb', borderRadius: 99, overflow: 'hidden',
-                }}>
-                  <div style={{
-                    width: `${pct}%`, height: '100%',
-                    background: pct === 100 ? '#16a34a' : '#1a56db',
-                    borderRadius: 99, transition: 'width 0.4s',
-                  }} />
-                </div>
-                <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>
-                  {pct}% complete
-                </span>
-              </div>
-            </div>
-
-            <button
-              onClick={() => {
-                setStep('login'); setDocs([]); setStudent(null)
-                setName(''); setEmail('')
-              }}
-              style={{
-                padding: '7px 16px', background: '#f9fafb',
-                border: '1px solid #e5e7eb', borderRadius: 8,
-                fontSize: 12, fontWeight: 600, color: '#6b7280',
-                cursor: 'pointer', fontFamily: 'inherit',
-              }}
-            >
-              ← Back
-            </button>
-          </div>
-
-          {/* Instructions */}
-          <div style={{
-            background: '#eff6ff', border: '1px solid #bfdbfe',
-            borderRadius: 10, padding: '12px 18px', marginBottom: 18,
-            fontSize: 13, color: '#1d4ed8', lineHeight: 1.6,
-          }}>
-            📋 <strong>How to upload:</strong> Click <em>Choose File</em>, select a PDF or image,
+        {/* Instructions */}
+        <div style={{
+          background: '#eff6ff', border: '1px solid #bfdbfe',
+          borderRadius: 10, padding: '12px 18px', marginBottom: 18,
+          fontSize: 13, color: '#1d4ed8', lineHeight: 1.6,
+          display: 'flex', gap: 8, alignItems: 'flex-start',
+        }}>
+          <ClipboardList size={16} color="#1d4ed8" style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>
+            <strong>How to upload:</strong> Click <em>Choose File</em>, select a PDF or image,
             then click <strong>Upload</strong>. To replace a file, delete it first then upload
             the new one. Verified documents cannot be deleted — contact your counsellor.
+          </span>
+        </div>
+
+        {/* Document table */}
+        <div style={{ ...card, overflow: 'hidden' }}>
+
+          {/* Header */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '2fr 0.8fr 1fr 2.2fr',
+            padding: '10px 22px',
+            background: '#f9fafb', borderBottom: '1px solid #e5e7eb',
+          }}>
+            {['Document Required', 'Status', 'Current File', 'Actions'].map(h => (
+              <span key={h} style={{
+                fontSize: 11, fontWeight: 700, color: '#9ca3af',
+                textTransform: 'uppercase', letterSpacing: '0.06em',
+              }}>{h}</span>
+            ))}
           </div>
 
-          {/* Document table */}
-          <div style={{ ...card, overflow: 'hidden' }}>
+          {DOC_TYPES.map((type, i) => {
+            const doc     = docs.find(d => d.doc_type === type)
+            const isLast  = i === DOC_TYPES.length - 1
 
-            {/* Header */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '2fr 0.8fr 1fr 2.2fr',
-              padding: '10px 22px',
-              background: '#f9fafb', borderBottom: '1px solid #e5e7eb',
-            }}>
-              {['Document Required', 'Status', 'Current File', 'Actions'].map(h => (
-                <span key={h} style={{
-                  fontSize: 11, fontWeight: 700, color: '#9ca3af',
-                  textTransform: 'uppercase', letterSpacing: '0.06em',
-                }}>{h}</span>
-              ))}
-            </div>
-
-            {DOC_TYPES.map((type, i) => {
-              const doc     = docs.find(d => d.doc_type === type)
-              const isLast  = i === DOC_TYPES.length - 1
-
-              // Doc type not in DB yet (admin hasn't run the SQL)
-              if (!doc) return (
-                <div key={type} style={{
-                  display: 'grid', gridTemplateColumns: '2fr 0.8fr 1fr 2.2fr',
-                  padding: '16px 22px', alignItems: 'center',
-                  borderBottom: isLast ? 'none' : '1px solid #f3f4f6',
-                  opacity: 0.5,
-                }}>
-                  <div style={{ fontSize: 13, color: '#374151' }}>📋 {type}</div>
-                  <span style={{
-                    padding: '4px 11px', borderRadius: 20, fontSize: 11,
-                    fontWeight: 700, background: '#f3f4f6', color: '#9ca3af',
-                    display: 'inline-block',
-                  }}>Not set up</span>
-                  <div />
-                  <div style={{ fontSize: 12, color: '#9ca3af' }}>
-                    Contact your counsellor.
-                  </div>
+            // Doc type not in DB yet (admin hasn't run the SQL)
+            if (!doc) return (
+              <div key={type} style={{
+                display: 'grid', gridTemplateColumns: '2fr 0.8fr 1fr 2.2fr',
+                padding: '16px 22px', alignItems: 'center',
+                borderBottom: isLast ? 'none' : '1px solid #f3f4f6',
+                opacity: 0.5,
+              }}>
+                <div style={{ fontSize: 13, color: '#374151', display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <FileQuestion size={16} color="#9ca3af" />
+                  {type}
                 </div>
-              )
-
-              const sc        = STATUS_COLOR[doc.status] || STATUS_COLOR.Missing
-              const isUping   = uploading[doc.id]
-              const isDeling  = deleting[doc.id]
-              const success   = uploadSuccess[doc.id]
-              const hasFile   = !!doc.file_url
-              const isVerified = doc.status === 'Verified'
-
-              return (
-                <div
-                  key={type}
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '2fr 0.8fr 1fr 2.2fr',
-                    padding: '16px 22px', alignItems: 'center',
-                    borderBottom: isLast ? 'none' : '1px solid #f3f4f6',
-                    background: isVerified ? '#f0fdf4' : 'transparent',
-                    transition: 'background 0.15s',
-                  }}
-                >
-                  {/* Document name + counsellor note */}
-                  <div>
-                    <div style={{
-                      fontSize: 13, fontWeight: 600, color: '#111827',
-                      display: 'flex', alignItems: 'center', gap: 7,
-                    }}>
-                      <span style={{ fontSize: 16 }}>
-                        {isVerified ? '✅' : hasFile ? '📄' : '📋'}
-                      </span>
-                      {type}
-                    </div>
-                    {doc.note && (
-                      <div style={{
-                        fontSize: 11, color: '#92400e', marginTop: 5,
-                        background: '#fef9c3', border: '1px solid #fde68a',
-                        padding: '3px 9px', borderRadius: 5, display: 'inline-block',
-                      }}>
-                        💬 {doc.note}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Status badge */}
-                  <span style={{
-                    padding: '4px 11px', borderRadius: 20,
-                    fontSize: 11, fontWeight: 700,
-                    background: sc.bg, color: sc.color,
-                    display: 'inline-block', whiteSpace: 'nowrap',
-                  }}>
-                    {sc.label}
-                  </span>
-
-                  {/* Current file link */}
-                  <div>
-                    {hasFile ? (
-                      <a
-                        href={doc.file_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{
-                          fontSize: 12, color: '#1a56db', fontWeight: 600,
-                          textDecoration: 'none',
-                          display: 'inline-flex', alignItems: 'center', gap: 4,
-                        }}
-                      >
-                        📎 View file
-                      </a>
-                    ) : (
-                      <span style={{ fontSize: 12, color: '#d1d5db' }}>No file yet</span>
-                    )}
-                  </div>
-
-                  {/* Actions: upload + delete */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-
-                    {/* Verified — no actions allowed */}
-                    {isVerified && (
-                      <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
-                        ✓ Verified — contact counsellor to replace
-                      </span>
-                    )}
-
-                    {/* Not verified — show upload + delete controls */}
-                    {!isVerified && (
-                      <>
-                        {/* Upload row */}
-                        <UploadControl
-                          doc={doc}
-                          isUploading={isUping}
-                          successName={success}
-                          onUpload={handleUpload}
-                        />
-
-                        {/* Delete button — only shown when a file exists */}
-                        {hasFile && (
-                          <button
-                            onClick={() => handleDelete(doc)}
-                            disabled={isDeling}
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 5,
-                              padding: '5px 12px', width: 'fit-content',
-                              background: isDeling ? '#f9fafb' : '#fef2f2',
-                              border: '1px solid #fecaca',
-                              borderRadius: 7, fontSize: 12, fontWeight: 600,
-                              color: isDeling ? '#9ca3af' : '#dc2626',
-                              cursor: isDeling ? 'not-allowed' : 'pointer',
-                              fontFamily: 'inherit',
-                              transition: 'background 0.15s',
-                            }}
-                            onMouseEnter={e => {
-                              if (!isDeling) e.currentTarget.style.background = '#fee2e2'
-                            }}
-                            onMouseLeave={e => {
-                              if (!isDeling) e.currentTarget.style.background = '#fef2f2'
-                            }}
-                          >
-                            {isDeling ? '⏳ Deleting…' : '🗑️ Delete file'}
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-
-          {/* All done banner */}
-          {missing === 0 && (
-            <div style={{
-              ...card, marginTop: 16, padding: '18px 24px',
-              background: '#f0fdf4', border: '1px solid #bbf7d0',
-              display: 'flex', alignItems: 'center', gap: 14,
-            }}>
-              <span style={{ fontSize: 28 }}>🎉</span>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#15803d' }}>
-                  All documents submitted!
-                </div>
-                <div style={{ fontSize: 12, color: '#16a34a', marginTop: 2 }}>
-                  Your counsellor will review and verify each document.
-                  You'll be contacted once the process is complete.
+                <span style={{
+                  padding: '4px 11px', borderRadius: 20, fontSize: 11,
+                  fontWeight: 700, background: '#f3f4f6', color: '#9ca3af',
+                  display: 'inline-block',
+                }}>Not set up</span>
+                <div />
+                <div style={{ fontSize: 12, color: '#9ca3af' }}>
+                  Contact your counsellor.
                 </div>
               </div>
-            </div>
-          )}
+            )
 
-          <div style={{
-            textAlign: 'center', marginTop: 20,
-            fontSize: 12, color: '#9ca3af',
-          }}>
-            Files are securely stored. Only Global Pathway counsellors can access your documents.
-          </div>
+            const sc        = STATUS_COLOR[doc.status] || STATUS_COLOR.Missing
+            const isUping   = uploading[doc.id]
+            const isDeling  = deleting[doc.id]
+            const success   = uploadSuccess[doc.id]
+            const hasFile   = !!doc.file_url
+            const isVerified = doc.status === 'Verified'
 
+            return (
+              <div
+                key={type}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '2fr 0.8fr 1fr 2.2fr',
+                  padding: '16px 22px', alignItems: 'center',
+                  borderBottom: isLast ? 'none' : '1px solid #f3f4f6',
+                  background: isVerified ? '#f0fdf4' : 'transparent',
+                  transition: 'background 0.15s',
+                }}
+              >
+                {/* Document name + counsellor note */}
+                <div>
+                  <div style={{
+                    fontSize: 13, fontWeight: 600, color: '#111827',
+                    display: 'flex', alignItems: 'center', gap: 7,
+                  }}>
+                    {isVerified
+                      ? <CheckCircle2 size={16} color="#16a34a" />
+                      : hasFile
+                        ? <FileText size={16} color="#6b7280" />
+                        : <ClipboardList size={16} color="#9ca3af" />
+                    }
+                    {type}
+                  </div>
+                  {doc.note && (
+                    <div style={{
+                      fontSize: 11, color: '#92400e', marginTop: 5,
+                      background: '#fef9c3', border: '1px solid #fde68a',
+                      padding: '3px 9px', borderRadius: 5, display: 'inline-flex',
+                      alignItems: 'center', gap: 5,
+                    }}>
+                      <MessageSquare size={12} color="#92400e" />
+                      {doc.note}
+                    </div>
+                  )}
+                </div>
+
+                {/* Status badge */}
+                <span style={{
+                  padding: '4px 11px', borderRadius: 20,
+                  fontSize: 11, fontWeight: 700,
+                  background: sc.bg, color: sc.color,
+                  display: 'inline-block', whiteSpace: 'nowrap',
+                }}>
+                  {sc.label}
+                </span>
+
+                {/* Current file link */}
+                <div>
+                  {hasFile ? (
+                    <a
+                      href={doc.file_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        fontSize: 12, color: '#1a56db', fontWeight: 600,
+                        textDecoration: 'none',
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                      }}
+                    >
+                      <Paperclip size={13} color="#1a56db" />
+                      View file
+                    </a>
+                  ) : (
+                    <span style={{ fontSize: 12, color: '#d1d5db' }}>No file yet</span>
+                  )}
+                </div>
+
+                {/* Actions: upload + delete */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+
+                  {/* Verified — no actions allowed */}
+                  {isVerified && (
+                    <span style={{
+                      fontSize: 12, color: '#16a34a', fontWeight: 600,
+                      display: 'inline-flex', alignItems: 'center', gap: 5,
+                    }}>
+                      <CheckCircle2 size={14} color="#16a34a" />
+                      Verified — contact counsellor to replace
+                    </span>
+                  )}
+
+                  {/* Not verified — show upload + delete controls */}
+                  {!isVerified && (
+                    <>
+                      {/* Upload row */}
+                      <UploadControl
+                        doc={doc}
+                        isUploading={isUping}
+                        successName={success}
+                        onUpload={handleUpload}
+                      />
+
+                      {/* Delete button — only shown when a file exists */}
+                      {hasFile && (
+                        <button
+                          onClick={() => handleDelete(doc)}
+                          disabled={isDeling}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 5,
+                            padding: '5px 12px', width: 'fit-content',
+                            background: isDeling ? '#f9fafb' : '#fef2f2',
+                            border: '1px solid #fecaca',
+                            borderRadius: 7, fontSize: 12, fontWeight: 600,
+                            color: isDeling ? '#9ca3af' : '#dc2626',
+                            cursor: isDeling ? 'not-allowed' : 'pointer',
+                            fontFamily: 'inherit',
+                            transition: 'background 0.15s',
+                          }}
+                          onMouseEnter={e => {
+                            if (!isDeling) e.currentTarget.style.background = '#fee2e2'
+                          }}
+                          onMouseLeave={e => {
+                            if (!isDeling) e.currentTarget.style.background = '#fef2f2'
+                          }}
+                        >
+                          {isDeling
+                            ? <><Loader2 size={13} className="animate-spin" /> Deleting…</>
+                            : <><Trash2 size={13} /> Delete file</>
+                          }
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            )
+          })}
         </div>
-      )}
+
+        {/* All done banner */}
+        {missing === 0 && (
+          <div style={{
+            ...card, marginTop: 16, padding: '18px 24px',
+            background: '#f0fdf4', border: '1px solid #bbf7d0',
+            display: 'flex', alignItems: 'center', gap: 14,
+          }}>
+            <PartyPopper size={28} color="#15803d" />
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#15803d' }}>
+                All documents submitted!
+              </div>
+              <div style={{ fontSize: 12, color: '#16a34a', marginTop: 2 }}>
+                Your counsellor will review and verify each document.
+                You'll be contacted once the process is complete.
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div style={{
+          textAlign: 'center', marginTop: 20,
+          fontSize: 12, color: '#9ca3af',
+        }}>
+          Files are securely stored. Only Global Pathway counsellors can access your documents.
+        </div>
+
+      </div>
     </div>
   )
 }
@@ -625,8 +566,12 @@ function UploadControl({ doc, isUploading, successName, onUpload }) {
 
   if (successName) {
     return (
-      <div style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
-        ✓ Uploaded: {successName}
+      <div style={{
+        fontSize: 12, color: '#16a34a', fontWeight: 600,
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+      }}>
+        <CheckCircle2 size={14} color="#16a34a" />
+        Uploaded: {successName}
       </div>
     )
   }
@@ -640,7 +585,8 @@ function UploadControl({ doc, isUploading, successName, onUpload }) {
         borderRadius: 7, fontSize: 12, fontWeight: 600, color: '#374151',
         cursor: 'pointer',
       }}>
-        📂 {file
+        <FolderOpen size={14} color="#374151" />
+        {file
           ? (file.name.length > 18 ? file.name.slice(0, 16) + '…' : file.name)
           : 'Choose file'}
         <input
@@ -657,6 +603,7 @@ function UploadControl({ doc, isUploading, successName, onUpload }) {
           onClick={handleClick}
           disabled={isUploading}
           style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
             padding: '6px 14px',
             background: isUploading ? '#9ca3af' : '#1a56db',
             border: 'none', borderRadius: 7,
@@ -665,7 +612,10 @@ function UploadControl({ doc, isUploading, successName, onUpload }) {
             fontFamily: 'inherit',
           }}
         >
-          {isUploading ? 'Uploading…' : 'Upload ↑'}
+          {isUploading
+            ? <><Loader2 size={13} className="animate-spin" /> Uploading…</>
+            : 'Upload ↑'
+          }
         </button>
       )}
     </div>

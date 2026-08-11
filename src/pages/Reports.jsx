@@ -1,16 +1,28 @@
-
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import theme from '../theme'
+import { useIsMobile } from '../hooks/useIsMobile'
+import {
+  Download,
+  Printer,
+  UserPlus,
+  TrendingUp,
+  Wallet,
+  BadgeCheck,
+  BarChart3,
+  Globe2,
+  Users,
+} from 'lucide-react'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Reports & Analytics page
-// Shows: top stat cards, conversion funnel, source pie chart,
-//        country bar chart, and staff performance table
-// All data comes from supabase — no hardcoded numbers
+// Shows: top stat cards, conversion funnel, country bar chart, and
+//        staff performance table. All data comes from supabase — no
+//        hardcoded numbers.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function Reports() {
+  const isMobile = useIsMobile()
 
   // raw data from supabase
   const [applicants, setApplicants] = useState([])
@@ -48,7 +60,11 @@ export default function Reports() {
   }).length
 
   // lead → abroad conversions (anyone who reached Abroad stage)
-  const conversions = applicants.filter(a => a.stage === 'Abroad').length
+  // NOTE: the pipeline position lives in the "status" column (confirmed by
+  // your Students/Applicants pages, which read/write a.status) — this was
+  // previously checking a.stage, a column that doesn't exist, so this
+  // always read 0 regardless of real data.
+  const conversions = applicants.filter(a => a.status === 'Abroad').length
 
   // total paid payments this month
   const monthRevenue = payments
@@ -64,33 +80,34 @@ export default function Reports() {
   const visaApprovals = applicants.filter(a => a.status === 'Approved').length
 
   // ── funnel stages ─────────────────────────────────────────────────────────
-  // count applicants in each pipeline stage
-  const funnelData = [
-    { label: 'Lead',      count: applicants.filter(a => a.stage === 'Lead').length,      color: '#ef4444' },
-    { label: 'Inquiring', count: applicants.filter(a => a.stage === 'Inquiring').length,  color: '#8b5cf6' },
-    { label: 'Class',     count: applicants.filter(a => a.stage === 'Class').length,      color: '#a855f7' },
-    { label: 'Abroad',    count: applicants.filter(a => a.stage === 'Abroad').length,     color: theme.primary },
+  // count applicants in each pipeline stage — using a.status (see note
+  // above), and matching the actual values used elsewhere in the app
+  // ('New' and 'Class/Enrolled', not 'Lead' and 'Class').
+  //
+  // Covers all 11 real status values from your Applicants dropdown
+  // (New, Pending, Approved, Rejected, Inquiring, Counseling,
+  // Documentation, Applied, Visa Process, Class/Enrolled, Abroad) instead
+  // of only 4 hand-picked ones — so every applicant is represented
+  // somewhere in this chart, not just the ones matching 4 old labels.
+  const FUNNEL_STATUSES = [
+    { label: 'New',            color: '#ef4444' },
+    { label: 'Pending',        color: '#f97316' },
+    { label: 'Inquiring',      color: '#8b5cf6' },
+    { label: 'Counseling',     color: '#a855f7' },
+    { label: 'Documentation',  color: '#f59e0b' },
+    { label: 'Applied',        color: '#3b82f6' },
+    { label: 'Visa Process',   color: '#06b6d4' },
+    { label: 'Class/Enrolled', color: '#6366f1' },
+    { label: 'Approved',       color: '#22c55e' },
+    { label: 'Abroad',         color: theme.primary },
+    { label: 'Rejected',       color: '#dc2626' },
   ]
+  const funnelData = FUNNEL_STATUSES.map(s => ({
+    ...s,
+    count: applicants.filter(a => a.status === s.label).length,
+  }))
   // highest count — used to calculate bar width percentage
   const funnelMax = Math.max(...funnelData.map(f => f.count), 1)
-
-  // ── source breakdown ──────────────────────────────────────────────────────
-  // how did each applicant hear about us?
-  const sourceMap = {}
-  applicants.forEach(a => {
-    const src = a.source || 'Unknown'
-    sourceMap[src] = (sourceMap[src] || 0) + 1
-  })
-  const sourceTotal = applicants.length || 1
-
-  // colors for each slice of the pie
-  const sourceColors = ['#4F46E5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
-  const sourceEntries = Object.entries(sourceMap).map(([name, count], i) => ({
-    name,
-    count,
-    pct: Math.round((count / sourceTotal) * 100),
-    color: sourceColors[i % sourceColors.length],
-  }))
 
   // ── country breakdown ─────────────────────────────────────────────────────
   const countryList = ['Korea','Australia','Japan','UK','USA','Canada','Finland','Others']
@@ -99,8 +116,8 @@ export default function Reports() {
       ? applicants.filter(a => !countryList.slice(0,-1).includes(a.country)).length
       : applicants.filter(a => a.country === c).length
     const abroad = c === 'Others'
-      ? applicants.filter(a => !countryList.slice(0,-1).includes(a.country) && a.stage === 'Abroad').length
-      : applicants.filter(a => a.country === c && a.stage === 'Abroad').length
+      ? applicants.filter(a => !countryList.slice(0,-1).includes(a.country) && a.status === 'Abroad').length
+      : applicants.filter(a => a.country === c && a.status === 'Abroad').length
     return { country: c, total, abroad }
   })
   const countryMax = Math.max(...countryData.map(d => d.total), 1)
@@ -116,34 +133,10 @@ export default function Reports() {
 
   // ── top stat cards ────────────────────────────────────────────────────────
   const topCards = [
-    {
-      label: 'New This Month',
-      value: newThisMonth,
-      sub:   'Applicants',
-      color: 'black',
-   
-    },
-    {
-      label: 'Conversions',
-      value: conversions,
-      sub:   'Lead → Abroad',
-      color: 'black',
-  
-    },
-    {
-      label: 'Month Revenue',
-      value: `Rs${monthRevenue.toLocaleString()}`,
-     
-      color: 'black',
-     
-    },
-    {
-      label: 'Visa Approvals',
-      value: visaApprovals,
-      sub:   'This month',
-      color: 'black',
-     
-    },
+    { label: 'New This Month',  value: newThisMonth,                        sub: 'Applicants',    border: '#2563eb', Icon: UserPlus   },
+    { label: 'Conversions',     value: conversions,                         sub: 'Lead → Abroad', border: '#16a34a', Icon: TrendingUp },
+    { label: 'Month Revenue',   value: `Rs ${monthRevenue.toLocaleString()}`, sub: 'Collected',   border: '#ca8a04', Icon: Wallet     },
+    { label: 'Visa Approvals',  value: visaApprovals,                       sub: 'This month',    border: '#7c3aed', Icon: BadgeCheck },
   ]
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -159,54 +152,29 @@ export default function Reports() {
     return map[role] || { bg: '#f3f4f6', color: '#374151' }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // build a simple SVG donut / pie chart from source data
-  // each source gets an arc, legend shows below
-  const buildPie = () => {
-    if (sourceEntries.length === 0) return null
-    const cx = 130, cy = 130, r = 100, inner = 55
-    let startAngle = -Math.PI / 2  // start from top
-
-    const slices = sourceEntries.map(entry => {
-      const angle = (entry.count / sourceTotal) * 2 * Math.PI
-      const x1 = cx + r * Math.cos(startAngle)
-      const y1 = cy + r * Math.sin(startAngle)
-      const x2 = cx + r * Math.cos(startAngle + angle)
-      const y2 = cy + r * Math.sin(startAngle + angle)
-      const xi1 = cx + inner * Math.cos(startAngle)
-      const yi1 = cy + inner * Math.sin(startAngle)
-      const xi2 = cx + inner * Math.cos(startAngle + angle)
-      const yi2 = cy + inner * Math.sin(startAngle + angle)
-      const largeArc = angle > Math.PI ? 1 : 0
-      const path = `
-        M ${x1} ${y1}
-        A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}
-        L ${xi2} ${yi2}
-        A ${inner} ${inner} 0 ${largeArc} 0 ${xi1} ${yi1}
-        Z
-      `
-      const midAngle = startAngle + angle / 2
-      startAngle += angle
-      return { path, color: entry.color, label: entry.name, pct: entry.pct, midAngle }
-    })
-
-    return (
-      <svg viewBox="0 0 260 260" width="220" height="220">
-        {slices.map((s, i) => (
-          <path key={i} d={s.path} fill={s.color} stroke="#fff" strokeWidth={2} />
-        ))}
-        {/* center label */}
-        <text x={cx} y={cy - 6} textAnchor="middle"
-          fontSize={13} fill={theme.textLight} fontWeight={500}>
-          Total
-        </text>
-        <text x={cx} y={cy + 14} textAnchor="middle"
-          fontSize={22} fill={theme.textDark} fontWeight={800}>
-          {applicants.length}
-        </text>
-      </svg>
-    )
+  // shared card shell for the analytics panels
+  const panelStyle = {
+    background: theme.cardBg,
+    border: `1px solid ${theme.border}`,
+    borderRadius: 12,
+    padding: isMobile ? 16 : 20,
   }
+
+  const panelTitle = (Icon, text) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+      <span style={{
+        width: 30, height: 30, borderRadius: 8,
+        background: theme.primaryLight || '#eff6ff',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0, color: theme.primary || '#2563eb',
+      }}>
+        <Icon size={16} strokeWidth={2.2} />
+      </span>
+      <span style={{ fontSize: 15, fontWeight: 700, color: theme.textDark }}>
+        {text}
+      </span>
+    </div>
+  )
 
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -222,30 +190,32 @@ export default function Reports() {
       {/* ── page header ───────────────────────────────────────────────────── */}
       <div style={{
         display: 'flex',
+        flexDirection: isMobile ? 'column' : 'row',
         justifyContent: 'space-between',
-        alignItems: 'flex-start',
+        alignItems: isMobile ? 'stretch' : 'flex-start',
+        gap: isMobile ? 12 : 0,
         marginBottom: 24,
       }}>
         <div>
           <h1 style={{
-            fontSize: 22,
+            fontSize: isMobile ? 19 : 22,
             fontWeight: 700,
             color: theme.textDark,
             margin: 0,
           }}>
-           
+            Reports & Analytics
           </h1>
           <p style={{
             fontSize: 13,
             color: theme.textLight,
             marginTop: 4,
           }}>
-            
+            A live overview of pipeline, revenue, and team performance
           </p>
         </div>
 
         {/* export + print buttons */}
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flexDirection: isMobile ? 'column' : 'row' }}>
           <button style={{
             padding: '8px 16px',
             background: theme.cardBg,
@@ -257,9 +227,12 @@ export default function Reports() {
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: 6,
+            justifyContent: 'center',
+            gap: 7,
+            width: isMobile ? '100%' : 'auto',
           }}>
-             Export All
+            <Download size={15} />
+            Export All
           </button>
           <button style={{
             padding: '8px 16px',
@@ -272,9 +245,12 @@ export default function Reports() {
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: 6,
+            justifyContent: 'center',
+            gap: 7,
+            width: isMobile ? '100%' : 'auto',
           }}>
-             Print Report
+            <Printer size={15} />
+            Print Report
           </button>
         </div>
       </div>
@@ -282,31 +258,39 @@ export default function Reports() {
       {/* ── top 4 stat cards ──────────────────────────────────────────────── */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(4, 1fr)',
-        gap: 16,
+        gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
+        gap: isMobile ? 10 : 16,
         marginBottom: 24,
       }}>
         {topCards.map(card => (
           <div key={card.label} style={{
             background: theme.cardBg,
             border: `1px solid ${theme.border}`,
-            borderTop: `3px solid ${card.border}`,  // colored top line
+            borderTop: `3px solid ${card.border}`,
             borderRadius: 12,
-            padding: '20px',
+            padding: isMobile ? '14px 16px' : '20px',
           }}>
-            <p style={{
-              fontSize: 13,
-              color: theme.textLight,
-              margin: '0 0 10px 0',
-              fontWeight: 500,
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              marginBottom: 10,
             }}>
-              {card.label}
-            </p>
+              <p style={{
+                fontSize: 12,
+                color: theme.textLight,
+                margin: 0,
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.03em',
+              }}>
+                {card.label}
+              </p>
+              <card.Icon size={16} color={card.border} strokeWidth={2.2} />
+            </div>
             {/* big number */}
             <div style={{
-              fontSize: 34,
+              fontSize: isMobile ? 24 : 34,
               fontWeight: 800,
-              color: card.color,
+              color: theme.textDark,
               lineHeight: 1,
               marginBottom: 6,
             }}>
@@ -323,212 +307,61 @@ export default function Reports() {
         ))}
       </div>
 
-      {/* ── row 2: funnel + source pie ────────────────────────────────────── */}
+      {/* ── row 2: funnel + country popularity side by side ──────────────── */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
+        gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
         gap: 16,
         marginBottom: 16,
       }}>
 
         {/* conversion funnel ─────────────────────────────────────────────── */}
-        <div style={{
-          background: theme.cardBg,
-          border: `1px solid ${theme.border}`,
-          borderRadius: 12,
-          padding: 20,
-        }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            marginBottom: 20,
-          }}>
-            <span style={{ fontSize: 16 }}></span>
-            <span style={{
-              fontSize: 15,
-              fontWeight: 700,
-              color: theme.textDark,
-            }}>
-              Conversion Funnel
-            </span>
-          </div>
+        <div style={panelStyle}>
+          {panelTitle(BarChart3, 'Conversion Funnel')}
 
-          {/* bar for each stage */}
+          {/* compact horizontal row per status — label left, bar + count right */}
           {funnelData.map(stage => (
-            <div key={stage.label} style={{ marginBottom: 18 }}>
-
-              {/* count number above bar */}
+            <div key={stage.label} style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              marginBottom: 10,
+            }}>
               <div style={{
-                fontSize: 13,
-                fontWeight: 700,
-                color: theme.textDark,
-                marginBottom: 6,
-                textAlign: 'center',
-                width: `${Math.max((stage.count / funnelMax) * 100, 8)}%`,
+                width: 100, flexShrink: 0,
+                fontSize: 12, color: theme.textLight, fontWeight: 500,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>
-                {stage.count}
+                {stage.label}
               </div>
 
-              {/* the colored bar */}
               <div style={{
-                height: 36,
+                flex: 1, height: 20,
                 background: theme.pageBg,
-                borderRadius: 6,
+                borderRadius: 5,
                 overflow: 'hidden',
               }}>
                 <div style={{
                   height: '100%',
-                  width: `${Math.max((stage.count / funnelMax) * 100, 4)}%`,
+                  width: `${Math.max((stage.count / funnelMax) * 100, stage.count > 0 ? 4 : 0)}%`,
                   background: stage.color,
-                  borderRadius: 6,
-                  minWidth: stage.count > 0 ? 40 : 0,
+                  borderRadius: 5,
+                  minWidth: stage.count > 0 ? 20 : 0,
                   transition: 'width 0.6s ease',
                 }} />
               </div>
 
-              {/* label below */}
               <div style={{
-                fontSize: 12,
-                color: theme.textLight,
-                marginTop: 5,
-                fontWeight: 500,
+                width: 24, flexShrink: 0, textAlign: 'right',
+                fontSize: 13, fontWeight: 700, color: theme.textDark,
               }}>
-                {stage.label}
+                {stage.count}
               </div>
             </div>
           ))}
         </div>
 
-        {/* source analysis pie ────────────────────────────────────────────── */}
-        <div style={{
-          background: theme.cardBg,
-          border: `1px solid ${theme.border}`,
-          borderRadius: 12,
-          padding: 20,
-        }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            marginBottom: 20,
-          }}>
-            <span style={{ fontSize: 16 }}></span>
-            <span style={{
-              fontSize: 15,
-              fontWeight: 700,
-              color: theme.textDark,
-            }}>
-              Source Analysis
-            </span>
-          </div>
-
-          {/* pie + legend side by side */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 20,
-          }}>
-
-            {/* SVG donut chart */}
-            <div style={{ flexShrink: 0 }}>
-              {buildPie() || (
-                <div style={{
-                  width: 180,
-                  height: 180,
-                  borderRadius: '50%',
-                  background: theme.pageBg,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 13,
-                  color: theme.textMuted,
-                }}>
-                  No data
-                </div>
-              )}
-            </div>
-
-            {/* legend dots */}
-            <div style={{ flex: 1 }}>
-              {sourceEntries.map(entry => (
-                <div key={entry.name} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: 10,
-                }}>
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                  }}>
-                    <div style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: '50%',
-                      background: entry.color,
-                      flexShrink: 0,
-                    }} />
-                    <span style={{
-                      fontSize: 13,
-                      color: theme.textMid,
-                    }}>
-                      {entry.name}
-                    </span>
-                  </div>
-                  <span style={{
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: entry.color,
-                  }}>
-                    {entry.pct}%
-                  </span>
-                </div>
-              ))}
-              {sourceEntries.length === 0 && (
-                <p style={{
-                  fontSize: 13,
-                  color: theme.textMuted,
-                  margin: 0,
-                }}>
-                  No source data yet
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── row 3: country bar chart + staff table ────────────────────────── */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: 16,
-      }}>
-
         {/* country popularity bar chart ───────────────────────────────────── */}
-        <div style={{
-          background: theme.cardBg,
-          border: `1px solid ${theme.border}`,
-          borderRadius: 12,
-          padding: 20,
-        }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            marginBottom: 6,
-          }}>
-            <span style={{ fontSize: 16 }}></span>
-            <span style={{
-              fontSize: 15,
-              fontWeight: 700,
-              color: theme.textDark,
-            }}>
-              Country Popularity
-            </span>
-          </div>
+        <div style={panelStyle}>
+          {panelTitle(Globe2, 'Country Popularity')}
 
           {/* legend: total vs abroad */}
           <div style={{
@@ -536,94 +369,76 @@ export default function Reports() {
             gap: 16,
             marginBottom: 20,
           }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}>
-              <div style={{
-                width: 28,
-                height: 10,
-                background: '#8b5cf6',
-                borderRadius: 2,
-              }} />
-              <span style={{ fontSize: 12, color: theme.textLight }}>
-                Total
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ width: 28, height: 10, background: '#8b5cf6', borderRadius: 2 }} />
+              <span style={{ fontSize: 12, color: theme.textLight }}>Total</span>
             </div>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}>
-              <div style={{
-                width: 28,
-                height: 10,
-                background: theme.primary,
-                borderRadius: 2,
-              }} />
-              <span style={{ fontSize: 12, color: theme.textLight }}>
-                Abroad
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ width: 28, height: 10, background: theme.primary, borderRadius: 2 }} />
+              <span style={{ fontSize: 12, color: theme.textLight }}>Abroad</span>
             </div>
           </div>
 
-          {/* vertical bars */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'flex-end',
-            gap: 10,
-            height: 160,
-            paddingBottom: 4,
-          }}>
-            {countryData.map(d => (
-              <div key={d.country} style={{
-                flex: 1,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 3,
-                height: '100%',
-                justifyContent: 'flex-end',
-              }}>
-                {/* total + abroad bars side by side */}
-                <div style={{
+          {/* vertical bars — horizontal scroll on phone so 8 columns don't get crushed */}
+          <div style={{ overflowX: isMobile ? 'auto' : 'visible', WebkitOverflowScrolling: 'touch' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'flex-end',
+              gap: 10,
+              height: 160,
+              paddingBottom: 4,
+              minWidth: isMobile ? 480 : 'auto',
+            }}>
+              {countryData.map(d => (
+                <div key={d.country} style={{
+                  flex: 1,
                   display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
                   gap: 3,
-                  alignItems: 'flex-end',
-                  width: '100%',
-                  justifyContent: 'center',
+                  height: '100%',
+                  justifyContent: 'flex-end',
+                  minWidth: isMobile ? 50 : 'auto',
                 }}>
-                  {/* total bar */}
+                  {/* total + abroad bars side by side */}
                   <div style={{
-                    width: '45%',
-                    height: Math.max((d.total / countryMax) * 130, d.total > 0 ? 4 : 0),
-                    background: '#8b5cf6',
-                    borderRadius: '3px 3px 0 0',
-                    transition: 'height 0.5s ease',
-                  }} />
-                  {/* abroad bar */}
-                  <div style={{
-                    width: '45%',
-                    height: Math.max((d.abroad / countryMax) * 130, d.abroad > 0 ? 4 : 0),
-                    background: theme.primary,
-                    borderRadius: '3px 3px 0 0',
-                    transition: 'height 0.5s ease',
-                  }} />
-                </div>
+                    display: 'flex',
+                    gap: 3,
+                    alignItems: 'flex-end',
+                    width: '100%',
+                    justifyContent: 'center',
+                  }}>
+                    {/* total bar */}
+                    <div style={{
+                      width: '45%',
+                      height: Math.max((d.total / countryMax) * 130, d.total > 0 ? 4 : 0),
+                      background: '#8b5cf6',
+                      borderRadius: '3px 3px 0 0',
+                      transition: 'height 0.5s ease',
+                    }} />
+                    {/* abroad bar */}
+                    <div style={{
+                      width: '45%',
+                      height: Math.max((d.abroad / countryMax) * 130, d.abroad > 0 ? 4 : 0),
+                      background: theme.primary,
+                      borderRadius: '3px 3px 0 0',
+                      transition: 'height 0.5s ease',
+                    }} />
+                  </div>
 
-                {/* country label */}
-                <span style={{
-                  fontSize: 10,
-                  color: theme.textLight,
-                  textAlign: 'center',
-                  marginTop: 4,
-                  lineHeight: 1.2,
-                }}>
-                  {d.country}
-                </span>
-              </div>
-            ))}
+                  {/* country label */}
+                  <span style={{
+                    fontSize: 10,
+                    color: theme.textLight,
+                    textAlign: 'center',
+                    marginTop: 4,
+                    lineHeight: 1.2,
+                  }}>
+                    {d.country}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* y-axis reference line (just for feel) */}
@@ -635,36 +450,17 @@ export default function Reports() {
             paddingTop: 4,
           }}>
             <span style={{ fontSize: 10, color: theme.textMuted }}>0</span>
-            <span style={{ fontSize: 10, color: theme.textMuted }}>
-              {countryMax}
-            </span>
+            <span style={{ fontSize: 10, color: theme.textMuted }}>{countryMax}</span>
           </div>
         </div>
+      </div>
 
-        {/* staff performance table ─────────────────────────────────────────── */}
-        <div style={{
-          background: theme.cardBg,
-          border: `1px solid ${theme.border}`,
-          borderRadius: 12,
-          padding: 20,
-        }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            marginBottom: 20,
-          }}>
-            <span style={{ fontSize: 16 }}></span>
-            <span style={{
-              fontSize: 15,
-              fontWeight: 700,
-              color: theme.textDark,
-            }}>
-              Staff Performance
-            </span>
-          </div>
+      {/* ── row 3: staff performance — full width ─────────────────────────── */}
+      <div style={panelStyle}>
+        {panelTitle(Users, 'Staff Performance')}
 
-          {/* table header */}
+        {/* desktop: table. mobile: stacked cards */}
+        {!isMobile && (
           <div style={{
             display: 'grid',
             gridTemplateColumns: '2fr 1.5fr 1fr 1fr 1fr',
@@ -684,21 +480,69 @@ export default function Reports() {
               </span>
             ))}
           </div>
+        )}
 
-          {/* empty state */}
-          {staffWithStats.length === 0 && (
-            <div style={{
-              padding: '30px 0',
-              textAlign: 'center',
-              color: theme.textLight,
-              fontSize: 13,
+        {/* empty state */}
+        {staffWithStats.length === 0 && (
+          <div style={{
+            padding: '30px 0',
+            textAlign: 'center',
+            color: theme.textLight,
+            fontSize: 13,
+          }}>
+            No staff data yet
+          </div>
+        )}
+
+        {/* staff rows */}
+        {staffWithStats.map((s, i) => (
+          isMobile ? (
+            // ── Mobile card ──
+            <div key={s.id} style={{
+              padding: '12px 0',
+              borderBottom: i < staffWithStats.length - 1 ? `1px solid ${theme.border}` : 'none',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
             }}>
-              No staff data yet
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: theme.textDark, marginBottom: 4 }}>
+                  {s.name || '—'}
+                </div>
+                <span style={{
+                  padding: '2px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                  background: roleBadge(s.role).bg, color: roleBadge(s.role).color,
+                }}>
+                  {s.role || '—'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 14, flexShrink: 0, alignItems: 'center' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, color: theme.textLight, marginBottom: 2 }}>Applic.</div>
+                  <span style={{
+                    width: 26, height: 26, borderRadius: '50%', background: theme.primaryLight,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 11, fontWeight: 700, color: theme.primaryText, margin: '0 auto',
+                  }}>
+                    {s.applicantCount}
+                  </span>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, color: theme.textLight, marginBottom: 2 }}>Tasks</div>
+                  <div style={{ fontSize: 13, color: theme.textMid, fontWeight: 600 }}>{s.taskCount}</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, color: theme.textLight, marginBottom: 2 }}>Done</div>
+                  <span style={{
+                    width: 26, height: 26, borderRadius: '50%', background: theme.primaryLight,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 11, fontWeight: 700, color: theme.primaryText, margin: '0 auto',
+                  }}>
+                    {s.doneCount}
+                  </span>
+                </div>
+              </div>
             </div>
-          )}
-
-          {/* staff rows */}
-          {staffWithStats.map((s, i) => (
+          ) : (
+            // ── Desktop row ──
             <div
               key={s.id}
               style={{
@@ -711,11 +555,7 @@ export default function Reports() {
               }}
             >
               {/* name */}
-              <div style={{
-                fontSize: 14,
-                fontWeight: 500,
-                color: theme.textDark,
-              }}>
+              <div style={{ fontSize: 14, fontWeight: 500, color: theme.textDark }}>
                 {s.name || '—'}
               </div>
 
@@ -752,11 +592,7 @@ export default function Reports() {
               </div>
 
               {/* task count — just number */}
-              <div style={{
-                fontSize: 14,
-                color: theme.textMid,
-                textAlign: 'center',
-              }}>
+              <div style={{ fontSize: 14, color: theme.textMid, textAlign: 'center' }}>
                 {s.taskCount}
               </div>
 
@@ -778,14 +614,10 @@ export default function Reports() {
                 </span>
               </div>
             </div>
-          ))}
-        </div>
-
+          )
+        ))}
       </div>
 
-      
-      </div>
-
-    
+    </div>
   )
 }

@@ -2,24 +2,47 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import StudentLayout from './StudentLayout'
+import { useIsMobile } from '../../hooks/useIsMobile'
+import {
+  Receipt,
+  CheckCircle2,
+  Hourglass,
+  CreditCard,
+  Banknote,
+  Circle,
+  X,
+  Zap,
+  Camera,
+  Check,
+  ArrowRight,
+  ArrowLeft,
+} from 'lucide-react'
 
 const QR_SRC = '/qr.png'
+
 const SUPABASE_URL  = 'https://txwpmjtixdbebnbqorju.supabase.co'
 const MERCHANT_CODE = 'EPAYTEST'
 
-const METHOD_OPTIONS = ['Cash', 'eSewa', 'Khalti', 'Bank Transfer']
-const TYPE_OPTIONS   = [
+// Bank Transfer removed — Cash, eSewa, Khalti only
+const METHOD_OPTIONS  = ['Cash', 'eSewa', 'Khalti']
+const TYPE_OPTIONS    = [
   'Consultation Fee', 'Application Fee', 'Visa Fee',
   'Document Fee', 'College Fee', 'Other',
 ]
-const QR_METHODS = ['eSewa', 'Khalti', 'Bank Transfer']
+const DIGITAL_METHODS = ['eSewa', 'Khalti']
+
+// Icon + color per payment method, used both in the picker and the pay-now buttons
+const METHOD_META = {
+  Cash:   { Icon: Banknote, color: '#374151' },
+  eSewa:  { Icon: Circle,   color: '#60BB46' },
+  Khalti: { Icon: Circle,   color: '#5C2D91' },
+}
 
 const statusStyle = (s) => {
-  if (s === 'paid')                 return { bg: '#dcfce7', color: '#15803d' }
-  if (s === 'pending')              return { bg: '#fef9c3', color: '#a16207' }
-  if (s === 'pending_verification') return { bg: '#dbeafe', color: '#1d4ed8' }
-  if (s === 'rejected')             return { bg: '#fee2e2', color: '#b91c1c' }
-  return                                   { bg: '#f3f4f6', color: '#6b7280' }
+  if (s === 'paid')     return { bg: '#dcfce7', color: '#15803d' }
+  if (s === 'pending')  return { bg: '#fef9c3', color: '#a16207' }
+  if (s === 'rejected') return { bg: '#fee2e2', color: '#b91c1c' }
+  return                       { bg: '#f3f4f6', color: '#6b7280' }
 }
 
 const inputStyle = {
@@ -34,15 +57,16 @@ const labelStyle = {
 }
 
 export default function StudentPayments() {
+  const isMobile = useIsMobile()
   const navigate = useNavigate()
   const profile  = JSON.parse(localStorage.getItem('profile') || '{}')
 
-  const [payments,    setPayments]    = useState([])
-  const [loading,     setLoading]     = useState(true)
-  const [showModal,   setShowModal]   = useState(false)
-  const [step,        setStep]        = useState(1)
-  const [saving,      setSaving]      = useState(false)
-  const [khaltiLoading, setKhaltiLoading] = useState(false)
+  const [payments, setPayments] = useState([])
+  const [loading,  setLoading]  = useState(true)
+
+  const [showModal, setShowModal] = useState(false)
+  const [step,      setStep]      = useState(1)
+  const [saving,    setSaving]    = useState(false)
   const [form, setForm] = useState({
     amount: '', type: TYPE_OPTIONS[0], method: 'Cash', note: '', reference: '',
   })
@@ -56,11 +80,13 @@ export default function StudentPayments() {
 
   async function load() {
     setLoading(true)
+
     const { data } = await supabase
       .from('payments')
       .select('*')
-      .eq('student_name', profile.name || '')
+      .eq('student_email', profile.email || '')
       .order('created_at', { ascending: false })
+
     setPayments(data || [])
     setLoading(false)
   }
@@ -93,36 +119,25 @@ export default function StudentPayments() {
 
     setCreatedId(data.id)
 
-    if (QR_METHODS.includes(form.method)) {
+    if (DIGITAL_METHODS.includes(form.method)) {
       setQrLoadError(false)
       setStep(2)
     } else {
-      alert('✅ Payment request submitted! The admin will confirm it shortly.')
+      alert('Payment request submitted!')
       resetModal()
       load()
     }
   }
 
-  async function submitReference() {
-    if (!form.reference.trim()) return alert('Enter your transaction reference number')
-    setSaving(true)
-    await supabase
-      .from('payments')
-      .update({ reference: form.reference.trim() })
-      .eq('id', createdId)
-    setSaving(false)
-    alert('✅ Reference submitted! Admin will verify and confirm your payment.')
-    resetModal()
-    load()
-  }
-
-  // ── eSewa instant payment ──────────────────────────────────
+  // ── eSewa instant pay ─────────────────────────────────────────────────────
   async function payWithEsewaNow() {
     try {
-      if (!createdId) { alert('Payment record not found. Please try again.'); return }
+      if (!createdId) { alert('Payment record not found.'); return }
 
-      const transactionUuid = `GP-${createdId}-${Date.now()}`
-      const amount = Number(form.amount)
+      // Random suffix (no hyphen) guarantees a unique transaction_uuid every
+      // time, even on rapid repeat clicks.
+      const transactionUuid = `GP-${createdId}-${Date.now()}${Math.floor(Math.random() * 100000)}`
+      const amount = Number(form.amount) // eSewa's form fields use plain rupees, not paisa
 
       const sigRes = await fetch(`${SUPABASE_URL}/functions/v1/esewa-sign`, {
         method: 'POST',
@@ -134,8 +149,9 @@ export default function StudentPayments() {
         }),
       })
 
-      const { signature } = await sigRes.json()
-      if (!signature) { alert('Failed to generate payment signature. Try again.'); return }
+      const result = await sigRes.json()
+      const { signature } = result
+      if (!signature) { alert('Failed to generate payment signature.'); return }
 
       const esewaForm = document.createElement('form')
       esewaForm.method = 'POST'
@@ -157,69 +173,73 @@ export default function StudentPayments() {
 
       Object.entries(fields).forEach(([key, value]) => {
         const input = document.createElement('input')
-        input.type = 'hidden'; input.name = key; input.value = String(value)
+        input.type  = 'hidden'
+        input.name  = key
+        input.value = String(value)
         esewaForm.appendChild(input)
       })
-
-      localStorage.setItem('pending_esewa_txn', JSON.stringify({
-        transaction_uuid: transactionUuid,
-        payment_id:       createdId,
-        amount,
-      }))
 
       document.body.appendChild(esewaForm)
       esewaForm.submit()
 
     } catch (err) {
-      alert('eSewa payment error: ' + err.message)
+      alert('eSewa error: ' + err.message)
     }
   }
 
-  // ── Khalti instant payment ─────────────────────────────────
+  // ── Khalti instant pay ────────────────────────────────────────────────────
   async function payWithKhaltiNow() {
     try {
-      if (!createdId) { alert('Payment record not found. Please try again.'); return }
+      if (!createdId) { alert('Payment record not found.'); return }
 
-      setKhaltiLoading(true)
-
-      const amountInPaisa = Number(form.amount) * 100  // Khalti uses paisa
+      const amountRupees = Number(form.amount)
+      // ✅ FIXED: Khalti's API works in paisa (1 Rs = 100 paisa). The edge
+      // function was rejecting small rupee amounts as "too small" because
+      // it was receiving raw rupees and validating them as if they were
+      // already paisa (e.g. Rs 600 arrived as "600 paisa" = Rs 6, which
+      // failed Khalti's Rs 10 minimum). Convert before sending.
+      const amountPaisa = Math.round(amountRupees * 100)
+      const return_url  = `${window.location.origin}/payment/khalti-success`
 
       const res = await fetch(`${SUPABASE_URL}/functions/v1/khalti-initiate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amount:      amountInPaisa,
-          payment_id:  createdId,
-          return_url:  `${window.location.origin}/payment/khalti-success`,
-          website_url: window.location.origin,
-          purchase_order_id:   createdId,
-          purchase_order_name: `Global Pathway - ${form.type}`,
-          customer_info: {
-            name:  profile.name  || 'Student',
-            email: profile.email || '',
-          },
+          payment_id:   createdId,
+          amount:       amountPaisa,
+          student_name: profile.name,
+          return_url,
         }),
       })
 
-      const data = await res.json()
-      setKhaltiLoading(false)
+      const result = await res.json()
 
-      if (data.payment_url) {
-        // Save so KhaltiSuccess page can verify
-        localStorage.setItem('pending_khalti_txn', JSON.stringify({
-          payment_id: createdId,
-          amount:     Number(form.amount),
-        }))
-        // Redirect to Khalti payment page
-        window.location.href = data.payment_url
-      } else {
-        alert('Khalti initiation failed: ' + (data.error_key || data.detail || JSON.stringify(data)))
+      if (!result.success || !result.payment_url) {
+        // Surface the real reason when the edge function provides one,
+        // instead of only the generic fallback message.
+        const detail = result.error || result.message || result.detail
+        alert(detail ? `Khalti initiation failed: ${detail}` : 'Khalti initiation failed. Please try again.')
+        return
       }
 
+      window.location.href = result.payment_url
+
     } catch (err) {
-      setKhaltiLoading(false)
-      alert('Khalti payment error: ' + err.message)
+      alert('Khalti error: ' + err.message)
     }
+  }
+
+  async function submitReference() {
+    if (!form.reference.trim()) return alert('Enter your transaction reference number')
+    setSaving(true)
+    await supabase
+      .from('payments')
+      .update({ reference: form.reference.trim() })
+      .eq('id', createdId)
+    setSaving(false)
+    alert('Reference submitted! Admin will verify and confirm your payment.')
+    resetModal()
+    load()
   }
 
   function resetModal() {
@@ -227,121 +247,239 @@ export default function StudentPayments() {
     setStep(1)
     setCreatedId(null)
     setQrLoadError(false)
-    setKhaltiLoading(false)
     setForm({ amount: '', type: TYPE_OPTIONS[0], method: 'Cash', note: '', reference: '' })
   }
 
-  const totalPaid    = payments.filter(p => p.status === 'paid').reduce((s, p) => s + (p.amount || 0), 0)
+  const totalPaid    = payments.filter(p => p.status === 'paid')
+    .reduce((s, p) => s + (p.amount || 0), 0)
   const totalPending = payments.filter(p => p.status === 'pending').length
+
+  const tableCols = '1.5fr 1fr 1.5fr 1fr 1fr 1.5fr'
 
   return (
     <StudentLayout>
       <div style={{ fontFamily: "'Segoe UI', Arial, sans-serif" }}>
 
         {/* ── HEADER ── */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
+          justifyContent: 'space-between',
+          alignItems: isMobile ? 'stretch' : 'flex-start',
+          gap: isMobile ? 12 : 0,
+          marginBottom: 24,
+        }}>
           <div>
-            <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>My Payments</h1>
-            <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>View your payment history and request a new payment</p>
+            <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>
+              My Payments
+            </h1>
+            <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
+              View your payment history and request a new payment
+            </p>
           </div>
-          <button onClick={() => setShowModal(true)} style={{
-            padding: '9px 18px', background: '#16a34a', border: 'none', borderRadius: 8,
-            fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit',
-          }}>
+          <button
+            onClick={() => setShowModal(true)}
+            style={{
+              padding: '9px 18px', background: '#16a34a',
+              border: 'none', borderRadius: 8,
+              fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer',
+              fontFamily: 'inherit',
+              width: isMobile ? '100%' : 'auto',
+            }}
+          >
             + Request Payment
           </button>
         </div>
 
         {/* ── STAT CARDS ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 24 }}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+          gap: isMobile ? 10 : 14, marginBottom: 24,
+        }}>
           {[
-            { label: 'Total Payments', value: payments.length,                   bg: '#eff6ff', icon: '🧾' },
-            { label: 'Amount Paid',    value: `Rs ${totalPaid.toLocaleString()}`, bg: '#f0fdf4', icon: '✅' },
-            { label: 'Pending',        value: totalPending,                       bg: '#fefce8', icon: '⏳' },
+            { label: 'Total Payments', value: payments.length,                    bg: '#eff6ff', Icon: Receipt,      iconColor: '#1d4ed8' },
+            { label: 'Amount Paid',    value: `Rs ${totalPaid.toLocaleString()}`,  bg: '#f0fdf4', Icon: CheckCircle2, iconColor: '#16a34a' },
+            { label: 'Pending',        value: totalPending,                        bg: '#fefce8', Icon: Hourglass,    iconColor: '#a16207' },
           ].map(c => (
             <div key={c.label} style={{
-              background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 18px',
+              background: '#fff', border: '1px solid #e5e7eb',
+              borderRadius: 10, padding: '16px 18px',
               display: 'flex', alignItems: 'center', gap: 14,
             }}>
               <div style={{
-                width: 42, height: 42, borderRadius: 10, background: c.bg, fontSize: 20,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              }}>{c.icon}</div>
+                width: 42, height: 42, borderRadius: 10,
+                background: c.bg,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <c.Icon size={20} color={c.iconColor} strokeWidth={1.75} />
+              </div>
               <div>
                 <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 3 }}>{c.label}</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: '#111827', lineHeight: 1 }}>{c.value}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: '#111827', lineHeight: 1 }}>
+                  {c.value}
+                </div>
               </div>
             </div>
           ))}
         </div>
 
-        {/* ── PAYMENTS TABLE ── */}
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
-          <div style={{
-            display: 'grid', gridTemplateColumns: '1.5fr 1fr 1.5fr 1fr 1fr 1.5fr',
-            padding: '10px 18px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb',
-          }}>
-            {['Type', 'Amount', 'Method', 'Status', 'Date', 'Reference'].map(h => (
-              <span key={h} style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</span>
-            ))}
-          </div>
+        {/* ── PAYMENTS TABLE / CARDS ── */}
+        <div style={{
+          background: '#fff', border: '1px solid #e5e7eb',
+          borderRadius: 12, overflow: 'hidden',
+        }}>
+          {!isMobile && (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: tableCols,
+              padding: '10px 18px',
+              background: '#f9fafb', borderBottom: '1px solid #e5e7eb',
+            }}>
+              {['Type', 'Amount', 'Method', 'Status', 'Date', 'Reference'].map(h => (
+                <span key={h} style={{
+                  fontSize: 11, fontWeight: 600, color: '#9ca3af',
+                  textTransform: 'uppercase', letterSpacing: '0.05em',
+                }}>{h}</span>
+              ))}
+            </div>
+          )}
 
-          {loading && <p style={{ padding: 24, fontSize: 13, color: '#6b7280' }}>Loading...</p>}
+          {loading && (
+            <p style={{ padding: 24, fontSize: 13, color: '#6b7280' }}>Loading...</p>
+          )}
 
           {!loading && payments.length === 0 && (
             <div style={{ padding: 60, textAlign: 'center', color: '#9ca3af' }}>
-              <div style={{ fontSize: 40, marginBottom: 10 }}>💳</div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>No payments yet</div>
-              <div style={{ fontSize: 13 }}>Click <strong>+ Request Payment</strong> to get started</div>
+              <CreditCard size={40} color="#d1d5db" style={{ marginBottom: 10 }} />
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>
+                No payments yet
+              </div>
+              <div style={{ fontSize: 13 }}>
+                Click <strong>+ Request Payment</strong> to get started
+              </div>
             </div>
           )}
 
           {payments.map((p, i) => (
-            <div key={p.id} style={{
-              display: 'grid', gridTemplateColumns: '1.5fr 1fr 1.5fr 1fr 1fr 1.5fr',
-              padding: '14px 18px', alignItems: 'center',
-              borderBottom: i < payments.length - 1 ? '1px solid #f3f4f6' : 'none',
-            }}
-              onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-            >
-              <div style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>{p.type || p.note || '—'}</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>Rs {(p.amount || 0).toLocaleString()}</div>
-              <div style={{ fontSize: 13, color: '#374151' }}>{p.method || '—'}</div>
-              <span style={{
-                padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, display: 'inline-block',
-                background: statusStyle(p.status).bg, color: statusStyle(p.status).color,
-              }}>{p.status || 'pending'}</span>
-              <div style={{ fontSize: 12, color: '#6b7280' }}>
-                {p.date || (p.created_at ? new Date(p.created_at).toLocaleDateString() : '—')}
+            isMobile ? (
+              // ── Mobile card ──
+              <div key={p.id} style={{
+                padding: '14px 18px',
+                borderBottom: i < payments.length - 1 ? '1px solid #f3f4f6' : 'none',
+                display: 'flex', flexDirection: 'column', gap: 6,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                    {p.type || p.note || '—'}
+                  </div>
+                  <span style={{
+                    padding: '3px 10px', borderRadius: 20, flexShrink: 0,
+                    fontSize: 11, fontWeight: 600,
+                    background: statusStyle(p.status).bg,
+                    color:      statusStyle(p.status).color,
+                  }}>
+                    {p.status || 'pending'}
+                  </span>
+                </div>
+
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>
+                  Rs {(p.amount || 0).toLocaleString()}
+                </div>
+
+                <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#374151', flexWrap: 'wrap' }}>
+                  <span><b style={{ color: '#9ca3af', fontWeight: 600 }}>Method: </b>{p.method || '—'}</span>
+                  <span style={{ color: '#6b7280' }}>
+                    {p.date || (p.created_at ? new Date(p.created_at).toLocaleDateString() : '—')}
+                  </span>
+                </div>
+
+                {(p.reference || p.pidx) && (
+                  <div style={{ fontSize: 12, color: '#9ca3af' }}>
+                    Ref: {p.reference || p.pidx}
+                  </div>
+                )}
               </div>
-              <div style={{ fontSize: 12, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {p.reference || '—'}
+            ) : (
+              // ── Desktop row ──
+              <div key={p.id} style={{
+                display: 'grid',
+                gridTemplateColumns: tableCols,
+                padding: '14px 18px', alignItems: 'center',
+                borderBottom: i < payments.length - 1 ? '1px solid #f3f4f6' : 'none',
+              }}
+                onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <div style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>
+                  {p.type || p.note || '—'}
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>
+                  Rs {(p.amount || 0).toLocaleString()}
+                </div>
+                <div style={{ fontSize: 13, color: '#374151' }}>{p.method || '—'}</div>
+                <span style={{
+                  padding: '3px 10px', borderRadius: 20,
+                  fontSize: 11, fontWeight: 600, display: 'inline-block',
+                  background: statusStyle(p.status).bg,
+                  color:      statusStyle(p.status).color,
+                }}>
+                  {p.status || 'pending'}
+                </span>
+                <div style={{ fontSize: 12, color: '#6b7280' }}>
+                  {p.date || (p.created_at ? new Date(p.created_at).toLocaleDateString() : '—')}
+                </div>
+                <div style={{
+                  fontSize: 12, color: '#9ca3af',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {p.reference || p.pidx || '—'}
+                </div>
               </div>
-            </div>
+            )
           ))}
         </div>
 
-        {/* ════════════ MODAL ════════════ */}
+        {/* ════════════════════════════════════════
+            REQUEST PAYMENT MODAL
+            ════════════════════════════════════════ */}
         {showModal && (
-          <div style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300,
-          }}>
-            <div style={{
-              background: '#fff', border: '1px solid #e5e7eb',
-              borderRadius: 14, padding: 28, width: 440,
-              boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
-              fontFamily: "'Segoe UI', Arial, sans-serif",
-              maxHeight: '90vh', overflowY: 'auto',
-            }}>
+          <div
+            onClick={resetModal}
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+              display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 300,
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: '#fff', border: '1px solid #e5e7eb',
+                borderRadius: isMobile ? '14px 14px 0 0' : 14,
+                padding: isMobile ? 20 : 28,
+                width: isMobile ? '100%' : 440,
+                boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+                fontFamily: "'Segoe UI', Arial, sans-serif",
+                maxHeight: '90vh', overflowY: 'auto',
+                boxSizing: 'border-box',
+              }}
+            >
 
               {/* ── STEP 1 ── */}
               {step === 1 && (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
-                    <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: 0 }}>Request a Payment</h3>
-                    <button onClick={resetModal} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#9ca3af' }}>✕</button>
+                    <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: 0 }}>
+                      Request a Payment
+                    </h3>
+                    <button onClick={resetModal} style={{
+                      background: 'none', border: 'none',
+                      cursor: 'pointer', color: '#9ca3af',
+                      display: 'flex', alignItems: 'center', padding: 0,
+                    }}>
+                      <X size={20} color="#9ca3af" />
+                    </button>
                   </div>
 
                   <div style={{ marginBottom: 14 }}>
@@ -353,57 +491,79 @@ export default function StudentPayments() {
 
                   <div style={{ marginBottom: 14 }}>
                     <label style={labelStyle}>Amount (Rs) *</label>
-                    <input type="number" min="1" placeholder="e.g. 5000"
-                      value={form.amount} onChange={e => set('amount', e.target.value)} style={inputStyle} />
+                    <input
+                      type="number" min="1"
+                      placeholder="e.g. 5000"
+                      value={form.amount}
+                      onChange={e => set('amount', e.target.value)}
+                      style={inputStyle}
+                    />
                   </div>
 
                   <div style={{ marginBottom: 14 }}>
                     <label style={labelStyle}>Payment Method *</label>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      {METHOD_OPTIONS.map(m => (
-                        <button key={m} onClick={() => set('method', m)} style={{
-                          padding: '8px 16px', borderRadius: 8,
-                          border: form.method === m ? '2px solid #16a34a' : '2px solid #e5e7eb',
-                          background: form.method === m ? '#f0fdf4' : '#f9fafb',
-                          color: form.method === m ? '#15803d' : '#374151',
-                          fontWeight: form.method === m ? 700 : 400,
-                          fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
-                        }}>
-                          {m === 'eSewa' ? '🟢 eSewa' : m === 'Khalti' ? '🟣 Khalti' : m === 'Bank Transfer' ? '🏦 Bank' : '💵 Cash'}
-                        </button>
-                      ))}
+                      {METHOD_OPTIONS.map(m => {
+                        const meta = METHOD_META[m]
+                        const active = form.method === m
+                        return (
+                          <button
+                            key={m}
+                            onClick={() => set('method', m)}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 7,
+                              padding: '8px 16px', borderRadius: 8,
+                              border: active ? '2px solid #16a34a' : '2px solid #e5e7eb',
+                              background: active ? '#f0fdf4' : '#f9fafb',
+                              color: active ? '#15803d' : '#374151',
+                              fontWeight: active ? 700 : 400,
+                              fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+                            }}
+                          >
+                            <meta.Icon size={12} color={meta.color} fill={meta.color} />
+                            {m}
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
-
-                  {QR_METHODS.includes(form.method) && (
-                    <div style={{
-                      background: '#eff6ff', border: '1px solid #bfdbfe',
-                      borderRadius: 8, padding: '10px 14px', marginBottom: 14,
-                      fontSize: 12, color: '#1e40af',
-                    }}>
-                      📱 After submitting, you'll see options to pay instantly via <strong>{form.method}</strong>.
-                    </div>
-                  )}
 
                   <div style={{ marginBottom: 22 }}>
                     <label style={labelStyle}>Note (optional)</label>
-                    <textarea placeholder="Any additional details..." value={form.note}
-                      onChange={e => set('note', e.target.value)} rows={2}
-                      style={{ ...inputStyle, resize: 'none', lineHeight: 1.5 }} />
+                    <textarea
+                      placeholder="Any additional details..."
+                      value={form.note}
+                      onChange={e => set('note', e.target.value)}
+                      rows={2}
+                      style={{ ...inputStyle, resize: 'none', lineHeight: 1.5 }}
+                    />
                   </div>
 
-                  <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                  <div style={{
+                    display: 'flex', gap: 10,
+                    flexDirection: isMobile ? 'column-reverse' : 'row',
+                    justifyContent: 'flex-end',
+                  }}>
                     <button onClick={resetModal} style={{
-                      padding: '9px 18px', background: '#f9fafb', border: '1px solid #e5e7eb',
-                      borderRadius: 8, fontSize: 13, color: '#6b7280', cursor: 'pointer', fontFamily: 'inherit',
+                      padding: '9px 18px', background: '#f9fafb',
+                      border: '1px solid #e5e7eb', borderRadius: 8,
+                      fontSize: 13, color: '#6b7280', cursor: 'pointer', fontFamily: 'inherit',
+                      width: isMobile ? '100%' : 'auto',
                     }}>Cancel</button>
                     <button onClick={submitRequest} disabled={saving} style={{
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                       padding: '9px 20px',
                       background: saving ? '#9ca3af' : '#16a34a',
-                      border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#fff',
+                      border: 'none', borderRadius: 8,
+                      fontSize: 13, fontWeight: 600, color: '#fff',
                       cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                      width: isMobile ? '100%' : 'auto',
                     }}>
-                      {saving ? 'Submitting…' : QR_METHODS.includes(form.method) ? 'Next →' : 'Submit Request'}
+                      {saving
+                        ? 'Submitting…'
+                        : DIGITAL_METHODS.includes(form.method)
+                          ? <>Next <ArrowRight size={14} /></>
+                          : 'Submit Request'}
                     </button>
                   </div>
                 </>
@@ -417,49 +577,47 @@ export default function StudentPayments() {
                       Pay via {form.method}
                     </h3>
                     <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
-                      Send <strong style={{ color: '#111827' }}>Rs {Number(form.amount).toLocaleString()}</strong> to Global Pathway Consultancy
+                      Send <strong style={{ color: '#111827' }}>Rs {Number(form.amount).toLocaleString()}</strong> to Global Pathway
                     </p>
                   </div>
 
-                  {/* ── eSewa instant button ── */}
+                  {/* eSewa button */}
                   {form.method === 'eSewa' && (
                     <>
                       <button onClick={payWithEsewaNow} style={{
                         width: '100%', padding: '12px 16px',
                         background: '#60BB46', border: 'none', borderRadius: 10,
                         fontSize: 14, fontWeight: 700, color: '#fff',
-                        cursor: 'pointer', fontFamily: 'inherit', marginBottom: 12,
+                        cursor: 'pointer', fontFamily: 'inherit', marginBottom: 16,
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                       }}>
-                        ⚡ Pay instantly with eSewa
+                        <Zap size={16} fill="#fff" /> Pay instantly with eSewa
                       </button>
-                      <div style={{ textAlign: 'center', fontSize: 11, color: '#9ca3af', marginBottom: 14 }}>
-                        — or scan the QR code and enter your reference manually below —
+                      <div style={{ textAlign: 'center', fontSize: 11, color: '#9ca3af', marginBottom: 16, marginTop: -8 }}>
+                        — or scan the QR code and enter your reference below —
                       </div>
                     </>
                   )}
 
-                  {/* ── Khalti instant button ── */}
+                  {/* Khalti button */}
                   {form.method === 'Khalti' && (
                     <>
-                      <button onClick={payWithKhaltiNow} disabled={khaltiLoading} style={{
+                      <button onClick={payWithKhaltiNow} style={{
                         width: '100%', padding: '12px 16px',
-                        background: khaltiLoading ? '#9ca3af' : '#5C2D91',
-                        border: 'none', borderRadius: 10,
+                        background: '#5C2D91', border: 'none', borderRadius: 10,
                         fontSize: 14, fontWeight: 700, color: '#fff',
-                        cursor: khaltiLoading ? 'not-allowed' : 'pointer',
-                        fontFamily: 'inherit', marginBottom: 12,
+                        cursor: 'pointer', fontFamily: 'inherit', marginBottom: 16,
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                       }}>
-                        {khaltiLoading ? 'Initiating Khalti...' : '⚡ Pay instantly with Khalti'}
+                        <Zap size={16} fill="#fff" /> Pay instantly with Khalti
                       </button>
-                      <div style={{ textAlign: 'center', fontSize: 11, color: '#9ca3af', marginBottom: 14 }}>
-                        — or scan the QR code and enter your reference manually below —
+                      <div style={{ textAlign: 'center', fontSize: 11, color: '#9ca3af', marginBottom: 16, marginTop: -8 }}>
+                        — or scan the QR code and enter your reference below —
                       </div>
                     </>
                   )}
 
-                  {/* ── QR Code ── */}
+                  {/* QR Code */}
                   <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 18 }}>
                     <div style={{
                       border: '3px solid #e5e7eb', borderRadius: 12, padding: 12,
@@ -467,20 +625,22 @@ export default function StudentPayments() {
                     }}>
                       {qrLoadError ? (
                         <div style={{
-                          width: 180, height: 180, background: '#f3f4f6', borderRadius: 8,
+                          width: isMobile ? 150 : 180, height: isMobile ? 150 : 180, background: '#f3f4f6', borderRadius: 8,
                           display: 'flex', flexDirection: 'column',
                           alignItems: 'center', justifyContent: 'center', gap: 8,
                         }}>
-                          <span style={{ fontSize: 36 }}>📷</span>
+                          <Camera size={32} color="#9ca3af" />
                           <span style={{ fontSize: 11, color: '#6b7280', textAlign: 'center', padding: '0 12px' }}>
-                            QR code not found.<br />
-                            Place your qr.png in the <code style={{ fontSize: 10, color: '#374151' }}>/public</code> folder.
+                            Add qr.png to your /public folder
                           </span>
                         </div>
                       ) : (
-                        <img src={QR_SRC} alt="Payment QR Code"
+                        <img
+                          src={QR_SRC}
+                          alt="Payment QR Code"
                           onError={() => setQrLoadError(true)}
-                          style={{ width: 180, height: 180, objectFit: 'contain', display: 'block' }} />
+                          style={{ width: isMobile ? 150 : 180, height: isMobile ? 150 : 180, objectFit: 'contain', display: 'block' }}
+                        />
                       )}
                     </div>
                   </div>
@@ -491,42 +651,46 @@ export default function StudentPayments() {
                     borderRadius: 8, padding: '10px 14px', marginBottom: 18,
                     fontSize: 12, color: '#374151',
                   }}>
-                    {form.method === 'eSewa' && <>
-                      <strong>eSewa steps:</strong> Open eSewa app → Scan QR →
-                      Enter Rs {Number(form.amount).toLocaleString()} → Pay → Copy the <em>transaction ID</em> below
-                    </>}
-                    {form.method === 'Khalti' && <>
-                      <strong>Khalti steps:</strong> Open Khalti app → Scan QR →
-                      Enter Rs {Number(form.amount).toLocaleString()} → Pay → Copy the <em>transaction ID</em> below
-                    </>}
-                    {form.method === 'Bank Transfer' && <>
-                      <strong>Bank Transfer:</strong> Scan QR or use account details →
-                      Transfer Rs {Number(form.amount).toLocaleString()} → Copy the <em>voucher number</em> below
-                    </>}
+                    {form.method === 'eSewa' && <>Open eSewa app → Scan QR → Pay → Copy the <em>transaction ID</em> below</>}
+                    {form.method === 'Khalti' && <>Open Khalti app → Scan QR → Pay → Copy the <em>transaction ID</em> below</>}
                   </div>
 
                   {/* Reference input */}
                   <div style={{ marginBottom: 22 }}>
                     <label style={labelStyle}>Transaction Reference Number *</label>
-                    <input placeholder="e.g. TXN123456789"
-                      value={form.reference} onChange={e => set('reference', e.target.value)} style={inputStyle} />
+                    <input
+                      placeholder="e.g. TXN123456789"
+                      value={form.reference}
+                      onChange={e => set('reference', e.target.value)}
+                      style={inputStyle}
+                    />
                     <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 5 }}>
-                      You can find this in your {form.method} app after payment
+                      Find this in your {form.method} app after payment
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                  <div style={{
+                    display: 'flex', gap: 10,
+                    flexDirection: isMobile ? 'column-reverse' : 'row',
+                    justifyContent: 'flex-end',
+                  }}>
                     <button onClick={() => setStep(1)} style={{
-                      padding: '9px 18px', background: '#f9fafb', border: '1px solid #e5e7eb',
-                      borderRadius: 8, fontSize: 13, color: '#6b7280', cursor: 'pointer', fontFamily: 'inherit',
-                    }}>← Back</button>
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      padding: '9px 18px', background: '#f9fafb',
+                      border: '1px solid #e5e7eb', borderRadius: 8,
+                      fontSize: 13, color: '#6b7280', cursor: 'pointer', fontFamily: 'inherit',
+                      width: isMobile ? '100%' : 'auto',
+                    }}><ArrowLeft size={14} /> Back</button>
                     <button onClick={submitReference} disabled={saving} style={{
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                       padding: '9px 20px',
                       background: saving ? '#9ca3af' : '#16a34a',
-                      border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#fff',
+                      border: 'none', borderRadius: 8,
+                      fontSize: 13, fontWeight: 600, color: '#fff',
                       cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                      width: isMobile ? '100%' : 'auto',
                     }}>
-                      {saving ? 'Submitting…' : 'Submit Reference ✓'}
+                      {saving ? 'Submitting…' : <>Submit Reference <Check size={14} /></>}
                     </button>
                   </div>
                 </>

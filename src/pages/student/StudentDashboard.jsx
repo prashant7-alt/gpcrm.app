@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import StudentLayout from './StudentLayout'
+import { useIsMobile } from '../../hooks/useIsMobile'
+import { Receipt, CheckCircle2, Hourglass, Bot, X, Send } from 'lucide-react'
 
 // ── KNOWLEDGE BASE ─────────────────────────────────────────────────────────
 const INTENTS = [
@@ -147,8 +149,10 @@ function BotAvatar() {
       width: 28, height: 28, borderRadius: '50%',
       background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: 13, flexShrink: 0,
-    }}>🤖</div>
+      flexShrink: 0, color: '#fff',
+    }}>
+      <Bot size={15} />
+    </div>
   )
 }
 
@@ -193,8 +197,7 @@ function BotMessage({ text }) {
   )
 }
 
-// ── FLOATING CHATBOT WIDGET ────────────────────────────────────────────────
-function ChatBotWidget({ navigate }) {
+function ChatBotWidget({ navigate, isMobile }) {
   const profile = JSON.parse(localStorage.getItem('profile') || '{}')
   const firstName = (profile.name || 'there').split(' ')[0]
 
@@ -226,16 +229,12 @@ function ChatBotWidget({ navigate }) {
     if (!msg || isTyping) return
     setInput('')
     setUnread(0)
-
     setMessages(prev => [...prev, { id: Date.now(), role: 'user', text: msg }])
     setSuggestions([])
     setIsTyping(true)
-
     const delay = 800 + Math.random() * 500
-
     setTimeout(() => {
       setIsTyping(false)
-
       if (['talk to counsellor','contact counsellor','speak to counsellor','human','chat'].some(k => msg.toLowerCase().includes(k))) {
         setMessages(prev => [...prev, {
           id: Date.now(), role: 'bot',
@@ -245,7 +244,6 @@ function ChatBotWidget({ navigate }) {
         setSuggestions([])
         return
       }
-
       const intent = findIntent(msg)
       if (intent) {
         setMessages(prev => [...prev, { id: Date.now(), role: 'bot', text: intent.answer, suggestions: intent.suggestions }])
@@ -265,49 +263,38 @@ function ChatBotWidget({ navigate }) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
   }
 
-  function handleOpen() {
-    setOpen(true)
-    setUnread(0)
-  }
-
   return (
     <>
-      {/* ── CHAT POPUP WINDOW ── */}
       {open && (
         <div style={{
           position: 'fixed',
-          bottom: 90, right: 28,
-          width: 360,
-          height: 500,
+          // Mobile: full-screen sheet. Desktop: original floating box.
+          top:    isMobile ? 0   : 'auto',
+          left:   isMobile ? 0   : 'auto',
+          bottom: isMobile ? 0   : 90,
+          right:  isMobile ? 0   : 28,
+          width:  isMobile ? '100%' : 360,
+          height: isMobile ? '100%' : 500,
           background: '#fff',
-          border: '1px solid #e5e7eb',
-          borderRadius: 16,
-          boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
-          display: 'flex', flexDirection: 'column',
-          zIndex: 1000,
-          overflow: 'hidden',
+          border: isMobile ? 'none' : '1px solid #e5e7eb',
+          borderRadius: isMobile ? 0 : 16,
+          boxShadow: isMobile ? 'none' : '0 20px 60px rgba(0,0,0,0.18)',
+          display: 'flex', flexDirection: 'column', zIndex: 1000, overflow: 'hidden',
           animation: 'popIn 0.2s ease-out',
         }}>
-          <style>{`
-            @keyframes popIn {
-              from { opacity:0; transform: scale(0.92) translateY(10px); }
-              to   { opacity:1; transform: scale(1)    translateY(0); }
-            }
-          `}</style>
-
-          {/* Header */}
+          <style>{`@keyframes popIn{from{opacity:0;transform:scale(0.92) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
           <div style={{
             padding: '12px 16px',
             background: 'linear-gradient(135deg, #1e40af 0%, #4f46e5 100%)',
-            display: 'flex', alignItems: 'center', gap: 10,
-            flexShrink: 0,
+            display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
           }}>
             <div style={{
               width: 32, height: 32, borderRadius: '50%',
               background: 'rgba(255,255,255,0.2)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 16,
-            }}>🤖</div>
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
+            }}>
+              <Bot size={17} />
+            </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>GP Assistant</div>
               <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.75)', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -315,23 +302,18 @@ function ChatBotWidget({ navigate }) {
                 Online • Answers instantly
               </div>
             </div>
-            <button
-              onClick={() => setOpen(false)}
-              style={{
-                background: 'rgba(255,255,255,0.15)', border: 'none',
-                borderRadius: '50%', width: 26, height: 26,
-                color: '#fff', fontSize: 14, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}
-            >✕</button>
+            <button onClick={() => setOpen(false)} style={{
+              background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%',
+              width: 26, height: 26, color: '#fff', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <X size={14} />
+            </button>
           </div>
 
-          {/* Messages */}
           <div style={{
-            flex: 1, overflowY: 'auto',
-            padding: '12px 12px 6px',
-            display: 'flex', flexDirection: 'column', gap: 10,
-            background: '#fafafa',
+            flex: 1, overflowY: 'auto', padding: '12px 12px 6px',
+            display: 'flex', flexDirection: 'column', gap: 10, background: '#fafafa',
           }}>
             {messages.map(msg => (
               <div key={msg.id}>
@@ -341,9 +323,7 @@ function ChatBotWidget({ navigate }) {
                       maxWidth: '80%', background: '#2563eb', color: '#fff',
                       borderRadius: '14px 14px 4px 14px', padding: '8px 12px',
                       fontSize: 12, lineHeight: 1.5,
-                    }}>
-                      {msg.text}
-                    </div>
+                    }}>{msg.text}</div>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', gap: 7, alignItems: 'flex-end', maxWidth: '90%' }}>
@@ -355,14 +335,11 @@ function ChatBotWidget({ navigate }) {
                     }}>
                       <BotMessage text={msg.text} />
                       {msg.isHandoff && (
-                        <button
-                          onClick={() => { setOpen(false); navigate('/student/chat') }}
-                          style={{
-                            marginTop: 8, fontSize: 11, fontWeight: 600, color: '#fff',
-                            background: '#2563eb', border: 'none', borderRadius: 7,
-                            padding: '5px 12px', cursor: 'pointer', display: 'block',
-                          }}
-                        >💬 Open Chat →</button>
+                        <button onClick={() => { setOpen(false); navigate('/student/chat') }} style={{
+                          marginTop: 8, fontSize: 11, fontWeight: 600, color: '#fff',
+                          background: '#2563eb', border: 'none', borderRadius: 7,
+                          padding: '5px 12px', cursor: 'pointer', display: 'block',
+                        }}>💬 Open Chat →</button>
                       )}
                     </div>
                   </div>
@@ -370,32 +347,27 @@ function ChatBotWidget({ navigate }) {
               </div>
             ))}
             {isTyping && <TypingIndicator />}
-
-            {/* Suggestion chips */}
             {!isTyping && suggestions.length > 0 && (
               <div style={{ paddingLeft: 35, display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 2 }}>
                 {suggestions.map((s, i) => (
                   <button key={i} onClick={() => sendMessage(s)} style={{
                     fontSize: 11, padding: '4px 10px', borderRadius: 20, cursor: 'pointer',
-                    background: '#eff6ff', border: '1px solid #bfdbfe',
-                    color: '#1d4ed8', fontWeight: 500,
+                    background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', fontWeight: 500,
                   }}>{s}</button>
                 ))}
                 <button onClick={() => { setOpen(false); navigate('/student/chat') }} style={{
                   fontSize: 11, padding: '4px 10px', borderRadius: 20, cursor: 'pointer',
-                  background: '#f0fdf4', border: '1px solid #bbf7d0',
-                  color: '#15803d', fontWeight: 500,
+                  background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', fontWeight: 500,
                 }}>💬 Talk to counsellor</button>
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input */}
           <div style={{
             padding: '8px 12px', borderTop: '1px solid #e5e7eb',
-            background: '#fff', display: 'flex', gap: 7, alignItems: 'center',
-            flexShrink: 0,
+            background: '#fff', display: 'flex', gap: 7, alignItems: 'center', flexShrink: 0,
+            paddingBottom: isMobile ? 'max(8px, env(safe-area-inset-bottom))' : '8px',
           }}>
             <input
               value={input}
@@ -417,36 +389,33 @@ function ChatBotWidget({ navigate }) {
               style={{
                 width: 34, height: 34, borderRadius: '50%', border: 'none',
                 background: input.trim() && !isTyping ? '#2563eb' : '#e5e7eb',
-                color: '#fff', fontSize: 14, cursor: input.trim() && !isTyping ? 'pointer' : 'default',
+                color: '#fff',
+                cursor: input.trim() && !isTyping ? 'pointer' : 'default',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 flexShrink: 0, transition: 'background 0.15s',
               }}
-            >➤</button>
+            >
+              <Send size={15} />
+            </button>
           </div>
         </div>
       )}
 
-      {/* ── FLOATING BUTTON ── */}
       <button
-        onClick={open ? () => setOpen(false) : handleOpen}
+        onClick={open ? () => setOpen(false) : () => { setOpen(true); setUnread(0) }}
         style={{
           position: 'fixed',
-          bottom: 28, right: 28,
-          width: 56, height: 56,
-          borderRadius: '50%',
+          bottom: isMobile ? 20 : 28,
+          right: isMobile ? 20 : 28,
+          width: 56, height: 56, borderRadius: '50%',
           background: open ? '#374151' : 'linear-gradient(135deg, #1e40af, #4f46e5)',
-          border: 'none',
-          boxShadow: '0 4px 20px rgba(37,99,235,0.4)',
-          cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 24,
-          zIndex: 1001,
-          transition: 'all 0.2s',
+          border: 'none', boxShadow: '0 4px 20px rgba(37,99,235,0.4)',
+          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: '#fff', zIndex: 1001, transition: 'all 0.2s',
         }}
         title="Ask GP Assistant"
       >
-        {open ? '✕' : '🤖'}
-        {/* Unread badge */}
+        {open ? <X size={24} /> : <Bot size={26} />}
         {!open && unread > 0 && (
           <div style={{
             position: 'absolute', top: -2, right: -2,
@@ -455,9 +424,7 @@ function ChatBotWidget({ navigate }) {
             fontSize: 10, fontWeight: 700,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             border: '2px solid #fff',
-          }}>
-            {unread}
-          </div>
+          }}>{unread}</div>
         )}
       </button>
     </>
@@ -467,6 +434,7 @@ function ChatBotWidget({ navigate }) {
 // ── MAIN DASHBOARD ─────────────────────────────────────────────────────────
 export default function StudentDashboard() {
   const navigate = useNavigate()
+  const isMobile  = useIsMobile()
   const profile  = JSON.parse(localStorage.getItem('profile') || '{}')
 
   const [payments, setPayments] = useState([])
@@ -482,7 +450,7 @@ export default function StudentDashboard() {
     try {
       const { data: pays } = await supabase
         .from('payments').select('*')
-        .eq('student_name', profile.name || '')
+        .eq('student_email', profile.email || '')   // ← FIXED: was student_name
         .order('created_at', { ascending: false })
       setPayments(pays || [])
     } catch { setPayments([]) }
@@ -514,54 +482,65 @@ export default function StudentDashboard() {
     )
   }
 
+  // Stat cards now use Lucide icons (matching the sidebar's icon style)
+  // instead of emoji, with each icon tinted to match its card's background.
+  const statCards = [
+    {
+      label: 'Total Payments',
+      value: payments.length,
+      Icon: Receipt,
+      bg: '#eff6ff',
+      color: '#2563eb',
+    },
+    {
+      label: 'Amount Paid',
+      value: `Rs ${payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + (p.amount || 0), 0).toLocaleString()}`,
+      Icon: CheckCircle2,
+      bg: '#f0fdf4',
+      color: '#16a34a',
+    },
+    {
+      label: 'Pending Tasks',
+      value: tasks.filter(t => t.status === 'pending').length,
+      Icon: Hourglass,
+      bg: '#fefce8',
+      color: '#ca8a04',
+    },
+  ]
+
   return (
     <StudentLayout>
 
       {/* ── GREETING ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>
+          <h1 style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>
             Welcome back, {(profile.name || 'Student').split(' ')[0]} 👋
           </h1>
           <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
             Here's your application overview
           </p>
         </div>
-        {/* Small hint next to greeting */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          background: '#eff6ff00', border: '1px solid #bfdbfe00',
-          borderRadius: 10, padding: '8px 14px',
-          fontSize: 12, color: '#1d4ed8', fontWeight: 500,
-        }}>
-        
-         
-        </div>
       </div>
 
       {/* ── STAT CARDS ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 20 }}>
-        {[
-          { label: 'Total Payments', value: payments.length, icon: '🧾', bg: '#eff6ff' },
-          {
-            label: 'Amount Paid',
-            value: `Rs ${payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + (p.amount || 0), 0).toLocaleString()}`,
-            icon: '✅', bg: '#f0fdf4',
-          },
-          { label: 'Pending Tasks', value: tasks.filter(t => t.status === 'pending').length, icon: '⏳', bg: '#fefce8' },
-        ].map(card => (
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+        gap: 14, marginBottom: 20,
+      }}>
+        {statCards.map(card => (
           <div key={card.label} style={{
             background: '#fff', border: '1px solid #e5e7eb',
             borderRadius: 10, padding: 16,
             display: 'flex', alignItems: 'center', gap: 14,
           }}>
             <div style={{
-              width: 44, height: 44, borderRadius: 10,
-              background: card.bg,
+              width: 44, height: 44, borderRadius: 10, background: card.bg,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 20, flexShrink: 0,
+              flexShrink: 0, color: card.color,
             }}>
-              {card.icon}
+              <card.Icon size={22} strokeWidth={2} />
             </div>
             <div>
               <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>{card.label}</div>
@@ -581,7 +560,11 @@ export default function StudentDashboard() {
         ) : (
           payments.map((p, i) => (
             <div key={p.id} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              display: 'flex',
+              flexDirection: isMobile ? 'column' : 'row',
+              alignItems: isMobile ? 'flex-start' : 'center',
+              justifyContent: 'space-between',
+              gap: isMobile ? 6 : 0,
               padding: '13px 18px',
               borderBottom: i < payments.length - 1 ? '1px solid #e5e7eb' : 'none',
             }}>
@@ -621,7 +604,7 @@ export default function StudentDashboard() {
                 width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
                 background: t.priority === 'High' ? '#ef4444' : t.priority === 'Urgent' ? '#dc2626' : '#16a34a',
               }}/>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>{t.title}</div>
                 {t.due_date && (
                   <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
@@ -630,7 +613,7 @@ export default function StudentDashboard() {
                 )}
               </div>
               <span style={{
-                padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, flexShrink: 0,
                 background: t.status === 'done' ? '#dcfce7' : '#fef9c3',
                 color:      t.status === 'done' ? '#15803d' : '#a16207',
               }}>
@@ -642,7 +625,7 @@ export default function StudentDashboard() {
       </div>
 
       {/* ── FLOATING CHATBOT ── */}
-      <ChatBotWidget navigate={navigate} />
+      <ChatBotWidget navigate={navigate} isMobile={isMobile} />
 
     </StudentLayout>
   )

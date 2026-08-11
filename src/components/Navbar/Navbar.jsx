@@ -2,15 +2,36 @@ import { useRef, useEffect } from 'react'
 import { useLocation, useNavigate, NavLink } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import theme from '../../theme'
+import { useIsMobile } from '../../hooks/useIsMobile'
+import {
+  LayoutDashboard, FileText, Users, UserCheck,
+  CalendarDays, CheckSquare, CreditCard, BarChart3,
+  UserCog, FolderOpen, MessageCircle, Settings as SettingsIcon,
+} from 'lucide-react'
 
-// ── Sidebar menus per role ─────────────────────────────────────────────────
+// ── Icon per route (lucide-react) ─────────────────────────────────────────
+const ICONS = {
+  '/dashboard':    LayoutDashboard,
+  '/applications': FileText,
+  '/students':     Users,
+  '/visitors':     UserCheck,
+  '/appointments': CalendarDays,
+  '/tasks':        CheckSquare,
+  '/payments':     CreditCard,
+  '/reports':      BarChart3,
+  '/staff':        UserCog,
+  '/documents':    FolderOpen,
+  '/chat':         MessageCircle,
+  '/settings':     SettingsIcon,
+}
 
+// ── Sidebar menu per role ─────────────────────────────────────────────────
 const adminMenu = [
   { section: 'Overview',   links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
   { section: 'Pipeline',   links: [{ to: '/applications', label: 'Applications' }, { to: '/students', label: 'Students' }, { to: '/visitors', label: 'Visitors' }] },
   { section: 'Operations', links: [{ to: '/appointments', label: 'Appointments' }, { to: '/tasks',    label: 'Tasks'    }] },
   { section: 'Finance',    links: [{ to: '/payments',     label: 'Payments'     }, { to: '/reports',  label: 'Reports'  }] },
-  { section: 'Team',       links: [{ to: '/staff',        label: 'Staff'        }, { to: '/documents',label: 'Documents'}, { to: '/chat',     label: 'Chat'     }] },
+  { section: 'Team',       links: [{ to: '/staff',        label: 'Staff'        }, { to: '/documents',label: 'Documents'}, { to: '/chat', label: 'Chat' }] },
   { section: 'System',     links: [{ to: '/settings',     label: 'Settings'     }] },
 ]
 
@@ -22,96 +43,43 @@ const staffMenu = [
   { section: 'Documents',  links: [{ to: '/documents',    label: 'Documents'    }, { to: '/chat',     label: 'Chat'     }] },
 ]
 
-// Manager — same as staff but also sees Reports
-const managerMenu = [
-  { section: 'Overview',   links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
-  { section: 'Pipeline',   links: [{ to: '/applications', label: 'Applications' }, { to: '/students', label: 'Students' }, { to: '/visitors', label: 'Visitors' }] },
-  { section: 'Operations', links: [{ to: '/appointments', label: 'Appointments' }, { to: '/tasks',    label: 'Tasks'    }] },
-  { section: 'Finance',    links: [{ to: '/payments',     label: 'Payments'     }, { to: '/reports',  label: 'Reports'  }] },
-  { section: 'Documents',  links: [{ to: '/documents',    label: 'Documents'    }, { to: '/chat',     label: 'Chat'     }] },
-]
-
-// Counselor — students, appointments, tasks, chat
-const counselorMenu = [
-  { section: 'Overview',   links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
-  { section: 'Students',   links: [{ to: '/students',     label: 'Students'     }] },
-  { section: 'Operations', links: [{ to: '/appointments', label: 'Appointments' }, { to: '/tasks',    label: 'Tasks'    }] },
-  { section: 'Team',       links: [{ to: '/chat',         label: 'Chat'         }] },
-]
-
-// Visa Officer — students, appointments, documents, tasks, chat
-const visaOfficerMenu = [
-  { section: 'Overview',   links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
-  { section: 'Pipeline',   links: [{ to: '/applications', label: 'Applications' }, { to: '/students', label: 'Students' }] },
-  { section: 'Operations', links: [{ to: '/appointments', label: 'Appointments' }, { to: '/tasks',    label: 'Tasks'    }] },
-  { section: 'Documents',  links: [{ to: '/documents',    label: 'Documents'    }, { to: '/chat',     label: 'Chat'     }] },
-]
-
-// Finance Officer — payments, reports, students (view only), tasks
 const financeMenu = [
-  { section: 'Overview',   links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
-  { section: 'Finance',    links: [{ to: '/payments',     label: 'Payments'     }, { to: '/reports',  label: 'Reports'  }] },
-  { section: 'Reference',  links: [{ to: '/students',     label: 'Students'     }, { to: '/tasks',    label: 'Tasks'    }] },
-  { section: 'Team',       links: [{ to: '/chat',         label: 'Chat'         }] },
+  { section: 'Overview',    links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
+  { section: 'Finance',     links: [{ to: '/payments',     label: 'Payments'     }, { to: '/reports',      label: 'Reports'      }] },
+  { section: 'Pipeline',    links: [{ to: '/students',     label: 'Students'     }] },
+  { section: 'Operations',  links: [{ to: '/appointments', label: 'Appointments' }, { to: '/tasks',        label: 'Tasks'        }] },
+  { section: 'Team',        links: [{ to: '/chat',         label: 'Chat'         }] },
 ]
 
-// Document Handler — documents, students, tasks, chat
 const documentMenu = [
-  { section: 'Overview',   links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
-  { section: 'Students',   links: [{ to: '/students',     label: 'Students'     }] },
-  { section: 'Work',       links: [{ to: '/documents',    label: 'Documents'    }, { to: '/tasks',    label: 'Tasks'    }] },
-  { section: 'Team',       links: [{ to: '/chat',         label: 'Chat'         }] },
+  { section: 'Overview',    links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
+  { section: 'Operations',  links: [{ to: '/appointments', label: 'Appointments' }] },
+  { section: 'Documents',   links: [{ to: '/documents',    label: 'Documents'    }, { to: '/chat', label: 'Chat' }] },
 ]
 
-// Receptionist — applications, students, visitors, appointments, payments, tasks
+// ✅ FIXED: Chat added to receptionistMenu
 const receptionistMenu = [
-  { section: 'Overview',   links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
-  { section: 'Pipeline',   links: [{ to: '/applications', label: 'Applications' }, { to: '/students', label: 'Students' }, { to: '/visitors', label: 'Visitors' }] },
-  { section: 'Operations', links: [{ to: '/appointments', label: 'Appointments' }, { to: '/tasks',    label: 'Tasks'    }] },
-  { section: 'Finance',    links: [{ to: '/payments',     label: 'Payments'     }] },
-  { section: 'Team',       links: [{ to: '/chat',         label: 'Chat'         }] },
-]
-
-// Marketing — applications, reports, tasks, chat
-const marketingMenu = [
-  { section: 'Overview',   links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
-  { section: 'Pipeline',   links: [{ to: '/applications', label: 'Applications' }] },
-  { section: 'Analytics',  links: [{ to: '/reports',      label: 'Reports'      }, { to: '/tasks',    label: 'Tasks'    }] },
-  { section: 'Team',       links: [{ to: '/chat',         label: 'Chat'         }] },
-]
-
-// Other — minimal: dashboard, tasks, chat
-const otherMenu = [
-  { section: 'Overview',   links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
-  { section: 'Work',       links: [{ to: '/tasks',        label: 'Tasks'        }] },
-  { section: 'Team',       links: [{ to: '/chat',         label: 'Chat'         }] },
+  { section: 'Overview',    links: [{ to: '/dashboard',    label: 'Dashboard'    }] },
+  { section: 'Pipeline',    links: [{ to: '/applications', label: 'Applications' }, { to: '/students', label: 'Students' }, { to: '/visitors', label: 'Visitors' }] },
+  { section: 'Operations',  links: [{ to: '/appointments', label: 'Appointments' }] },
+  { section: 'Team',        links: [{ to: '/chat',         label: 'Chat'         }] },
 ]
 
 const MENUS = {
   admin:            adminMenu,
   staff:            staffMenu,
-  manager:          managerMenu,
-  counselor:        counselorMenu,
-  visa_officer:     visaOfficerMenu,
   finance_officer:  financeMenu,
   document_handler: documentMenu,
   receptionist:     receptionistMenu,
-  marketing:        marketingMenu,
-  other:            otherMenu,
 }
 
-// ── Role display labels + colours ──────────────────────────────────────────
+// ── Role display config ───────────────────────────────────────────────────
 const ROLE_META = {
-  admin:            { label: 'Administrator',    badge: 'Admin Panel',        badgeBg: '#dbeafe', badgeColor: '#1d4ed8', avatarBg: '#1a1f3a' },
-  staff:            { label: 'Staff Member',     badge: 'Staff Panel',        badgeBg: '#ede9fe', badgeColor: '#7c3aed', avatarBg: '#7c3aed' },
-  manager:          { label: 'Manager',          badge: 'Manager Panel',      badgeBg: '#cffafe', badgeColor: '#0e7490', avatarBg: '#0e7490' },
-  counselor:        { label: 'Counselor',        badge: 'Counselor Panel',    badgeBg: '#d1fae5', badgeColor: '#065f46', avatarBg: '#065f46' },
-  visa_officer:     { label: 'Visa Officer',     badge: 'Visa Panel',         badgeBg: '#fce7f3', badgeColor: '#9d174d', avatarBg: '#9d174d' },
-  finance_officer:  { label: 'Finance Officer',  badge: 'Finance Panel',      badgeBg: '#dcfce7', badgeColor: '#15803d', avatarBg: '#15803d' },
-  document_handler: { label: 'Document Handler', badge: 'Documents Panel',    badgeBg: '#fef9c3', badgeColor: '#854d0e', avatarBg: '#854d0e' },
-  receptionist:     { label: 'Receptionist',     badge: 'Reception Panel',    badgeBg: '#fee2e2', badgeColor: '#991b1b', avatarBg: '#991b1b' },
-  marketing:        { label: 'Marketing',        badge: 'Marketing Panel',    badgeBg: '#fef3c7', badgeColor: '#92400e', avatarBg: '#92400e' },
-  other:            { label: 'Staff',            badge: 'Staff Panel',        badgeBg: '#f3f4f6', badgeColor: '#374151', avatarBg: '#374151' },
+  admin:            { label: 'Administrator',    badge: ' Admin Panel',     badgeBg: '#dbeafe', badgeColor: '#1d4ed8', avatarBg: '#1a1f3a' },
+  staff:            { label: 'Staff Member',     badge: ' Staff Panel',     badgeBg: '#ede9fe', badgeColor: '#7c3aed', avatarBg: '#7c3aed' },
+  finance_officer:  { label: 'Finance Officer',  badge: ' Finance Panel',   badgeBg: '#dcfce7', badgeColor: '#15803d', avatarBg: '#15803d' },
+  document_handler: { label: 'Document Handler', badge: ' Documents Panel', badgeBg: '#fef9c3', badgeColor: '#854d0e', avatarBg: '#854d0e' },
+  receptionist:     { label: 'Receptionist',     badge: ' Reception Panel', badgeBg: '#fce7f3', badgeColor: '#9d174d', avatarBg: '#9d174d' },
 }
 
 const PAGE_LABELS = {
@@ -121,25 +89,31 @@ const PAGE_LABELS = {
   reports: 'Reports',     settings: 'Settings', chat: 'Chat',
 }
 
-const SIDEBAR_WIDTH = 230
+// Desktop keeps pushing content (App.jsx Layout adds marginLeft using this).
+// Mobile uses its own, slightly wider, overlay width — touch targets need
+// more room and it doesn't need to leave space for pushed content.
+const DESKTOP_SIDEBAR_WIDTH = 230
+const MOBILE_SIDEBAR_WIDTH  = 260
 
 export default function Navbar({ menuOpen, setMenuOpen }) {
   const location     = useLocation()
-  const navigate     = useNavigate()
-  const drawerRef    = useRef(null)
-  const toggleBtnRef = useRef(null)
+  const navigate      = useNavigate()
+  const drawerRef     = useRef(null)
+  const toggleBtnRef  = useRef(null)
+  const isMobile      = useIsMobile()
 
-  const profile = JSON.parse(localStorage.getItem('profile') || '{}')
-  const role    = profile.role || 'staff'
-
-  const menu     = MENUS[role]     || otherMenu
-  const roleMeta = ROLE_META[role] || ROLE_META.other
+  const profile  = JSON.parse(localStorage.getItem('profile') || '{}')
+  const role     = profile.role || 'staff'
+  const menu     = MENUS[role]     || staffMenu
+  const roleMeta = ROLE_META[role] || ROLE_META.staff
 
   const key   = location.pathname.replace('/', '').toLowerCase()
   const title = PAGE_LABELS[key] || 'Dashboard'
 
   const displayName = profile.name || roleMeta.label
-  const initials    = displayName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+  const initials     = displayName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+
+  const drawerWidth = isMobile ? MOBILE_SIDEBAR_WIDTH : DESKTOP_SIDEBAR_WIDTH
 
   useEffect(() => {
     function handleClick(e) {
@@ -169,10 +143,13 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
         background: '#fff',
         borderBottom: '1px solid #e8eaed',
         position: 'fixed', top: 0, left: 0, right: 0,
-        display: 'flex', alignItems: 'center', padding: '0 20px', gap: 12,
+        display: 'flex', alignItems: 'center',
+        padding: isMobile ? '0 10px' : '0 20px',
+        gap: isMobile ? 8 : 12,
         zIndex: 200,
         boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
       }}>
+
         {/* Hamburger */}
         <button
           ref={toggleBtnRef}
@@ -200,38 +177,41 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
           ))}
         </button>
 
-        {/* Logo */}
+        {/* Logo — shrinks on phone, text stack hides below ~380px to save room */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           <img src="/src/assets/images/logo.png" alt="Logo"
-            style={{ width: 79, height: 90, borderRadius: 8, objectFit: 'contain' }} />
-          <div style={{ lineHeight: 1.2 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>Global Pathway</div>
-            <div style={{ fontSize: 10, color: '#9ca3af' }}>Consultancy CRM</div>
-          </div>
+            style={{
+              width:  isMobile ? 40 : 79,
+              height: isMobile ? 46 : 90,
+              borderRadius: 8, objectFit: 'contain',
+            }} />
+          {!isMobile && (
+            <div style={{ lineHeight: 1.2 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>Global Pathway</div>
+              <div style={{ fontSize: 10, color: '#9ca3af' }}>Consultancy CRM</div>
+            </div>
+          )}
         </div>
 
-        <div style={{ width: 1, height: 32, background: '#e5e7eb', flexShrink: 0 }} />
+        {!isMobile && (
+          <div style={{ width: 1, height: 32, background: '#e5e7eb', flexShrink: 0 }} />
+        )}
 
-        {/* Page title */}
+        {/* Page title — scales down so it never forces horizontal scroll */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 30, fontWeight: 700, color: '#0f327dcf', lineHeight: 1.2 }}>
+          <div style={{
+            fontSize: isMobile ? 17 : 30,
+            fontWeight: 700, color: '#0f327dcf', lineHeight: 1.2,
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
             {title}
           </div>
         </div>
 
-        {/* Role badge — visible in header */}
-        <div style={{
-          padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 600,
-          background: roleMeta.badgeBg, color: roleMeta.badgeColor,
-          flexShrink: 0, whiteSpace: 'nowrap',
-        }}>
-          {roleMeta.badge}
-        </div>
-
-        {/* Avatar */}
+        {/* Avatar — on phone, show just the circle to save width; name/role tuck away */}
         <div
           onClick={() => role === 'admin' && navigate('/settings')}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: role === 'admin' ? 'pointer' : 'default' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: role === 'admin' ? 'pointer' : 'default', flexShrink: 0 }}
         >
           <div style={{
             width: 36, height: 36, borderRadius: '50%',
@@ -241,34 +221,52 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
           }}>
             {initials}
           </div>
-          <div style={{ lineHeight: 1.25 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{displayName}</div>
-            <div style={{ fontSize: 10.5, color: '#9ca3af' }}>{roleMeta.label}</div>
-          </div>
+          {!isMobile && (
+            <div style={{ lineHeight: 1.25 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{displayName}</div>
+              <div style={{ fontSize: 10.5, color: '#9ca3af' }}>{roleMeta.label}</div>
+            </div>
+          )}
         </div>
       </header>
 
-      {/* ── Sidebar drawer ── */}
+      {/* ── Backdrop — mobile only, tap outside the drawer to close it ── */}
+      {isMobile && menuOpen && (
+        <div
+          onClick={() => setMenuOpen(false)}
+          style={{
+            position: 'fixed', top: 64, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.4)',
+            zIndex: 90,
+          }}
+        />
+      )}
+
+      {/* ── Sidebar drawer ──
+          Desktop: pushes content (App.jsx Layout adds matching marginLeft).
+          Mobile:  overlays content on top of the backdrop above; Layout
+                   keeps marginLeft at 0 so nothing shifts underneath it. */}
       <nav ref={drawerRef} style={{
         position: 'fixed',
         top: 64, left: 0,
-        width: SIDEBAR_WIDTH,
+        width: drawerWidth,
         height: 'calc(100vh - 64px)',
-        background: theme.sidebarBg || '#4f373723',
+        background: theme.sidebarBg || '#ffffff',
         borderRight: `1px solid ${theme.border || '#a3a7b1'}`,
         display: 'flex', flexDirection: 'column',
         zIndex: 100,
-        transform: menuOpen ? 'translateX(0)' : `translateX(-${SIDEBAR_WIDTH}px)`,
+        transform: menuOpen ? 'translateX(0)' : `translateX(-${drawerWidth}px)`,
         transition: 'transform 0.22s cubic-bezier(0.4,0,0.2,1)',
         overflow: 'hidden',
+        boxShadow: isMobile && menuOpen ? '2px 0 16px rgba(0,0,0,0.18)' : 'none',
       }}>
-        {/* Role badge in sidebar */}
+
+        {/* Role badge */}
         <div style={{
           padding: '10px 14px 6px',
           borderBottom: `1px solid ${theme.border || '#e5e7eb'}`,
         }}>
           <span style={{
-            display: 'inline-block',
             padding: '3px 10px', borderRadius: 20,
             fontSize: 11, fontWeight: 600,
             background: roleMeta.badgeBg,
@@ -290,21 +288,29 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
               }}>
                 {group.section}
               </div>
-              {group.links.map(link => (
-                <NavLink key={link.to} to={link.to}
-                  style={({ isActive }) => ({
-                    display: 'flex', alignItems: 'center',
-                    padding: '9px 10px', borderRadius: 23,
-                    textDecoration: 'none', fontSize: 13.5, marginBottom: 1,
-                    transition: 'all 0.12s',
-                    color:      isActive ? (theme.primaryText  || '#1a56db') : (theme.textMid || '#374151'),
-                    background: isActive ? (theme.primaryLight || '#eff6ff') : 'transparent',
-                    fontWeight: isActive ? 600 : 400,
-                  })}
-                >
-                  {link.label}
-                </NavLink>
-              ))}
+              {group.links.map(link => {
+                const Icon = ICONS[link.to] || LayoutDashboard
+                return (
+                  <NavLink
+                    key={link.to}
+                    to={link.to}
+                    onClick={() => setMenuOpen(false)}
+                    style={({ isActive }) => ({
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: isMobile ? '11px 12px' : '9px 12px', // slightly taller tap target on phone
+                      borderRadius: 23,
+                      textDecoration: 'none', fontSize: 13.5, marginBottom: 1,
+                      transition: 'all 0.12s',
+                      color:      isActive ? (theme.primaryText  || '#1a56db') : (theme.textMid || '#374151'),
+                      background: isActive ? (theme.primaryLight || '#eff6ff') : 'transparent',
+                      fontWeight: isActive ? 600 : 400,
+                    })}
+                  >
+                    <Icon size={17} strokeWidth={2} style={{ flexShrink: 0 }} />
+                    <span>{link.label}</span>
+                  </NavLink>
+                )
+              })}
             </div>
           ))}
         </div>

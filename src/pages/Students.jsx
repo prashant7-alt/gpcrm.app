@@ -1,8 +1,23 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import theme from '../theme'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 const COUNTRIES = ['Korea', 'Australia', 'Japan', 'UK', 'USA', 'Canada', 'Finland']
+
+// ISO 3166-1 alpha-2 codes for flagcdn.com — used to render actual flag
+// images instead of emoji. Flag emoji don't render as flags on Windows/
+// Chrome (shows plain two-letter text instead), so real images are used
+// here for a flag that looks the same on every OS and browser.
+const COUNTRY_CODES = {
+  Korea: 'kr',
+  Australia: 'au',
+  Japan: 'jp',
+  UK: 'gb',
+  USA: 'us',
+  Canada: 'ca',
+  Finland: 'fi',
+}
 
 const stageStyle = (stage) => {
   const map = {
@@ -22,6 +37,7 @@ const stageStyle = (stage) => {
 }
 
 export default function Students() {
+  const isMobile = useIsMobile()
 
   const [students,        setStudents]        = useState([])
   const [loading,         setLoading]         = useState(true)
@@ -33,7 +49,6 @@ export default function Students() {
 
   async function load() {
     setLoading(true)
-    // read from applicants table instead of students
     const { data } = await supabase
       .from('applicants')
       .select('*')
@@ -52,10 +67,8 @@ export default function Students() {
     else if (c) countryCounts['Others']++
   })
 
-  // unique countries from actual data for dropdown
   const uniqueCountries = ['All Countries', ...new Set(students.map(s => s.country).filter(Boolean))]
 
-  // filter
   const filtered = students.filter(s => {
     const matchSearch = (
       s.name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -84,23 +97,29 @@ export default function Students() {
     }
   }
 
+  const tableCols = '2fr 1.2fr 1.2fr 1.5fr 1.2fr 1fr'
+
   return (
     <div>
 
       {/* header */}
       <div style={{
-        display: 'flex', justifyContent: 'space-between',
-        alignItems: 'center', marginBottom: 20,
+        display: 'flex',
+        flexDirection: isMobile ? 'column' : 'row',
+        justifyContent: 'space-between',
+        alignItems: isMobile ? 'stretch' : 'center',
+        gap: isMobile ? 12 : 0,
+        marginBottom: 20,
       }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: theme.textDark, margin: 0 }}>
+          <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: theme.textDark, margin: 0 }}>
             Students
           </h1>
           <p style={{ fontSize: 13, color: theme.textLight, marginTop: 4 }}>
             Enrolled and studying students
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexDirection: isMobile ? 'column' : 'row' }}>
           <select
             value={countryFilter}
             onChange={e => {
@@ -111,6 +130,7 @@ export default function Students() {
               background: '#fff', border: `1px solid ${theme.border}`,
               borderRadius: 8, padding: '8px 14px',
               fontSize: 13, color: theme.textMid, outline: 'none', cursor: 'pointer',
+              width: isMobile ? '100%' : 'auto',
             }}
           >
             {uniqueCountries.map(c => <option key={c}>{c}</option>)}
@@ -119,16 +139,18 @@ export default function Students() {
             padding: '8px 16px', background: theme.cardBg,
             border: `1px solid ${theme.border}`,
             borderRadius: 8, fontSize: 13, color: theme.textMid, cursor: 'pointer',
+            width: isMobile ? '100%' : 'auto',
           }}>
             Export
           </button>
         </div>
       </div>
 
-      {/* country cards */}
+      {/* country cards — horizontal scroll works fine on both, just tightened on mobile */}
       <div style={{
-        display: 'flex', gap: 12, marginBottom: 20,
+        display: 'flex', gap: isMobile ? 8 : 12, marginBottom: 20,
         overflowX: 'auto', paddingBottom: 4,
+        WebkitOverflowScrolling: 'touch',
       }}>
         {[...COUNTRIES, 'Others'].map(country => {
           const count    = countryCounts[country] || 0
@@ -138,7 +160,8 @@ export default function Students() {
               key={country}
               onClick={() => handleCountryCard(country)}
               style={{
-                minWidth: 120, padding: '16px 20px',
+                minWidth: isMobile ? 96 : 120,
+                padding: isMobile ? '12px 14px' : '16px 20px',
                 background: isActive ? '#dbeafe' : '#fff',
                 border: `1px solid ${isActive ? '#2563eb' : theme.border}`,
                 borderRadius: 12, textAlign: 'center',
@@ -146,14 +169,32 @@ export default function Students() {
               }}
             >
               <div style={{
-                fontSize: 15, fontWeight: 700,
+                height: isMobile ? 22 : 26, marginBottom: 4,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {COUNTRY_CODES[country] ? (
+                  <img
+                    src={`https://flagcdn.com/w40/${COUNTRY_CODES[country]}.png`}
+                    alt={country}
+                    style={{
+                      width: isMobile ? 28 : 32, height: isMobile ? 19 : 22,
+                      objectFit: 'cover', borderRadius: 3,
+                      boxShadow: '0 0 0 1px rgba(0,0,0,0.08)',
+                    }}
+                  />
+                ) : (
+                  <span style={{ fontSize: isMobile ? 20 : 24 }}>🌍</span>
+                )}
+              </div>
+              <div style={{
+                fontSize: isMobile ? 13 : 15, fontWeight: 700,
                 color: isActive ? '#2563eb' : theme.textDark,
-                marginBottom: 6,
+                marginBottom: 6, whiteSpace: 'nowrap',
               }}>
                 {country}
               </div>
               <div style={{
-                fontSize: 28, fontWeight: 800,
+                fontSize: isMobile ? 22 : 28, fontWeight: 800,
                 color: isActive ? '#2563eb' : '#b91c1c',
               }}>
                 {count}
@@ -164,7 +205,10 @@ export default function Students() {
       </div>
 
       {/* search + active filter tag */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center' }}>
+      <div style={{
+        display: 'flex', gap: 10, marginBottom: 16, alignItems: isMobile ? 'stretch' : 'center',
+        flexDirection: isMobile ? 'column' : 'row',
+      }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
           background: '#fff', border: `1px solid ${theme.border}`,
@@ -184,7 +228,7 @@ export default function Students() {
 
         {selectedCountry && (
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
+            display: 'flex', alignItems: 'center', gap: 8, justifyContent: isMobile ? 'space-between' : 'flex-start',
             padding: '6px 14px',
             background: '#dbeafe', border: '1px solid #2563eb',
             borderRadius: 20, fontSize: 12, fontWeight: 600, color: '#2563eb',
@@ -207,29 +251,31 @@ export default function Students() {
         </p>
       )}
 
-      {/* table */}
+      {/* table / cards */}
       <div style={{
         background: '#fff', border: `1px solid ${theme.border}`,
         borderRadius: 10, overflow: 'hidden',
       }}>
 
-        {/* header */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '2fr 1.2fr 1.2fr 1.5fr 1.2fr 1fr',
-          padding: '10px 18px',
-          background: theme.pageBg || '#f9fafb',
-          borderBottom: `1px solid ${theme.border}`,
-        }}>
-          {['Name', 'Phone', 'Country', 'Course', 'Stage', 'Added'].map(h => (
-            <span key={h} style={{
-              fontSize: 11, fontWeight: 600, color: theme.textMuted,
-              textTransform: 'uppercase', letterSpacing: '0.05em',
-            }}>
-              {h}
-            </span>
-          ))}
-        </div>
+        {/* column header row — desktop only */}
+        {!isMobile && (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: tableCols,
+            padding: '10px 18px',
+            background: theme.pageBg || '#f9fafb',
+            borderBottom: `1px solid ${theme.border}`,
+          }}>
+            {['Name', 'Phone', 'Country', 'Course', 'Stage', 'Added'].map(h => (
+              <span key={h} style={{
+                fontSize: 11, fontWeight: 600, color: theme.textMuted,
+                textTransform: 'uppercase', letterSpacing: '0.05em',
+              }}>
+                {h}
+              </span>
+            ))}
+          </div>
+        )}
 
         {loading && (
           <p style={{ padding: 20, fontSize: 13, color: theme.textLight }}>Loading...</p>
@@ -246,53 +292,94 @@ export default function Students() {
         )}
 
         {filtered.map((s, i) => (
-          <div
-            key={s.id}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '2fr 1.2fr 1.2fr 1.5fr 1.2fr 1fr',
-              padding: '13px 18px',
-              borderBottom: i < filtered.length - 1 ? `1px solid ${theme.border}` : 'none',
-              alignItems: 'center',
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = theme.pageBg || '#f9fafb'}
-            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-          >
-            {/* name + email */}
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: theme.textDark }}>
-                {s.name || '—'}
+          isMobile ? (
+            // ── Mobile card ──
+            <div
+              key={s.id}
+              style={{
+                padding: '14px 18px',
+                borderBottom: i < filtered.length - 1 ? `1px solid ${theme.border}` : 'none',
+                display: 'flex', flexDirection: 'column', gap: 8,
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: theme.textDark }}>
+                    {s.name || '—'}
+                  </div>
+                  <div style={{ fontSize: 11, color: theme.textLight, marginTop: 2, wordBreak: 'break-all' }}>
+                    {s.email || '—'}
+                  </div>
+                </div>
+                <span style={{
+                  padding: '3px 10px', borderRadius: 20,
+                  fontSize: 11, fontWeight: 600, flexShrink: 0,
+                  background: stageStyle(s.status).bg,
+                  color:      stageStyle(s.status).color,
+                }}>
+                  {s.status || 'New'}
+                </span>
               </div>
-              <div style={{ fontSize: 11, color: theme.textLight, marginTop: 2 }}>
-                {s.email || '—'}
+
+              <div style={{ display: 'flex', gap: 16, fontSize: 12, color: theme.textMid, flexWrap: 'wrap' }}>
+                <span><b style={{ color: theme.textMuted, fontWeight: 600 }}>Phone: </b>{s.phone || '—'}</span>
+                <span><b style={{ color: theme.textMuted, fontWeight: 600 }}>Country: </b>{s.country || '—'}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 16, fontSize: 12, color: theme.textMid, flexWrap: 'wrap' }}>
+                <span><b style={{ color: theme.textMuted, fontWeight: 600 }}>Course: </b>{s.course || '—'}</span>
+                <span style={{ color: theme.textLight }}>
+                  {s.created_at ? new Date(s.created_at).toLocaleDateString() : '—'}
+                </span>
               </div>
             </div>
+          ) : (
+            // ── Desktop row ──
+            <div
+              key={s.id}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: tableCols,
+                padding: '13px 18px',
+                borderBottom: i < filtered.length - 1 ? `1px solid ${theme.border}` : 'none',
+                alignItems: 'center',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = theme.pageBg || '#f9fafb'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: theme.textDark }}>
+                  {s.name || '—'}
+                </div>
+                <div style={{ fontSize: 11, color: theme.textLight, marginTop: 2 }}>
+                  {s.email || '—'}
+                </div>
+              </div>
 
-            <div style={{ fontSize: 13, color: theme.textMid }}>{s.phone   || '—'}</div>
-            <div style={{ fontSize: 13, color: theme.textMid }}>{s.country || '—'}</div>
-            <div style={{ fontSize: 13, color: theme.textMid }}>{s.course  || '—'}</div>
+              <div style={{ fontSize: 13, color: theme.textMid }}>{s.phone   || '—'}</div>
+              <div style={{ fontSize: 13, color: theme.textMid }}>{s.country || '—'}</div>
+              <div style={{ fontSize: 13, color: theme.textMid }}>{s.course  || '—'}</div>
 
-            {/* stage badge */}
-            <div>
-              <span style={{
-                padding: '3px 10px', borderRadius: 20,
-                fontSize: 11, fontWeight: 600,
-                background: stageStyle(s.status).bg,
-                color:      stageStyle(s.status).color,
-              }}>
-                {s.status || 'New'}
-              </span>
+              <div>
+                <span style={{
+                  padding: '3px 10px', borderRadius: 20,
+                  fontSize: 11, fontWeight: 600,
+                  background: stageStyle(s.status).bg,
+                  color:      stageStyle(s.status).color,
+                }}>
+                  {s.status || 'New'}
+                </span>
+              </div>
+
+              <div style={{ fontSize: 12, color: theme.textLight }}>
+                {s.created_at
+                  ? new Date(s.created_at).toLocaleDateString()
+                  : '—'}
+              </div>
             </div>
-
-            <div style={{ fontSize: 12, color: theme.textLight }}>
-              {s.created_at
-                ? new Date(s.created_at).toLocaleDateString()
-                : '—'}
-            </div>
-          </div>
+          )
         ))}
       </div>
-        
+
     </div>
   )
 }

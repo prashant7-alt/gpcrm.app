@@ -1,6 +1,21 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
-import theme from '../theme'
+import { useIsMobile } from '../hooks/useIsMobile'
+import {
+  Plus,
+  Search,
+  ListTodo,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Play,
+  Undo2,
+  Pencil,
+  Trash2,
+  User,
+  CalendarDays,
+  X,
+} from 'lucide-react'
 
 const PRIORITIES = {
   High:   { bg: '#fee2e2', color: '#dc2626', dot: '#dc2626' },
@@ -9,9 +24,9 @@ const PRIORITIES = {
 }
 
 const STATUSES = {
-  'pending':     { label: 'To Do',       bg: '#f3f4f6', color: '#6b7280', dot: '#9ca3af' },
-  'in_progress': { label: 'In Progress', bg: '#dbeafe', color: '#1d4ed8', dot: '#2563eb' },
-  'completed':   { label: 'Done',        bg: '#dcfce7', color: '#15803d', dot: '#16a34a' },
+  'pending':     { label: 'To Do',       bg: '#f3f4f6', color: '#6b7280', dot: '#9ca3af', Icon: ListTodo },
+  'in_progress': { label: 'In Progress', bg: '#dbeafe', color: '#1d4ed8', dot: '#2563eb', Icon: Loader2  },
+  'completed':   { label: 'Done',        bg: '#dcfce7', color: '#15803d', dot: '#16a34a', Icon: CheckCircle2 },
 }
 
 const inputStyle = {
@@ -54,7 +69,7 @@ function dueDateInfo(dateStr, status) {
   const today = new Date(); today.setHours(0,0,0,0)
   const due   = new Date(dateStr); due.setHours(0,0,0,0)
   const diff  = Math.round((due - today) / 86400000)
-  if (diff < 0)  return { label: `${Math.abs(diff)}d overdue`, color: '#dc2626' }
+  if (diff < 0)   return { label: `${Math.abs(diff)}d overdue`, color: '#dc2626' }
   if (diff === 0) return { label: 'Due today',    color: '#ca8a04' }
   if (diff === 1) return { label: 'Due tomorrow', color: '#ca8a04' }
   return {
@@ -64,10 +79,12 @@ function dueDateInfo(dateStr, status) {
 }
 
 export default function Tasks() {
+  const isMobile = useIsMobile()
 
   const [tasks,    setTasks]    = useState([])
   const [staff,    setStaff]    = useState([])
   const [loading,  setLoading]  = useState(true)
+  const [loadErr,  setLoadErr]  = useState('')
   const [search,   setSearch]   = useState('')
   const [assignee, setAssignee] = useState('All')
   const [priority, setPriority] = useState('All')
@@ -77,7 +94,7 @@ export default function Tasks() {
   const [deleting, setDeleting] = useState(null)
 
   const emptyForm = {
-    title: '', description: '', assigned_to: '',
+    title: '', description: '', assigned_to: '', assignee_id: '',
     due_date: '', priority: 'Medium', status: 'pending', related_to: '',
   }
   const [form, setForm] = useState(emptyForm)
@@ -86,16 +103,51 @@ export default function Tasks() {
 
   async function load() {
     setLoading(true)
-    const [{ data: t }, { data: s }] = await Promise.all([
-      supabase.from('tasks').select('*').order('created_at', { ascending: false }),
-      supabase.from('staff').select('id, name, role').order('name'),
-    ])
+    setLoadErr('')
+
+    const { data: t, error: tErr } = await supabase
+      .from('tasks')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (tErr) {
+      setLoadErr('Could not load tasks: ' + tErr.message)
+      setLoading(false)
+      return
+    }
+
+    // ✅ FIXED: assignable people now come from `profiles` ONLY.
+    // Previously this merged `staff` and `profiles` rows and de-duplicated
+    // by name text — but staff.id and profiles.id are unrelated UUIDs for
+    // the same person, so a real foreign key couldn't safely target
+    // either list. `profiles` already covers every non-student role
+    // (it's the login-tied, authoritative table), so it's the single
+    // consistent id space assignee_id now points at.
+    const { data: profileRows, error: pErr } = await supabase
+      .from('profiles')
+      .select('id, name, role')
+      .neq('role', 'student')
+      .order('name')
+
+    if (pErr) {
+      setLoadErr('Could not load staff: ' + pErr.message)
+    }
+
     setTasks(t || [])
-    setStaff(s || [])
+    setStaff(profileRows || [])
     setLoading(false)
   }
 
   const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
+
+  function selectAssignee(id) {
+    const person = staff.find(s => s.id === id)
+    setForm(prev => ({
+      ...prev,
+      assignee_id: id,
+      assigned_to: person ? person.name : '',
+    }))
+  }
 
   function openAdd() {
     setForm(emptyForm)
@@ -108,6 +160,7 @@ export default function Tasks() {
       title:       task.title       || '',
       description: task.notes       || '',
       assigned_to: task.assigned_to || '',
+      assignee_id: task.assignee_id || '',
       due_date:    task.due_date    || '',
       priority:    task.priority    || 'Medium',
       status:      task.status      || 'pending',
@@ -124,20 +177,30 @@ export default function Tasks() {
     const payload = {
       title:       form.title.trim(),
       notes:       form.description.trim() || null,
-      assigned_to: form.assigned_to        || null,
+      assigned_to: form.assigned_to        || null,  // display-only text, kept for backward compat
+      assignee_id: form.assignee_id        || null,  // real FK → profiles.id
       due_date:    form.due_date            || null,
       priority:    form.priority,
       status:      form.status,
       related_to:  form.related_to.trim()  || null,
     }
 
+    let error
     if (editTask) {
-      await supabase.from('tasks').update(payload).eq('id', editTask.id)
+      const res = await supabase.from('tasks').update(payload).eq('id', editTask.id)
+      error = res.error
     } else {
-      await supabase.from('tasks').insert(payload)
+      const res = await supabase.from('tasks').insert(payload)
+      error = res.error
     }
 
     setSaving(false)
+
+    if (error) {
+      alert('Failed to save task: ' + error.message)
+      return
+    }
+
     setShowAdd(false)
     setEditTask(null)
     load()
@@ -146,17 +209,18 @@ export default function Tasks() {
   async function deleteTask(id) {
     if (!window.confirm('Delete this task?')) return
     setDeleting(id)
-    await supabase.from('tasks').delete().eq('id', id)
+    const { error } = await supabase.from('tasks').delete().eq('id', id)
+    if (error) alert('Delete failed: ' + error.message)
     setDeleting(null)
     load()
   }
 
   async function changeStatus(task, newStatus) {
-    await supabase.from('tasks').update({ status: newStatus }).eq('id', task.id)
+    const { error } = await supabase.from('tasks').update({ status: newStatus }).eq('id', task.id)
+    if (error) { alert('Status update failed: ' + error.message); return }
     setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: newStatus } : t))
   }
 
-  // counts
   const counts = {
     pending:     tasks.filter(t => t.status === 'pending').length,
     in_progress: tasks.filter(t => t.status === 'in_progress').length,
@@ -170,10 +234,8 @@ export default function Tasks() {
     return d < today
   }).length
 
-  // unique assignees from tasks
   const assignees = ['All', ...new Set(tasks.map(t => t.assigned_to).filter(Boolean))]
 
-  // filter
   const filtered = tasks.filter(t => {
     const matchSearch = (
       t.title?.toLowerCase().includes(search.toLowerCase()) ||
@@ -185,7 +247,6 @@ export default function Tasks() {
     return matchSearch && matchAssignee && matchPriority
   })
 
-  // group by status
   const grouped = {
     pending:     filtered.filter(t => t.status === 'pending'),
     in_progress: filtered.filter(t => t.status === 'in_progress'),
@@ -193,10 +254,10 @@ export default function Tasks() {
   }
 
   const statCards = [
-    { label: 'To Do',       value: counts.pending,     color: '#6b7280', bg: '#f3f4f6' },
-    { label: 'In Progress', value: counts.in_progress, color: '#2563eb', bg: '#dbeafe' },
-    { label: 'Done',        value: counts.completed,   color: '#16a34a', bg: '#dcfce7' },
-    { label: 'Overdue',     value: overdueCount,        color: '#dc2626', bg: '#fee2e2' },
+    { label: 'To Do',       value: counts.pending,     color: '#6b7280', bg: '#f3f4f6', Icon: ListTodo     },
+    { label: 'In Progress', value: counts.in_progress, color: '#2563eb', bg: '#dbeafe', Icon: Loader2      },
+    { label: 'Done',        value: counts.completed,   color: '#16a34a', bg: '#dcfce7', Icon: CheckCircle2 },
+    { label: 'Overdue',     value: overdueCount,        color: '#dc2626', bg: '#fee2e2', Icon: AlertCircle },
   ]
 
   return (
@@ -204,11 +265,15 @@ export default function Tasks() {
 
       {/* header */}
       <div style={{
-        display: 'flex', justifyContent: 'space-between',
-        alignItems: 'flex-start', marginBottom: 24,
+        display: 'flex',
+        flexDirection: isMobile ? 'column' : 'row',
+        justifyContent: 'space-between',
+        alignItems: isMobile ? 'stretch' : 'flex-start',
+        gap: isMobile ? 12 : 0,
+        marginBottom: 24,
       }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: 0 }}>Tasks</h1>
+          <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: '#111827', margin: 0 }}>Tasks</h1>
           <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
             Assign and track tasks across your team
           </p>
@@ -217,38 +282,53 @@ export default function Tasks() {
           padding: '9px 18px', background: '#16a34a',
           border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600,
           color: '#fff', cursor: 'pointer', fontFamily: 'inherit',
-          display: 'flex', alignItems: 'center', gap: 6,
+          width: isMobile ? '100%' : 'auto',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
         }}>
-          + Add Task
+          <Plus size={15} />
+          Add Task
         </button>
       </div>
 
+      {/* load error */}
+      {loadErr && (
+        <div style={{
+          background: '#fee2e2', border: '1px solid #fca5a5',
+          borderRadius: 8, padding: '12px 16px', marginBottom: 16,
+          fontSize: 13, color: '#b91c1c',
+        }}>
+          ⚠️ {loadErr}
+          <br />
+          <span style={{ fontSize: 11, color: '#9ca3af', marginTop: 4, display: 'block' }}>
+            Go to Supabase → SQL Editor and make sure the <strong>tasks</strong> table exists,
+            has an <strong>assignee_id</strong> column, and RLS policies allow reads.
+          </span>
+        </div>
+      )}
+
       {/* stat cards */}
       <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
-        gap: 12, marginBottom: 24,
+        display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
+        gap: isMobile ? 10 : 12, marginBottom: 24,
       }}>
         {statCards.map(s => (
           <div key={s.label} style={{
             background: '#fff', border: '1px solid #e5e7eb',
-            borderRadius: 10, padding: '16px 18px',
-            display: 'flex', alignItems: 'center', gap: 14,
+            borderRadius: 10, padding: isMobile ? '12px 14px' : '16px 18px',
+            display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 14,
           }}>
             <div style={{
-              width: 40, height: 40, borderRadius: 10,
-              background: s.bg,
-              display: 'flex', alignItems: 'center',
-              justifyContent: 'center', flexShrink: 0,
+              width: isMobile ? 32 : 40, height: isMobile ? 32 : 40, borderRadius: 10,
+              background: s.bg, flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <div style={{
-                width: 12, height: 12, borderRadius: '50%', background: s.color,
-              }} />
+              <s.Icon size={isMobile ? 16 : 19} color={s.color} strokeWidth={2.2} />
             </div>
             <div>
               <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 500, marginBottom: 2 }}>
                 {s.label}
               </div>
-              <div style={{ fontSize: 26, fontWeight: 800, color: s.color, lineHeight: 1 }}>
+              <div style={{ fontSize: isMobile ? 20 : 26, fontWeight: 800, color: s.color, lineHeight: 1 }}>
                 {s.value}
               </div>
             </div>
@@ -257,13 +337,17 @@ export default function Tasks() {
       </div>
 
       {/* filters */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+      <div style={{
+        display: 'flex',
+        flexDirection: isMobile ? 'column' : 'row',
+        gap: 10, marginBottom: 20,
+      }}>
         <div style={{
           flex: 1, display: 'flex', alignItems: 'center', gap: 8,
           background: '#fff', border: '1px solid #e5e7eb',
           borderRadius: 8, padding: '8px 14px',
         }}>
-          <span style={{ color: '#9ca3af', fontSize: 15 }}>🔍</span>
+          <Search size={15} color="#9ca3af" />
           <input
             placeholder="Search tasks, client, or assignee..."
             value={search}
@@ -276,13 +360,15 @@ export default function Tasks() {
         </div>
         <select value={assignee} onChange={e => setAssignee(e.target.value)} style={{
           background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
-          padding: '8px 14px', fontSize: 13, color: '#374151', outline: 'none', cursor: 'pointer',
+          padding: '8px 14px', fontSize: 13, color: '#374151', outline: 'none',
+          width: isMobile ? '100%' : 'auto',
         }}>
           {assignees.map(a => <option key={a}>{a}</option>)}
         </select>
         <select value={priority} onChange={e => setPriority(e.target.value)} style={{
           background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
-          padding: '8px 14px', fontSize: 13, color: '#374151', outline: 'none', cursor: 'pointer',
+          padding: '8px 14px', fontSize: 13, color: '#374151', outline: 'none',
+          width: isMobile ? '100%' : 'auto',
         }}>
           <option value="All">All Priority</option>
           <option>High</option>
@@ -291,40 +377,33 @@ export default function Tasks() {
         </select>
       </div>
 
-      {/* kanban columns */}
+      {/* kanban columns — desktop: 3 across. mobile: stacked full-width, one column at a time */}
       {loading ? (
         <p style={{ color: '#6b7280', fontSize: 13 }}>Loading tasks...</p>
       ) : (
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
+          gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
           gap: 16, alignItems: 'flex-start',
         }}>
           {Object.entries(grouped).map(([statusKey, statusTasks]) => {
             const s = STATUSES[statusKey]
             return (
               <div key={statusKey}>
-
                 {/* column header */}
                 <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  marginBottom: 12,
-                  padding: '10px 14px',
-                  background: '#fff',
-                  border: '1px solid #e5e7eb',
-                  borderTop: `3px solid ${s.dot}`,
+                  display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
+                  padding: '10px 14px', background: '#fff',
+                  border: '1px solid #e5e7eb', borderTop: `3px solid ${s.dot}`,
                   borderRadius: 10,
                 }}>
-                  <div style={{
-                    width: 10, height: 10, borderRadius: '50%', background: s.dot,
-                  }} />
+                  <s.Icon size={15} color={s.dot} />
                   <span style={{ fontSize: 14, fontWeight: 700, color: '#111827', flex: 1 }}>
                     {s.label}
                   </span>
                   <span style={{
                     background: s.bg, color: s.color,
-                    fontSize: 12, fontWeight: 700,
-                    padding: '2px 8px', borderRadius: 20,
+                    fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
                   }}>
                     {statusTasks.length}
                   </span>
@@ -343,22 +422,15 @@ export default function Tasks() {
                   )}
 
                   {statusTasks.map(task => {
-                    const p    = PRIORITIES[task.priority] || PRIORITIES['Medium']
-                    const due  = dueDateInfo(task.due_date, task.status)
+                    const p   = PRIORITIES[task.priority] || PRIORITIES['Medium']
+                    const due = dueDateInfo(task.due_date, task.status)
                     const done = task.status === 'completed'
-
                     return (
-                      <div
-                        key={task.id}
-                        style={{
-                          background: '#fff',
-                          border: '1px solid #e5e7eb',
-                          borderLeft: `4px solid ${p.dot}`,
-                          borderRadius: 10,
-                          padding: '14px 14px 12px',
-                          opacity: done ? 0.7 : 1,
-                        }}
-                      >
+                      <div key={task.id} style={{
+                        background: '#fff', border: '1px solid #e5e7eb',
+                        borderLeft: `4px solid ${p.dot}`, borderRadius: 10,
+                        padding: '14px 14px 12px', opacity: done ? 0.7 : 1,
+                      }}>
                         {/* title + priority */}
                         <div style={{
                           display: 'flex', justifyContent: 'space-between',
@@ -373,137 +445,92 @@ export default function Tasks() {
                           </div>
                           <span style={{
                             padding: '2px 8px', borderRadius: 20, fontSize: 11,
-                            fontWeight: 600, background: p.bg, color: p.color,
-                            flexShrink: 0,
+                            fontWeight: 600, background: p.bg, color: p.color, flexShrink: 0,
                           }}>
                             {task.priority}
                           </span>
                         </div>
 
-                        {/* description */}
                         {task.notes && (
                           <div style={{
-                            fontSize: 12, color: '#6b7280', marginBottom: 8,
-                            lineHeight: 1.4, overflow: 'hidden',
-                            display: '-webkit-box', WebkitLineClamp: 2,
-                            WebkitBoxOrient: 'vertical',
+                            fontSize: 12, color: '#6b7280', marginBottom: 8, lineHeight: 1.4,
+                            overflow: 'hidden', display: '-webkit-box',
+                            WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
                           }}>
                             {task.notes}
                           </div>
                         )}
 
-                        {/* related to */}
                         {task.related_to && (
                           <div style={{
                             fontSize: 11, color: '#6b7280', marginBottom: 8,
-                            display: 'flex', alignItems: 'center', gap: 4,
+                            display: 'flex', alignItems: 'center', gap: 5,
                           }}>
-                            <span>👤</span> {task.related_to}
+                            <User size={12} /> {task.related_to}
                           </div>
                         )}
 
-                        {/* due date */}
                         {due.label && (
                           <div style={{
-                            fontSize: 11, fontWeight: 600,
-                            color: due.color, marginBottom: 10,
-                            display: 'flex', alignItems: 'center', gap: 4,
+                            fontSize: 11, fontWeight: 600, color: due.color,
+                            marginBottom: 10, display: 'flex', alignItems: 'center', gap: 5,
                           }}>
-                            <span>🗓</span> {due.label}
+                            <CalendarDays size={12} /> {due.label}
                           </div>
                         )}
 
-                        {/* assignee + actions row */}
+                        {/* assignee + actions */}
                         <div style={{
-                          display: 'flex', alignItems: 'center',
-                          justifyContent: 'space-between',
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                           borderTop: '1px solid #f3f4f6', paddingTop: 10, marginTop: 4,
+                          flexWrap: isMobile ? 'wrap' : 'nowrap', gap: 8,
                         }}>
-                          {/* assignee avatar */}
                           {task.assigned_to ? (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                               <Avatar name={task.assigned_to} size={24} />
-                              <span style={{ fontSize: 11, color: '#6b7280' }}>
-                                {task.assigned_to}
-                              </span>
+                              <span style={{ fontSize: 11, color: '#6b7280' }}>{task.assigned_to}</span>
                             </div>
                           ) : (
                             <span style={{ fontSize: 11, color: '#d1d5db' }}>Unassigned</span>
                           )}
 
-                          {/* action buttons */}
                           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                            {/* status cycle buttons */}
-                            {task.status !== 'in_progress' && task.status !== 'completed' && (
-                              <button
-                                onClick={() => changeStatus(task, 'in_progress')}
-                                title="Start"
-                                style={{
-                                  padding: '4px 10px', background: '#dbeafe',
-                                  border: 'none', borderRadius: 6,
-                                  fontSize: 11, fontWeight: 600, color: '#1d4ed8',
-                                  cursor: 'pointer', fontFamily: 'inherit',
-                                }}
-                              >
-                                ▶ Start
-                              </button>
+                            {task.status === 'pending' && (
+                              <button onClick={() => changeStatus(task, 'in_progress')} style={{
+                                padding: '4px 10px', background: '#dbeafe',
+                                border: 'none', borderRadius: 6, fontSize: 11,
+                                fontWeight: 600, color: '#1d4ed8', cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: 4,
+                              }}><Play size={11} /> Start</button>
                             )}
                             {task.status === 'in_progress' && (
-                              <button
-                                onClick={() => changeStatus(task, 'completed')}
-                                title="Mark done"
-                                style={{
-                                  padding: '4px 10px', background: '#dcfce7',
-                                  border: 'none', borderRadius: 6,
-                                  fontSize: 11, fontWeight: 600, color: '#15803d',
-                                  cursor: 'pointer', fontFamily: 'inherit',
-                                }}
-                              >
-                                ✓ Done
-                              </button>
+                              <button onClick={() => changeStatus(task, 'completed')} style={{
+                                padding: '4px 10px', background: '#dcfce7',
+                                border: 'none', borderRadius: 6, fontSize: 11,
+                                fontWeight: 600, color: '#15803d', cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: 4,
+                              }}><CheckCircle2 size={11} /> Done</button>
                             )}
                             {task.status === 'completed' && (
-                              <button
-                                onClick={() => changeStatus(task, 'pending')}
-                                title="Reopen"
-                                style={{
-                                  padding: '4px 10px', background: '#f3f4f6',
-                                  border: 'none', borderRadius: 6,
-                                  fontSize: 11, fontWeight: 600, color: '#6b7280',
-                                  cursor: 'pointer', fontFamily: 'inherit',
-                                }}
-                              >
-                                ↩ Reopen
-                              </button>
+                              <button onClick={() => changeStatus(task, 'pending')} style={{
+                                padding: '4px 10px', background: '#f3f4f6',
+                                border: 'none', borderRadius: 6, fontSize: 11,
+                                fontWeight: 600, color: '#6b7280', cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: 4,
+                              }}><Undo2 size={11} /> Reopen</button>
                             )}
-
-                            {/* edit */}
-                            <button
-                              onClick={() => openEdit(task)}
-                              style={{
-                                width: 28, height: 28, background: '#f9fafb',
-                                border: '1px solid #e5e7eb', borderRadius: 6,
-                                fontSize: 13, cursor: 'pointer', display: 'flex',
-                                alignItems: 'center', justifyContent: 'center',
-                              }}
-                            >
-                              ✏️
-                            </button>
-
-                            {/* delete */}
-                            <button
-                              onClick={() => deleteTask(task.id)}
-                              disabled={deleting === task.id}
-                              style={{
-                                width: 28, height: 28, background: '#fff5f5',
-                                border: '1px solid #fecaca', borderRadius: 6,
-                                fontSize: 13, cursor: 'pointer', display: 'flex',
-                                alignItems: 'center', justifyContent: 'center',
-                                color: '#dc2626',
-                              }}
-                            >
-                              🗑
-                            </button>
+                            <button onClick={() => openEdit(task)} style={{
+                              width: 28, height: 28, background: '#f9fafb',
+                              border: '1px solid #e5e7eb', borderRadius: 6,
+                              cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}><Pencil size={13} color="#6b7280" /></button>
+                            <button onClick={() => deleteTask(task.id)} disabled={deleting === task.id} style={{
+                              width: 28, height: 28, background: '#fff5f5',
+                              border: '1px solid #fecaca', borderRadius: 6,
+                              cursor: 'pointer', color: '#dc2626',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}><Trash2 size={13} /></button>
                           </div>
                         </div>
                       </div>
@@ -518,23 +545,19 @@ export default function Tasks() {
 
       {/* add / edit modal */}
       {showAdd && (
-        <div
-          onClick={() => setShowAdd(false)}
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300,
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: '#fff', border: '1px solid #e5e7eb',
-              borderRadius: 14, padding: 28, width: 480,
-              maxHeight: '90vh', overflowY: 'auto',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
-            }}
-          >
-            {/* modal header */}
+        <div onClick={() => setShowAdd(false)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+          display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 300,
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: '#fff', border: '1px solid #e5e7eb',
+            borderRadius: isMobile ? '14px 14px 0 0' : 14,
+            padding: isMobile ? 20 : 28,
+            width: isMobile ? '100%' : 480,
+            maxHeight: '90vh', overflowY: 'auto',
+            boxSizing: 'border-box',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+          }}>
             <div style={{
               display: 'flex', justifyContent: 'space-between',
               alignItems: 'center', marginBottom: 22,
@@ -543,12 +566,10 @@ export default function Tasks() {
                 {editTask ? 'Edit Task' : 'Add New Task'}
               </h3>
               <button onClick={() => setShowAdd(false)} style={{
-                background: 'none', border: 'none', fontSize: 20,
-                cursor: 'pointer', color: '#9ca3af',
-              }}>✕</button>
+                background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', display: 'flex',
+              }}><X size={20} /></button>
             </div>
 
-            {/* title */}
             <div style={{ marginBottom: 14 }}>
               <label style={labelStyle}>Task Title *</label>
               <input
@@ -560,7 +581,6 @@ export default function Tasks() {
               />
             </div>
 
-            {/* description */}
             <div style={{ marginBottom: 14 }}>
               <label style={labelStyle}>Description</label>
               <textarea
@@ -572,7 +592,6 @@ export default function Tasks() {
               />
             </div>
 
-            {/* related to */}
             <div style={{ marginBottom: 14 }}>
               <label style={labelStyle}>Related To (Client / Applicant)</label>
               <input
@@ -583,25 +602,34 @@ export default function Tasks() {
               />
             </div>
 
-            {/* assign to staff dropdown */}
             <div style={{ marginBottom: 14 }}>
-              <label style={labelStyle}>Assign To Staff</label>
+              <label style={labelStyle}>
+                Assign To Staff
+                {staff.length === 0 && (
+                  <span style={{ color: '#dc2626', marginLeft: 8, fontSize: 10 }}>
+                    (no staff found — add staff first)
+                  </span>
+                )}
+              </label>
               <select
-                value={form.assigned_to}
-                onChange={e => set('assigned_to', e.target.value)}
+                value={form.assignee_id}
+                onChange={e => selectAssignee(e.target.value)}
                 style={inputStyle}
               >
                 <option value="">— Select staff member —</option>
                 {staff.map(s => (
-                  <option key={s.id} value={s.name}>
+                  <option key={s.id} value={s.id}>
                     {s.name} ({s.role})
                   </option>
                 ))}
               </select>
             </div>
 
-            {/* due date + priority */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+              gap: 12, marginBottom: 14,
+            }}>
               <div>
                 <label style={labelStyle}>Due Date</label>
                 <input
@@ -613,11 +641,7 @@ export default function Tasks() {
               </div>
               <div>
                 <label style={labelStyle}>Priority</label>
-                <select
-                  value={form.priority}
-                  onChange={e => set('priority', e.target.value)}
-                  style={inputStyle}
-                >
+                <select value={form.priority} onChange={e => set('priority', e.target.value)} style={inputStyle}>
                   <option>High</option>
                   <option>Medium</option>
                   <option>Low</option>
@@ -625,15 +649,10 @@ export default function Tasks() {
               </div>
             </div>
 
-            {/* status — only show when editing */}
             {editTask && (
               <div style={{ marginBottom: 14 }}>
                 <label style={labelStyle}>Status</label>
-                <select
-                  value={form.status}
-                  onChange={e => set('status', e.target.value)}
-                  style={inputStyle}
-                >
+                <select value={form.status} onChange={e => set('status', e.target.value)} style={inputStyle}>
                   <option value="pending">To Do</option>
                   <option value="in_progress">In Progress</option>
                   <option value="completed">Done</option>
@@ -641,31 +660,33 @@ export default function Tasks() {
               </div>
             )}
 
-            {/* footer */}
             <div style={{
-              display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 22,
+              display: 'flex', gap: 10,
+              flexDirection: isMobile ? 'column-reverse' : 'row',
+              justifyContent: 'flex-end', marginTop: 22,
             }}>
               <button onClick={() => setShowAdd(false)} style={{
                 padding: '9px 18px', background: '#f9fafb',
                 border: '1px solid #e5e7eb', borderRadius: 8,
                 fontSize: 13, color: '#6b7280', cursor: 'pointer', fontFamily: 'inherit',
-              }}>
-                Cancel
-              </button>
+                width: isMobile ? '100%' : 'auto',
+              }}>Cancel</button>
               <button onClick={saveTask} disabled={saving} style={{
                 padding: '9px 22px',
                 background: saving ? '#9ca3af' : '#16a34a',
                 border: 'none', borderRadius: 8,
                 fontSize: 13, fontWeight: 600, color: '#fff',
                 cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                width: isMobile ? '100%' : 'auto',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
               }}>
+                <CheckCircle2 size={15} />
                 {saving ? 'Saving...' : editTask ? 'Save Changes' : 'Add Task'}
               </button>
             </div>
           </div>
         </div>
       )}
-
     </div>
   )
 }

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import theme from '../theme'
 import { advanceApplicantStage } from '../lib/pipelineStages'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 // ─── ALL 12 DOCUMENT TYPES ────────────────────────────────────────────────────
 // MUST match StudentDocumentUpload.jsx exactly — same order, same spelling
@@ -89,23 +90,24 @@ function FileLink({ doc, onDeleted }) {
 }
 
 export default function Documents() {
+  const isMobile = useIsMobile()
 
   const [view, setView] = useState('student')
 
-  const [docs,     setDocs]     = useState([])
-  const [students, setStudents] = useState([])
-  const [loading,  setLoading]  = useState(true)
+  const [docs,      setDocs]      = useState([])
+  const [applicants, setApplicants] = useState([])   // full applicants table: {id, name, email}
+  const [loading,   setLoading]   = useState(true)
 
-  const [selectedStudent, setSelectedStudent] = useState(null)
-  const [studentSearch,   setStudentSearch]   = useState('')
+  // selectedApplicantId replaces the old selectedStudent (name) key
+  const [selectedApplicantId, setSelectedApplicantId] = useState(null)
+  const [studentSearch,       setStudentSearch]       = useState('')
 
   const [tableSearch, setTableSearch] = useState('')
   const [tableFilter, setTableFilter] = useState('All')
 
-  const [showAddStudent,  setShowAddStudent]  = useState(false)
-  const [newStudentName,  setNewStudentName]  = useState('')
-  const [newStudentEmail, setNewStudentEmail] = useState('')
-  const [adding,          setAdding]          = useState(false)
+  const [showAddStudent,     setShowAddStudent]     = useState(false)
+  const [addApplicantId,     setAddApplicantId]     = useState('')  // dropdown selection
+  const [adding,             setAdding]             = useState(false)
 
   const [editDoc,    setEditDoc]    = useState(null)
   const [editStatus, setEditStatus] = useState('')
@@ -117,32 +119,47 @@ export default function Documents() {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase
-      .from('student_documents')
-      .select('*')
-      .order('student_name', { ascending: true })
-    const rows = data || []
+
+    const [{ data: docRows }, { data: applicantRows }] = await Promise.all([
+      supabase.from('student_documents').select('*'),
+      supabase.from('applicants').select('id, name, email').order('name', { ascending: true }),
+    ])
+
+    const rows = docRows || []
     setDocs(rows)
+    setApplicants(applicantRows || [])
 
-    const names = [...new Set(rows.map(r => r.student_name))].sort()
-    setStudents(names)
+    // Unique list of applicant_ids that currently have document rows
+    const idsWithDocs = [...new Set(rows.map(r => r.applicant_id).filter(Boolean))]
 
-    if (names.length > 0 && !selectedStudent) setSelectedStudent(names[0])
+    if (idsWithDocs.length > 0 && !selectedApplicantId) {
+      setSelectedApplicantId(idsWithDocs[0])
+    }
     setLoading(false)
   }
 
-  async function addStudentDocs() {
-    if (!newStudentName.trim()) return alert('Enter student name')
+  // Applicants who don't have a document list yet — shown in the "add" dropdown
+  const applicantIdsWithDocs = new Set(docs.map(d => d.applicant_id).filter(Boolean))
+  const applicantsWithoutDocs = applicants.filter(a => !applicantIdsWithDocs.has(a.id))
 
-    const exists = docs.some(
-      d => d.student_name.toLowerCase() === newStudentName.trim().toLowerCase()
-    )
-    if (exists) return alert('Documents for this student already exist.')
+  async function addStudentDocs() {
+    if (!addApplicantId) return alert('Select an applicant first')
+
+    // Compare as strings — <select> values are always strings, but
+    // applicant.id may be a UUID string OR a numeric id depending on the
+    // schema, so a strict === can silently fail on type mismatch.
+    const applicant = applicants.find(a => String(a.id) === String(addApplicantId))
+    if (!applicant) return alert('Selected applicant not found — try reloading the page')
+
+    // Structurally impossible to duplicate now: keyed on applicant_id, not name
+    const exists = docs.some(d => String(d.applicant_id) === String(applicant.id))
+    if (exists) return alert('Documents for this applicant already exist.')
 
     setAdding(true)
     const rows = DOC_TYPES.map(type => ({
-      student_name:  newStudentName.trim(),
-      student_email: newStudentEmail.trim().toLowerCase(),
+      applicant_id:  applicant.id,
+      student_name:  applicant.name,
+      student_email: (applicant.email || '').trim().toLowerCase(),
       doc_type:      type,
       status:        'Missing',
       note:          '',
@@ -158,10 +175,9 @@ export default function Documents() {
 
     setAdding(false)
     setShowAddStudent(false)
-    setNewStudentName('')
-    setNewStudentEmail('')
+    setAddApplicantId('')
     await load()
-    setSelectedStudent(newStudentName.trim())
+    setSelectedApplicantId(applicant.id)
   }
 
   function openEdit(doc) {
@@ -179,7 +195,7 @@ export default function Documents() {
 
     if (editFile) {
       const ext  = editFile.name.split('.').pop()
-      const path = `${editDoc.student_name}/${editDoc.doc_type}-${Date.now()}.${ext}`
+      const path = `${editDoc.applicant_id}/${editDoc.doc_type}-${Date.now()}.${ext}`
         .replace(/\s+/g, '_')
 
       const { error: uploadError } = await supabase.storage
@@ -208,6 +224,7 @@ export default function Documents() {
       })
       .eq('id', editDoc.id)
 
+    const applicantId  = editDoc.applicant_id
     const studentName  = editDoc.student_name
     const studentEmail = editDoc.student_email
 
@@ -215,18 +232,19 @@ export default function Documents() {
     setEditDoc(null)
     await load()
 
-    // Auto-advance applicant to "Documentation" stage once all docs are received/verified
+    // Auto-advance applicant to "Documentation" stage once ALL docs are
+    // specifically Verified (not just uploaded/Received) by staff.
     const { data: freshRows } = await supabase
       .from('student_documents')
       .select('doc_type, status')
-      .eq('student_name', studentName)
+      .eq('applicant_id', applicantId)
 
-    const allUploaded = DOC_TYPES.every(type => {
+    const allVerified = DOC_TYPES.every(type => {
       const doc = bestDoc(freshRows || [], type)
-      return doc && doc.status !== 'Missing'
+      return doc && doc.status === 'Verified'
     })
 
-    if (allUploaded) {
+    if (allVerified) {
       await advanceApplicantStage(
         supabase,
         { email: studentEmail, name: studentName },
@@ -236,8 +254,8 @@ export default function Documents() {
   }
 
   // ── Derived data for the per-student view ─────────────────────────────────
-  const studentDocs      = selectedStudent
-    ? docs.filter(d => d.student_name === selectedStudent)
+  const studentDocs      = selectedApplicantId
+    ? docs.filter(d => d.applicant_id === selectedApplicantId)
     : []
   const deduplicatedDocs = DOC_TYPES.map(type => bestDoc(studentDocs, type)).filter(Boolean)
   const verifiedCount    = deduplicatedDocs.filter(d => d.status === 'Verified').length
@@ -245,6 +263,31 @@ export default function Documents() {
   const missingCount     = deduplicatedDocs.filter(d => d.status === 'Missing').length
   const completePct      = deduplicatedDocs.length
     ? Math.round((verifiedCount / deduplicatedDocs.length) * 100) : 0
+
+  const selectedApplicant = applicants.find(a => a.id === selectedApplicantId)
+
+  // ── Sidebar list — one entry per applicant_id that has document rows ──────
+  const sidebarStudents = [...new Set(docs.map(d => d.applicant_id).filter(Boolean))]
+    .map(id => {
+      const applicant = applicants.find(a => a.id === id)
+      const rows      = docs.filter(d => d.applicant_id === id)
+      const unique    = DOC_TYPES.map(type => bestDoc(rows, type)).filter(Boolean)
+      const verified  = unique.filter(d => d.status === 'Verified').length
+      const total     = unique.length
+      return {
+        id,
+        name:  applicant?.name  || rows[0]?.student_name  || 'Unknown',
+        email: applicant?.email || rows[0]?.student_email || '',
+        verified,
+        total,
+      }
+    })
+    .sort((a, b) => a.name.localeCompare(b.name))
+
+  const filteredStudents = sidebarStudents.filter(s =>
+    s.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
+    s.email.toLowerCase().includes(studentSearch.toLowerCase())
+  )
 
   // ── Derived data for the all-documents view ───────────────────────────────
   const filteredAll = docs.filter(d => {
@@ -258,7 +301,9 @@ export default function Documents() {
   const deduplicatedAll = (() => {
     const seen = {}
     filteredAll.forEach(d => {
-      const key = `${d.student_name}__${d.doc_type}`
+      // Group by applicant_id when present, falling back to name for any
+      // legacy rows that predate the applicant_id column.
+      const key = `${d.applicant_id || d.student_name}__${d.doc_type}`
       if (!seen[key] || (STATUS_PRIORITY[d.status] || 0) > (STATUS_PRIORITY[seen[key].status] || 0)) {
         seen[key] = d
       }
@@ -269,21 +314,21 @@ export default function Documents() {
     )
   })()
 
-  const filteredStudents = students.filter(s =>
-    s.toLowerCase().includes(studentSearch.toLowerCase())
-  )
-
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div style={{ fontFamily: "'Segoe UI', Arial, sans-serif" }}>
 
       {/* ── PAGE HEADER ───────────────────────────────────── */}
       <div style={{
-        display: 'flex', justifyContent: 'space-between',
-        alignItems: 'flex-start', marginBottom: 20,
+        display: 'flex',
+        flexDirection: isMobile ? 'column' : 'row',
+        justifyContent: 'space-between',
+        alignItems: isMobile ? 'stretch' : 'flex-start',
+        gap: isMobile ? 12 : 0,
+        marginBottom: 20,
       }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: theme.textDark || '#111827', margin: 0 }}>
+          <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: theme.textDark || '#111827', margin: 0 }}>
             Student Documents
           </h1>
           <p style={{ fontSize: 13, color: theme.textLight || '#6b7280', marginTop: 4 }}>
@@ -296,6 +341,7 @@ export default function Documents() {
             padding: '9px 18px', background: theme.primary || '#1a56db',
             border: 'none', borderRadius: 8,
             fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer',
+            width: isMobile ? '100%' : 'auto',
           }}
         >
           + Add Student Documents
@@ -306,7 +352,7 @@ export default function Documents() {
       <div style={{
         display: 'flex', marginBottom: 20,
         background: '#f3f4f6', borderRadius: 10, padding: 4,
-        width: 'fit-content',
+        width: isMobile ? '100%' : 'fit-content',
       }}>
         {[
           { key: 'student', label: '👤 Per Student' },
@@ -315,6 +361,7 @@ export default function Documents() {
           <button key={tab.key} onClick={() => setView(tab.key)} style={{
             padding: '8px 22px', border: 'none', borderRadius: 7,
             fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+            flex: isMobile ? 1 : 'none',
             background: view === tab.key ? '#fff' : 'transparent',
             color:      view === tab.key ? (theme.primary || '#1a56db') : '#6b7280',
             boxShadow:  view === tab.key ? '0 1px 4px rgba(0,0,0,0.10)' : 'none',
@@ -330,20 +377,25 @@ export default function Documents() {
           VIEW 1 — PER STUDENT
           ════════════════════════════════════════════════════ */}
       {!loading && view === 'student' && (
-        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
+          gap: 16, alignItems: 'flex-start',
+        }}>
 
-          {/* Student sidebar */}
+          {/* Student sidebar — full width, capped height on phone instead of a fixed side column */}
           <div style={{
-            width: 220, flexShrink: 0,
+            width: isMobile ? '100%' : 220, flexShrink: 0,
             background: '#fff', border: '1px solid #e5e7eb',
             borderRadius: 12, overflow: 'hidden',
+            boxSizing: 'border-box',
           }}>
             <div style={{
               padding: '12px 14px', borderBottom: '1px solid #e5e7eb',
               fontSize: 12, fontWeight: 700, color: '#6b7280',
               textTransform: 'uppercase', letterSpacing: '0.06em',
             }}>
-              Students ({students.length})
+              Students ({sidebarStudents.length})
             </div>
 
             <div style={{ padding: '10px 10px 6px' }}>
@@ -355,23 +407,21 @@ export default function Documents() {
               />
             </div>
 
-            <div style={{ maxHeight: 520, overflowY: 'auto', padding: '4px 8px 10px' }}>
+            <div style={{
+              maxHeight: isMobile ? 220 : 520,
+              overflowY: 'auto', padding: '4px 8px 10px',
+            }}>
               {filteredStudents.length === 0 && (
                 <div style={{ padding: '20px 8px', fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>
                   No students found
                 </div>
               )}
-              {filteredStudents.map(name => {
-                const studentRows = docs.filter(d => d.student_name === name)
-                const uniqueDocs  = DOC_TYPES.map(type => bestDoc(studentRows, type)).filter(Boolean)
-                const verified    = uniqueDocs.filter(d => d.status === 'Verified').length
-                const total       = uniqueDocs.length
-                const isSelected  = selectedStudent === name
-
+              {filteredStudents.map(s => {
+                const isSelected = selectedApplicantId === s.id
                 return (
                   <button
-                    key={name}
-                    onClick={() => setSelectedStudent(name)}
+                    key={s.id}
+                    onClick={() => setSelectedApplicantId(s.id)}
                     style={{
                       width: '100%', textAlign: 'left', padding: '10px 10px',
                       borderRadius: 8, border: 'none', cursor: 'pointer',
@@ -381,18 +431,20 @@ export default function Documents() {
                       fontWeight: isSelected ? 600 : 400,
                     }}
                   >
-                    <div style={{ fontSize: 13 }}>{name}</div>
+                    <div style={{ fontSize: 13 }}>{s.name}</div>
+                    {/* Email shown so same-name students are distinguishable */}
+                    <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 1 }}>{s.email}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
                       <div style={{
                         flex: 1, height: 4, background: '#e5e7eb',
                         borderRadius: 99, overflow: 'hidden',
                       }}>
                         <div style={{
-                          width: `${total ? Math.round((verified / total) * 100) : 0}%`,
+                          width: `${s.total ? Math.round((s.verified / s.total) * 100) : 0}%`,
                           height: '100%', background: '#16a34a', borderRadius: 99,
                         }} />
                       </div>
-                      <span style={{ fontSize: 10, color: '#9ca3af' }}>{verified}/{total}</span>
+                      <span style={{ fontSize: 10, color: '#9ca3af' }}>{s.verified}/{s.total}</span>
                     </div>
                   </button>
                 )
@@ -401,15 +453,15 @@ export default function Documents() {
           </div>
 
           {/* Right panel */}
-          <div style={{ flex: 1 }}>
-            {!selectedStudent ? (
+          <div style={{ flex: 1, width: isMobile ? '100%' : 'auto', minWidth: 0 }}>
+            {!selectedApplicantId ? (
               <div style={{
                 background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
                 padding: 60, textAlign: 'center', color: '#9ca3af',
               }}>
                 <div style={{ fontSize: 40, marginBottom: 10 }}>📁</div>
                 <div style={{ fontSize: 14, color: '#6b7280' }}>
-                  Select a student from the left to view their documents
+                  Select a student from the list to view their documents
                 </div>
               </div>
             ) : (
@@ -417,16 +469,16 @@ export default function Documents() {
                 {/* Student summary header */}
                 <div style={{
                   background: '#fff', border: '1px solid #e5e7eb',
-                  borderRadius: 12, padding: '16px 20px', marginBottom: 14,
+                  borderRadius: 12, padding: isMobile ? '14px 16px' : '16px 20px', marginBottom: 14,
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   flexWrap: 'wrap', gap: 10,
                 }}>
                   <div>
                     <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>
-                      {selectedStudent}
+                      {selectedApplicant?.name || studentDocs[0]?.student_name || 'Unknown'}
                     </div>
                     <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
-                      {docs.find(d => d.student_name === selectedStudent)?.student_email || '—'}
+                      {selectedApplicant?.email || studentDocs[0]?.student_email || '—'}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -453,24 +505,25 @@ export default function Documents() {
                   </div>
                 </div>
 
-                {/* Document checklist table */}
+                {/* Document checklist — table on desktop, cards on phone */}
                 <div style={{
                   background: '#fff', border: '1px solid #e5e7eb',
                   borderRadius: 12, overflow: 'hidden',
                 }}>
-                  {/* Table header */}
-                  <div style={{
-                    display: 'grid', gridTemplateColumns: '3fr 1fr 2fr 1.5fr',
-                    padding: '10px 18px',
-                    background: '#f9fafb', borderBottom: '1px solid #e5e7eb',
-                  }}>
-                    {['Document', 'Status', 'Note', 'Actions'].map(h => (
-                      <span key={h} style={{
-                        fontSize: 11, fontWeight: 600, color: '#9ca3af',
-                        textTransform: 'uppercase', letterSpacing: '0.05em',
-                      }}>{h}</span>
-                    ))}
-                  </div>
+                  {!isMobile && (
+                    <div style={{
+                      display: 'grid', gridTemplateColumns: '3fr 1fr 2fr 1.5fr',
+                      padding: '10px 18px',
+                      background: '#f9fafb', borderBottom: '1px solid #e5e7eb',
+                    }}>
+                      {['Document', 'Status', 'Note', 'Actions'].map(h => (
+                        <span key={h} style={{
+                          fontSize: 11, fontWeight: 600, color: '#9ca3af',
+                          textTransform: 'uppercase', letterSpacing: '0.05em',
+                        }}>{h}</span>
+                      ))}
+                    </div>
+                  )}
 
                   {deduplicatedDocs.length === 0 && (
                     <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
@@ -478,29 +531,89 @@ export default function Documents() {
                     </div>
                   )}
 
-                  {/* One row per doc type */}
+                  {/* One row/card per doc type */}
                   {DOC_TYPES.map((type, i) => {
                     const doc = bestDoc(studentDocs, type)
-                    if (!doc) return (
-                      // Placeholder for a doc type not yet in DB for this student
-                      <div key={type} style={{
-                        display: 'grid', gridTemplateColumns: '3fr 1fr 2fr 1.5fr',
-                        padding: '14px 18px', alignItems: 'center',
-                        borderBottom: i < DOC_TYPES.length - 1 ? '1px solid #f3f4f6' : 'none',
-                        opacity: 0.45,
-                      }}>
-                        <div style={{ fontSize: 13, color: '#374151' }}>📋 {type}</div>
-                        <span style={{
-                          padding: '3px 10px', borderRadius: 20, fontSize: 11,
-                          fontWeight: 600, display: 'inline-block',
-                          background: '#f3f4f6', color: '#9ca3af',
-                        }}>Not set up</span>
-                        <div style={{ fontSize: 12, color: '#9ca3af' }}>Run SQL to add</div>
-                        <div />
-                      </div>
-                    )
 
-                    return (
+                    if (!doc) {
+                      return isMobile ? (
+                        <div key={type} style={{
+                          padding: '12px 16px', opacity: 0.45,
+                          borderBottom: i < DOC_TYPES.length - 1 ? '1px solid #f3f4f6' : 'none',
+                        }}>
+                          <div style={{ fontSize: 13, color: '#374151', marginBottom: 4 }}>📋 {type}</div>
+                          <span style={{
+                            padding: '3px 10px', borderRadius: 20, fontSize: 11,
+                            fontWeight: 600, display: 'inline-block',
+                            background: '#f3f4f6', color: '#9ca3af',
+                          }}>Not set up</span>
+                        </div>
+                      ) : (
+                        <div key={type} style={{
+                          display: 'grid', gridTemplateColumns: '3fr 1fr 2fr 1.5fr',
+                          padding: '14px 18px', alignItems: 'center',
+                          borderBottom: i < DOC_TYPES.length - 1 ? '1px solid #f3f4f6' : 'none',
+                          opacity: 0.45,
+                        }}>
+                          <div style={{ fontSize: 13, color: '#374151' }}>📋 {type}</div>
+                          <span style={{
+                            padding: '3px 10px', borderRadius: 20, fontSize: 11,
+                            fontWeight: 600, display: 'inline-block',
+                            background: '#f3f4f6', color: '#9ca3af',
+                          }}>Not set up</span>
+                          <div style={{ fontSize: 12, color: '#9ca3af' }}>Run SQL to add</div>
+                          <div />
+                        </div>
+                      )
+                    }
+
+                    return isMobile ? (
+                      // ── Mobile card ──
+                      <div
+                        key={type}
+                        style={{
+                          padding: '14px 16px',
+                          borderBottom: i < DOC_TYPES.length - 1 ? '1px solid #f3f4f6' : 'none',
+                          background: doc.status === 'Verified' ? '#f0fdf4' : 'transparent',
+                          display: 'flex', flexDirection: 'column', gap: 6,
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: '#111827', display: 'flex', alignItems: 'flex-start', gap: 6, minWidth: 0 }}>
+                            <span>{doc.status === 'Verified' ? '✅' : doc.status === 'Received' ? '📄' : '📋'}</span>
+                            <span>{type}</span>
+                          </div>
+                          <span style={{
+                            padding: '3px 10px', borderRadius: 20,
+                            fontSize: 11, fontWeight: 600, flexShrink: 0,
+                            background: statusStyle(doc.status).bg,
+                            color:      statusStyle(doc.status).color,
+                          }}>
+                            {doc.status}
+                          </span>
+                        </div>
+
+                        <FileLink doc={doc} onDeleted={load} />
+
+                        {doc.note && (
+                          <div style={{ fontSize: 12, color: '#9ca3af' }}>{doc.note}</div>
+                        )}
+
+                        <button
+                          onClick={() => openEdit(doc)}
+                          style={{
+                            alignSelf: 'flex-start',
+                            padding: '6px 14px',
+                            background: '#f3f4f6', border: '1px solid #e5e7eb',
+                            borderRadius: 6, fontSize: 12, fontWeight: 600,
+                            color: '#374151', cursor: 'pointer', fontFamily: 'inherit',
+                          }}
+                        >
+                          ✏️ Edit
+                        </button>
+                      </div>
+                    ) : (
+                      // ── Desktop row ──
                       <div
                         key={type}
                         style={{
@@ -516,7 +629,6 @@ export default function Documents() {
                           e.currentTarget.style.background = doc.status === 'Verified' ? '#f0fdf4' : 'transparent'
                         }}
                       >
-                        {/* Document name + file link */}
                         <div>
                           <div style={{ fontSize: 13, fontWeight: 500, color: '#111827', display: 'flex', alignItems: 'center', gap: 6 }}>
                             <span>
@@ -528,7 +640,6 @@ export default function Documents() {
                           <FileLink doc={doc} onDeleted={load} />
                         </div>
 
-                        {/* Status badge */}
                         <span style={{
                           padding: '3px 10px', borderRadius: 20,
                           fontSize: 11, fontWeight: 600, display: 'inline-block',
@@ -538,7 +649,6 @@ export default function Documents() {
                           {doc.status}
                         </span>
 
-                        {/* Note */}
                         <div style={{
                           fontSize: 12, color: '#9ca3af',
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -546,7 +656,6 @@ export default function Documents() {
                           {doc.note || '—'}
                         </div>
 
-                        {/* Edit button */}
                         <button
                           onClick={() => openEdit(doc)}
                           style={{
@@ -574,7 +683,7 @@ export default function Documents() {
       {!loading && view === 'all' && (
         <div>
           {/* Search + filter */}
-          <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 10, marginBottom: 14 }}>
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8,
               background: '#fff', border: '1px solid #e5e7eb',
@@ -598,6 +707,7 @@ export default function Documents() {
                 background: '#fff', border: '1px solid #e5e7eb',
                 borderRadius: 8, padding: '8px 14px',
                 fontSize: 13, color: '#374151', outline: 'none', cursor: 'pointer',
+                width: isMobile ? '100%' : 'auto',
               }}
             >
               <option>All</option>
@@ -611,19 +721,20 @@ export default function Documents() {
             background: '#fff', border: '1px solid #e5e7eb',
             borderRadius: 12, overflow: 'hidden',
           }}>
-            {/* Table header */}
-            <div style={{
-              display: 'grid', gridTemplateColumns: '2fr 2.5fr 1fr 2fr 1.2fr',
-              padding: '10px 18px',
-              background: '#f9fafb', borderBottom: '1px solid #e5e7eb',
-            }}>
-              {['Student', 'Document', 'Status', 'Note', 'Actions'].map(h => (
-                <span key={h} style={{
-                  fontSize: 11, fontWeight: 600, color: '#9ca3af',
-                  textTransform: 'uppercase', letterSpacing: '0.05em',
-                }}>{h}</span>
-              ))}
-            </div>
+            {!isMobile && (
+              <div style={{
+                display: 'grid', gridTemplateColumns: '2fr 2.5fr 1fr 2fr 1.2fr',
+                padding: '10px 18px',
+                background: '#f9fafb', borderBottom: '1px solid #e5e7eb',
+              }}>
+                {['Student', 'Document', 'Status', 'Note', 'Actions'].map(h => (
+                  <span key={h} style={{
+                    fontSize: 11, fontWeight: 600, color: '#9ca3af',
+                    textTransform: 'uppercase', letterSpacing: '0.05em',
+                  }}>{h}</span>
+                ))}
+              </div>
+            )}
 
             {deduplicatedAll.length === 0 && (
               <div style={{ padding: 60, textAlign: 'center', color: '#9ca3af' }}>
@@ -633,72 +744,113 @@ export default function Documents() {
             )}
 
             {deduplicatedAll.map((doc, i) => (
-              <div key={doc.id} style={{
-                display: 'grid', gridTemplateColumns: '2fr 2.5fr 1fr 2fr 1.2fr',
-                padding: '13px 18px', alignItems: 'center',
-                borderBottom: i < deduplicatedAll.length - 1 ? '1px solid #f3f4f6' : 'none',
-                background: doc.status === 'Verified' ? '#f0fdf4' : 'transparent',
-              }}
-                onMouseEnter={e => {
-                  if (doc.status !== 'Verified') e.currentTarget.style.background = '#f9fafb'
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.background = doc.status === 'Verified' ? '#f0fdf4' : 'transparent'
-                }}
-              >
-                {/* Student name + email */}
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>
-                    {doc.student_name}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>
-                    {doc.student_email || ''}
-                  </div>
-                </div>
-
-                {/* Doc type + file link */}
-                <div>
-                  <div style={{ fontSize: 13, color: '#374151', display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <span>
-                      {doc.status === 'Verified' ? '✅'
-                        : doc.status === 'Received' ? '📄' : '📋'}
+              isMobile ? (
+                // ── Mobile card ──
+                <div key={doc.id} style={{
+                  padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 6,
+                  borderBottom: i < deduplicatedAll.length - 1 ? '1px solid #f3f4f6' : 'none',
+                  background: doc.status === 'Verified' ? '#f0fdf4' : 'transparent',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{doc.student_name}</div>
+                      <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>{doc.student_email || ''}</div>
+                    </div>
+                    <span style={{
+                      padding: '3px 10px', borderRadius: 20, flexShrink: 0,
+                      fontSize: 11, fontWeight: 600,
+                      background: statusStyle(doc.status).bg,
+                      color:      statusStyle(doc.status).color,
+                    }}>
+                      {doc.status}
                     </span>
-                    {doc.doc_type}
+                  </div>
+
+                  <div style={{ fontSize: 13, color: '#374151', display: 'flex', alignItems: 'flex-start', gap: 5 }}>
+                    <span>{doc.status === 'Verified' ? '✅' : doc.status === 'Received' ? '📄' : '📋'}</span>
+                    <span>{doc.doc_type}</span>
                   </div>
                   <FileLink doc={doc} onDeleted={load} />
+
+                  {doc.note && <div style={{ fontSize: 12, color: '#9ca3af' }}>{doc.note}</div>}
+
+                  <button
+                    onClick={() => openEdit(doc)}
+                    style={{
+                      alignSelf: 'flex-start',
+                      padding: '6px 14px',
+                      background: '#f3f4f6', border: '1px solid #e5e7eb',
+                      borderRadius: 6, fontSize: 12, fontWeight: 600,
+                      color: '#374151', cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >
+                    ✏️ Edit
+                  </button>
                 </div>
-
-                {/* Status badge */}
-                <span style={{
-                  padding: '3px 10px', borderRadius: 20, display: 'inline-block',
-                  fontSize: 11, fontWeight: 600,
-                  background: statusStyle(doc.status).bg,
-                  color:      statusStyle(doc.status).color,
-                }}>
-                  {doc.status}
-                </span>
-
-                {/* Note */}
-                <div style={{
-                  fontSize: 12, color: '#9ca3af',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {doc.note || '—'}
-                </div>
-
-                {/* Edit button */}
-                <button
-                  onClick={() => openEdit(doc)}
-                  style={{
-                    padding: '5px 14px',
-                    background: '#f3f4f6', border: '1px solid #e5e7eb',
-                    borderRadius: 6, fontSize: 12, fontWeight: 600,
-                    color: '#374151', cursor: 'pointer', fontFamily: 'inherit',
+              ) : (
+                // ── Desktop row ──
+                <div key={doc.id} style={{
+                  display: 'grid', gridTemplateColumns: '2fr 2.5fr 1fr 2fr 1.2fr',
+                  padding: '13px 18px', alignItems: 'center',
+                  borderBottom: i < deduplicatedAll.length - 1 ? '1px solid #f3f4f6' : 'none',
+                  background: doc.status === 'Verified' ? '#f0fdf4' : 'transparent',
+                }}
+                  onMouseEnter={e => {
+                    if (doc.status !== 'Verified') e.currentTarget.style.background = '#f9fafb'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = doc.status === 'Verified' ? '#f0fdf4' : 'transparent'
                   }}
                 >
-                  ✏️ Edit
-                </button>
-              </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>
+                      {doc.student_name}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>
+                      {doc.student_email || ''}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: 13, color: '#374151', display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span>
+                        {doc.status === 'Verified' ? '✅'
+                          : doc.status === 'Received' ? '📄' : '📋'}
+                      </span>
+                      {doc.doc_type}
+                    </div>
+                    <FileLink doc={doc} onDeleted={load} />
+                  </div>
+
+                  <span style={{
+                    padding: '3px 10px', borderRadius: 20, display: 'inline-block',
+                    fontSize: 11, fontWeight: 600,
+                    background: statusStyle(doc.status).bg,
+                    color:      statusStyle(doc.status).color,
+                  }}>
+                    {doc.status}
+                  </span>
+
+                  <div style={{
+                    fontSize: 12, color: '#9ca3af',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {doc.note || '—'}
+                  </div>
+
+                  <button
+                    onClick={() => openEdit(doc)}
+                    style={{
+                      padding: '5px 14px',
+                      background: '#f3f4f6', border: '1px solid #e5e7eb',
+                      borderRadius: 6, fontSize: 12, fontWeight: 600,
+                      color: '#374151', cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >
+                    ✏️ Edit
+                  </button>
+                </div>
+              )
             ))}
           </div>
         </div>
@@ -708,16 +860,25 @@ export default function Documents() {
           MODAL — ADD STUDENT (creates all 12 doc rows)
           ════════════════════════════════════════════════════ */}
       {showAddStudent && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300,
-        }}>
-          <div style={{
-            background: '#fff', border: '1px solid #e5e7eb',
-            borderRadius: 14, padding: 28, width: 440,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
-            maxHeight: '90vh', overflowY: 'auto',
-          }}>
+        <div
+          onClick={() => setShowAddStudent(false)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+            display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 300,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', border: '1px solid #e5e7eb',
+              borderRadius: isMobile ? '14px 14px 0 0' : 14,
+              padding: isMobile ? 20 : 28,
+              width: isMobile ? '100%' : 440,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+              maxHeight: '90vh', overflowY: 'auto',
+              boxSizing: 'border-box',
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
               <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: 0 }}>
                 Add Student Documents
@@ -727,27 +888,33 @@ export default function Documents() {
               }}>✕</button>
             </div>
 
-            <div style={{ marginBottom: 14 }}>
-              <label style={labelStyle}>Student Full Name *</label>
-              <input
-                placeholder="Ram Sharma"
-                value={newStudentName}
-                onChange={e => setNewStudentName(e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-
-            <div style={{ marginBottom: 14 }}>
-              <label style={labelStyle}>Student Email</label>
-              <input
-                placeholder="ram@email.com"
-                value={newStudentEmail}
-                onChange={e => setNewStudentEmail(e.target.value)}
-                style={inputStyle}
-              />
+            <div style={{ marginBottom: 18 }}>
+              <label style={labelStyle}>Select Applicant *</label>
+              <select
+                value={addApplicantId}
+                onChange={e => setAddApplicantId(e.target.value)}
+                style={{ ...inputStyle, cursor: 'pointer' }}
+              >
+                <option value="">— Choose an applicant —</option>
+                {applicantsWithoutDocs.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} {a.email ? `(${a.email})` : ''}
+                  </option>
+                ))}
+              </select>
               <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>
-                ℹ️ Email is saved in lowercase so the student portal matches it correctly.
+                ℹ️ Only applicants who don't already have a document list are shown here —
+                that's what prevents duplicate lists, even for two students sharing a name.
               </div>
+              {applicantsWithoutDocs.length === 0 && (
+                <div style={{
+                  marginTop: 8, padding: '8px 12px', background: '#fef9c3',
+                  border: '1px solid #fde68a', borderRadius: 7, fontSize: 12, color: '#92400e',
+                }}>
+                  Every applicant already has a document list. Add a new applicant first
+                  from the Applications page.
+                </div>
+              )}
             </div>
 
             {/* Preview all 12 doc types */}
@@ -771,18 +938,24 @@ export default function Documents() {
               ))}
             </div>
 
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <div style={{
+              display: 'flex', gap: 10,
+              flexDirection: isMobile ? 'column-reverse' : 'row',
+              justifyContent: 'flex-end',
+            }}>
               <button onClick={() => setShowAddStudent(false)} style={{
                 padding: '9px 18px', background: '#f9fafb',
                 border: '1px solid #e5e7eb', borderRadius: 8,
                 fontSize: 13, color: '#6b7280', cursor: 'pointer', fontFamily: 'inherit',
+                width: isMobile ? '100%' : 'auto',
               }}>Cancel</button>
-              <button onClick={addStudentDocs} disabled={adding} style={{
+              <button onClick={addStudentDocs} disabled={adding || !addApplicantId} style={{
                 padding: '9px 18px',
-                background: adding ? '#9ca3af' : (theme.primary || '#1a56db'),
+                background: (adding || !addApplicantId) ? '#9ca3af' : (theme.primary || '#1a56db'),
                 border: 'none', borderRadius: 8,
                 fontSize: 13, fontWeight: 600, color: '#fff',
-                cursor: adding ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                cursor: (adding || !addApplicantId) ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                width: isMobile ? '100%' : 'auto',
               }}>
                 {adding ? 'Creating…' : 'Create Document List'}
               </button>
@@ -793,18 +966,27 @@ export default function Documents() {
 
       {/* ════════════════════════════════════════════════════
           MODAL — EDIT DOCUMENT
-          Admin can change status, add note, upload/delete file
           ════════════════════════════════════════════════════ */}
       {editDoc && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300,
-        }}>
-          <div style={{
-            background: '#fff', border: '1px solid #e5e7eb',
-            borderRadius: 14, padding: 28, width: 440,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
-          }}>
+        <div
+          onClick={() => setEditDoc(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+            display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 300,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', border: '1px solid #e5e7eb',
+              borderRadius: isMobile ? '14px 14px 0 0' : 14,
+              padding: isMobile ? 20 : 28,
+              width: isMobile ? '100%' : 440,
+              maxHeight: '90vh', overflowY: 'auto',
+              boxSizing: 'border-box',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
               <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: 0 }}>
                 Update Document
@@ -823,7 +1005,7 @@ export default function Documents() {
                 {editDoc.doc_type}
               </div>
               <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
-                Student: {editDoc.student_name}
+                Student: {editDoc.student_name} {editDoc.student_email ? `(${editDoc.student_email})` : ''}
               </div>
               {/* File link with delete — admin can always delete regardless of status */}
               <FileLink doc={editDoc} onDeleted={() => { setEditDoc(null); load() }} />
@@ -881,11 +1063,16 @@ export default function Documents() {
               )}
             </div>
 
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <div style={{
+              display: 'flex', gap: 10,
+              flexDirection: isMobile ? 'column-reverse' : 'row',
+              justifyContent: 'flex-end',
+            }}>
               <button onClick={() => setEditDoc(null)} style={{
                 padding: '9px 18px', background: '#f9fafb',
                 border: '1px solid #e5e7eb', borderRadius: 8,
                 fontSize: 13, color: '#6b7280', cursor: 'pointer', fontFamily: 'inherit',
+                width: isMobile ? '100%' : 'auto',
               }}>Cancel</button>
               <button onClick={saveEdit} disabled={saving} style={{
                 padding: '9px 18px',
@@ -893,6 +1080,7 @@ export default function Documents() {
                 border: 'none', borderRadius: 8,
                 fontSize: 13, fontWeight: 600, color: '#fff',
                 cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                width: isMobile ? '100%' : 'auto',
               }}>
                 {saving ? 'Saving…' : 'Save Changes'}
               </button>
