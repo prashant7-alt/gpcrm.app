@@ -137,8 +137,9 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
         result = await createStudentAccount(form, applicant.id)
       }
 
-      const savedEmail = form.email
-      const savedName  = form.name
+      const savedEmail    = form.email
+      const savedName     = form.name
+      const savedPassword = form.password
 
       setModal(null)
       setForm({})
@@ -148,11 +149,11 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
         alert('✅ Applicant added!\n(No login password set — no portal login created. You can add one later from the Applications page.)')
 
       } else if (result.userId && !result.error) {
-        // Welcome email tells the student their account exists — it never
-        // contains the password. Staff shares that directly.
+        // Welcome email delivers the login email + password to the student.
         sendWelcomeEmail({
-          student_name:  savedName,
-          student_email: savedEmail,
+          student_name:     savedName,
+          student_email:    savedEmail,
+          student_password: savedPassword,
         }).then(res => {
           if (res.success) {
             console.log('✅ Welcome email sent to', savedEmail)
@@ -163,9 +164,10 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
 
         alert(
           '✅ Applicant added!\n\n' +
-          '🔑 Student portal login created for: ' + savedEmail + '\n\n' +
-          'Give the student their login email and the password you just set — ' +
-          'share it directly (in person or by phone), not by email.'
+          '🔑 Student portal login created:\n' +
+          'Email:    ' + savedEmail + '\n' +
+          'Password: ' + savedPassword + '\n\n' +
+          '📧 A welcome email with these login details has been sent to the student.'
         )
 
       } else if (result.userId && result.error) {

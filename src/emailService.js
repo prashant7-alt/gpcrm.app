@@ -30,23 +30,22 @@ emailjs.init(PUBLIC_KEY)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // sendWelcomeEmail
-// Call this when admin creates a new student account.
-//
-// SECURITY: the login password is NEVER sent by email. Staff share it with the
-// student directly (in person / phone). The email only tells the student their
-// account exists and which email to log in with.
+// Call this when admin creates a new student account. The email delivers the
+// student's login email + password so they can sign in to the portal.
 //
 // Usage:
 //   await sendWelcomeEmail({
-//     student_name:  'Ram Sharma',
-//     student_email: 'ram@gmail.com',
+//     student_name:     'Ram Sharma',
+//     student_email:    'ram@gmail.com',
+//     student_password: 'Pass1234',
 //   })
 // ─────────────────────────────────────────────────────────────────────────────
-export async function sendWelcomeEmail({ student_name, student_email }) {
+export async function sendWelcomeEmail({ student_name, student_email, student_password }) {
   try {
     const result = await emailjs.send(SERVICE_ID, TEMPLATE.WELCOME, {
       student_name,
       student_email,
+      student_password,
     })
     console.log('✅ Welcome email sent to', student_email)
     return { success: true, result }

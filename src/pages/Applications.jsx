@@ -133,10 +133,10 @@ export default function Applications() {
         )
       }
 
-      // Note: the password is intentionally NOT emailed. Staff shares it directly.
       await sendWelcomeEmail({
-        student_name:  form.name.trim(),
-        student_email: form.email.trim().toLowerCase(),
+        student_name:     form.name.trim(),
+        student_email:    form.email.trim().toLowerCase(),
+        student_password: form.password,
       })
 
     } catch (err) {
@@ -152,10 +152,10 @@ export default function Applications() {
 
     alert(
       `✅ Applicant added and student login created!\n\n` +
-      `Name:  ${form.name}\n` +
-      `Email: ${form.email}\n\n` +
-      `Give the student their login email and the password you just set — ` +
-      `share it with them directly (in person or by phone), not by email.`
+      `Name:     ${form.name}\n` +
+      `Email:    ${form.email}\n` +
+      `Password: ${form.password}\n\n` +
+      `A welcome email with these login details has been sent to the student.`
     )
   }
 
