@@ -37,6 +37,9 @@ supabase/.branches/
 # Local SQL scratch folder (not part of the app build)
 supabase sql code/
 
+# Local notes / working docs
+*.md
+
 # Sensitive files
 src/supabaseAdmin.js
 *.pem
