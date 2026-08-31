@@ -10,6 +10,7 @@ import theme from '../theme'
 import { supabase } from '../supabase'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
+import AnnouncementsPanel from '../components/AnnouncementsPanel'
 
 // Lucide icons — lightweight SVG icon library
 import {
@@ -204,6 +205,9 @@ function PriorityBadge({ priority }) {
 export default function Dashboard() {
   const isMobile = useIsMobile()
 
+  const profile = JSON.parse(localStorage.getItem('profile') || '{}')
+  const isAdmin = (profile.role || '') === 'admin'
+
   const [applicants,   setApplicants]   = useState([])
   const [students,     setStudents]     = useState([])
   const [payments,     setPayments]     = useState([])
@@ -397,6 +401,9 @@ export default function Dashboard() {
           Refresh
         </button>
       </div>
+
+      {/* ── ANNOUNCEMENTS (admin posts, everyone reads) ── */}
+      <AnnouncementsPanel audience="staff" isAdmin={isAdmin} />
 
       {/* ── TOP 4 STAT CARDS ── */}
       <div style={{

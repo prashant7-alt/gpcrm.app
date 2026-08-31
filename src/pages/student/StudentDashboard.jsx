@@ -5,6 +5,7 @@ import { supabase } from '../../supabase'
 import StudentLayout from './StudentLayout'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { Receipt, CheckCircle2, Hourglass, Bot, X, Send } from 'lucide-react'
+import AnnouncementsPanel from '../../components/AnnouncementsPanel'
 
 // ── KNOWLEDGE BASE ─────────────────────────────────────────────────────────
 // Every intent has: id, topic (for the "Browse topics" menu), q (the canonical
@@ -788,10 +789,13 @@ export default function StudentDashboard() {
             Welcome back, {(profile.name || 'Student').split(' ')[0]} 
           </h1>
           <p style={{ fontSize: 13, color: theme.textLight, margin: 0 }}>
-         
+
           </p>
         </div>
       </div>
+
+      {/* ── ANNOUNCEMENTS (posted by admin) ── */}
+      <AnnouncementsPanel audience="students" isAdmin={false} />
 
       {/* ── STAT CARDS ── */}
       <div style={{
