@@ -25,10 +25,16 @@ dist-ssr
 
 # Environment variables
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
+supabase/.env
+supabase/.env.*
+
+# Supabase CLI local state / cache
+supabase/.temp/
+supabase/.branches/
 
 # Sensitive files
 src/supabaseAdmin.js
+*.pem
+*.key
