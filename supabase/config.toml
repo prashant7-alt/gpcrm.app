@@ -1,44 +1,45 @@
+# Edge Function config.
+#
+# verify_jwt = true  -> Supabase's gateway rejects the request unless a valid
+#                        Supabase JWT is presented. The function ALSO does its
+#                        own role/ownership checks on top of this.
+# verify_jwt = false -> function is reachable without a JWT (needed for the
+#                        payment-gateway redirect-back pages). These functions
+#                        protect themselves by cross-checking the gateway-
+#                        confirmed amount against the target invoice row.
 
 [functions.delete-user]
 enabled = true
-verify_jwt = false
+verify_jwt = true
 import_map = "./functions/delete-user/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
 entrypoint = "./functions/delete-user/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/delete-user/*.html" ]
+
+[functions.create-staff-user]
+enabled = true
+verify_jwt = true
+import_map = "./functions/create-staff-user/deno.json"
+entrypoint = "./functions/create-staff-user/index.ts"
 
 [functions.esewa-sign]
 enabled = true
-verify_jwt = false
+verify_jwt = true
 import_map = "./functions/esewa-sign/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
 entrypoint = "./functions/esewa-sign/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/esewa-sign/*.html" ]
 
+[functions.khalti-initiate]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/khalti-initiate/index.ts"
+
+# ── Reached from the payment-gateway redirect page; must stay open, but they
+#    validate the confirmed amount against the invoice themselves. ──
 [functions.verify-esewa-payment]
 enabled = true
 verify_jwt = false
 import_map = "./functions/verify-esewa-payment/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
 entrypoint = "./functions/verify-esewa-payment/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/verify-esewa-payment/*.html" ]
 
-[functions.create-staff-user]
+[functions.khalti-verify]
 enabled = true
 verify_jwt = false
-import_map = "./functions/create-staff-user/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
-entrypoint = "./functions/create-staff-user/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/create-staff-user/*.html" ]
+entrypoint = "./functions/khalti-verify/index.ts"
