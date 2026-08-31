@@ -34,6 +34,9 @@ supabase/.env.*
 supabase/.temp/
 supabase/.branches/
 
+# Local SQL scratch folder (not part of the app build)
+supabase sql code/
+
 # Sensitive files
 src/supabaseAdmin.js
 *.pem
