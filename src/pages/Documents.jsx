@@ -623,6 +623,7 @@ export default function Documents() {
                         <span key={h} style={{
                           fontSize: 11, fontWeight: 700, color: theme.textMuted,
                           textTransform: 'uppercase', letterSpacing: '0.05em',
+                          textAlign: h === 'Actions' ? 'center' : 'left',
                         }}>{h}</span>
                       ))}
                     </div>
@@ -722,7 +723,9 @@ export default function Documents() {
 
                         <StatusBadge status={doc.status} />
 
-                        <DocActions doc={doc} onEdit={openEdit} onChanged={load} />
+                        <div style={{ display: 'flex', justifyContent: 'center' }}>
+                          <DocActions doc={doc} onEdit={openEdit} onChanged={load} />
+                        </div>
                       </div>
                     )
                   })}
