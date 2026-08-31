@@ -356,6 +356,7 @@ export default function StudentDocuments() {
               <span key={h} style={{
                 fontSize: 11, fontWeight: 700, color: theme.textMuted,
                 textTransform: 'uppercase', letterSpacing: '0.06em',
+                textAlign: h === 'Actions' ? 'center' : 'left',
               }}>{h}</span>
             ))}
           </div>
@@ -382,7 +383,7 @@ export default function StudentDocuments() {
                   display: 'inline-block',
                 }}>Not set up</span>
                 <div />
-                <div style={{ fontSize: 12, color: theme.textMuted }}>
+                <div style={{ fontSize: 12, color: theme.textMuted, textAlign: 'center' }}>
                   Contact your counsellor.
                 </div>
               </div>
@@ -466,8 +467,8 @@ export default function StudentDocuments() {
                   )}
                 </div>
 
-                {/* Actions: upload + delete */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {/* Actions: upload + delete — centered in the column */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
 
                   {/* Verified — no actions allowed */}
                   {isVerified && (
