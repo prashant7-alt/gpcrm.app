@@ -56,7 +56,7 @@ export default function Login() {
       await supabase.auth.signOut()
       localStorage.removeItem('profile')
       setLoading(false)
-      setError('This is the staff sign-in. Please use the student login instead.')
+      setError('This is the employee sign-in. Please use the student login instead.')
       return
     }
 
@@ -139,7 +139,7 @@ export default function Login() {
             Global Pathway
           </div>
           <div style={{ fontSize: 13, color: theme.textLight, marginTop: 2 }}>
-            Staff sign in
+            Employee sign in
           </div>
         </div>
 
@@ -248,7 +248,7 @@ export default function Login() {
 
         </form>
 
-        {/* student portal link */}
+        {/* other portals */}
         <div style={{
           marginTop: 20, paddingTop: 20,
           borderTop: `1px solid ${theme.border}`,
@@ -260,6 +260,13 @@ export default function Login() {
             style={{ color: theme.primary, fontWeight: 600, textDecoration: 'none' }}
           >
             Student login
+          </Link>
+          <span style={{ margin: '0 8px', color: theme.border }}>|</span>
+          <Link
+            to="/"
+            style={{ color: theme.textLight, fontWeight: 500, textDecoration: 'none' }}
+          >
+            Back
           </Link>
         </div>
 

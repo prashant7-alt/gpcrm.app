@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import theme from '../../theme'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { Eye, EyeOff, AlertTriangle, Check, GraduationCap } from 'lucide-react'
 import { supabase } from '../../supabase'
 import { useIsMobile } from '../../hooks/useIsMobile'
@@ -65,7 +65,7 @@ export default function StudentLogin() {
       await supabase.auth.signOut()
       localStorage.removeItem('profile')
       setLoading(false)
-      setError('This is the student sign-in. Please use the staff login instead.')
+      setError('This is the student sign-in. Please use the employee login instead.')
       return
     }
 
@@ -361,6 +361,11 @@ export default function StudentLogin() {
             >
               {SUPPORT_EMAIL}
             </a>
+            <div style={{ marginTop: 10 }}>
+              <Link to="/" style={{ color: theme.textLight, fontWeight: 500, textDecoration: 'none' }}>
+                &larr; Back
+              </Link>
+            </div>
           </div>
 
         </div>

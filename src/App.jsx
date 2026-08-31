@@ -8,6 +8,7 @@ import { useIsMobile } from './hooks/useIsMobile'
 
 import Login          from './pages/auth/login'
 import StudentLogin   from './pages/auth/StudentLogin'
+import LoginChooser   from './pages/auth/LoginChooser'
 import ResetPassword  from './pages/auth/ResetPassword'
 import Dashboard      from './pages/Dashboard'
 import Applications   from './pages/Applications'
@@ -104,13 +105,13 @@ export default function App() {
       <Routes>
 
         {/* ── Public ── */}
-        {/* Root + unknown paths land on the student login (the only one that's
-            linked/advertised). The staff login lives at a deliberately
-            unguessable path below and is never linked from the UI — staff
-            reach it by bookmark. Change the path here + in ProtectedRoute.jsx
-            + Navbar.jsx handleLogout if it ever needs rotating. */}
-        <Route path="/"      element={<Navigate to="/student-login" replace />} />
+        {/* Root + unknown paths show the portal chooser (Student / Employee).
+            The employee sign-in is reachable at /staff-login; the old
+            /team-portal-x7k2f9 path is kept as an alias so existing bookmarks
+            and ProtectedRoute.jsx keep working. */}
+        <Route path="/"      element={<LoginChooser />} />
         <Route path="/student-login" element={<StudentLogin />} />
+        <Route path="/staff-login" element={<Login />} />
         <Route path="/team-portal-x7k2f9" element={<Login />} />
         <Route path="/reset-password" element={<ResetPassword />} />
 
@@ -184,7 +185,7 @@ export default function App() {
         <Route path="/student/chat"         element={<StudentRoute><StudentChat         /></StudentRoute>} />
 
         {/* ── 404 ── */}
-        <Route path="*" element={<Navigate to="/student-login" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
 
       </Routes>
       </MenuProvider>
