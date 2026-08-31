@@ -212,7 +212,7 @@ export default function StudentLogin() {
 
           {/* footer */}
           <div style={{ fontSize: 12, color: theme.textOnDarkMuted }}>
-            © 2026 Global Pathway Consultancy. All rights reserved.
+            © 2026 Global Pathway. All rights reserved.
           </div>
         </div>
       )}

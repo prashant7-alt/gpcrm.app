@@ -123,7 +123,7 @@ export default function LoginChooser() {
           textAlign: 'center', marginTop: 26,
           fontSize: 12, color: theme.textMuted,
         }}>
-          © 2026 Global Pathway Consultancy
+          © 2026 Global Pathway
         </div>
 
       </div>

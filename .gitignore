@@ -34,8 +34,13 @@ supabase/.env.*
 supabase/.temp/
 supabase/.branches/
 
-# Local SQL scratch folder (not part of the app build)
-supabase sql code/
+# Local SQL scratch folder (not part of the app build) — except the
+# setup scripts that must not get lost again. Use /* not / so git still
+# descends into the folder and the negations below take effect.
+supabase sql code/*
+!supabase sql code/security-rls-policies.sql
+!supabase sql code/announcements.sql
+!supabase sql code/visa_rates.sql
 
 # Local notes / working docs
 *.md
