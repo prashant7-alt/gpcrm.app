@@ -5,7 +5,7 @@ import { supabase } from '../../supabase'
 import StudentLayout from './StudentLayout'
 import { statusChip } from '../../lib/statusColors'
 import { useIsMobile } from '../../hooks/useIsMobile'
-import { useRefetchOnFocus } from '../../hooks/useRefetchOnFocus'
+import { useRefetchOnFocus, useRefreshHold } from '../../hooks/useRefetchOnFocus'
 import { Clock, CheckCircle2, CalendarCheck2, CalendarDays } from 'lucide-react'
 
 // Same shared status colours as the staff side.
@@ -30,6 +30,7 @@ export default function StudentAppointments() {
     load()
   }, [])
   useRefetchOnFocus(load)
+  useRefreshHold(showModal)
 
   // Realtime — when a counsellor accepts / rejects / reschedules one of this
   // student's appointments, the badge here updates on its own. No refresh.

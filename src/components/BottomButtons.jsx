@@ -2,6 +2,7 @@ import { useState, forwardRef, useImperativeHandle } from 'react'
 import theme from '../theme'
 import { supabase, functionHeaders } from '../supabase'
 import { sendWelcomeEmail } from '../emailService'
+import { useRefreshHold } from '../hooks/useRefetchOnFocus'
 
 const SUPABASE_URL = 'https://txwpmjtixdbebnbqorju.supabase.co'
 
@@ -10,6 +11,9 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
   const [modal,      setModal]      = useState(null)
   const [form,       setForm]       = useState({})
   const [submitting, setSubmitting] = useState(false)
+
+  // Pause every page's auto-refresh while an add modal is open here.
+  useRefreshHold(!!modal)
 
   const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }))
 

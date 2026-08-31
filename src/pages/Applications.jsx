@@ -6,7 +6,7 @@ import { statusChip } from '../lib/statusColors'
 import BottomButtons from '../components/BottomButtons'
 import { sendWelcomeEmail } from '../emailService'
 import { useIsMobile } from '../hooks/useIsMobile'
-import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
+import { useRefetchOnFocus, useRefreshHold } from '../hooks/useRefetchOnFocus'
 
 const SUPABASE_URL = 'https://txwpmjtixdbebnbqorju.supabase.co'
 
@@ -54,6 +54,7 @@ export default function Applications() {
 
   useEffect(() => { load() }, [])
   useRefetchOnFocus(load)
+  useRefreshHold(showAdd)
 
   async function load() {
     const { data } = await supabase

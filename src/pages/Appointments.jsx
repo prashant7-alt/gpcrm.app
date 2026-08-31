@@ -5,7 +5,7 @@ import { statusChip } from '../lib/statusColors'
 import BottomButtons from '../components/BottomButtons'
 import { advanceApplicantStage } from '../lib/pipelineStages' // adjust path if needed
 import { useIsMobile } from '../hooks/useIsMobile'
-import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
+import { useRefetchOnFocus, useRefreshHold } from '../hooks/useRefetchOnFocus'
 
 // Colours from the shared status system (src/lib/statusColors.js):
 // confirmed/completed = green, pending = amber, rejected = red.
@@ -32,6 +32,7 @@ export default function Appointments() {
 
   useEffect(() => { load() }, [])
   useRefetchOnFocus(load)
+  useRefreshHold(showModal)
 
   // ── Realtime — auto-refresh whenever any appointment is inserted,
   // updated, or deleted (e.g. a student books a new one, or another

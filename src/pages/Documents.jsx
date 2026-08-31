@@ -4,7 +4,7 @@ import { supabase } from '../supabase'
 import theme from '../theme'
 import { advanceApplicantStage } from '../lib/pipelineStages'
 import { useIsMobile } from '../hooks/useIsMobile'
-import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
+import { useRefetchOnFocus, useRefreshHold } from '../hooks/useRefetchOnFocus'
 
 // ─── ALL 12 DOCUMENT TYPES ────────────────────────────────────────────────────
 // MUST match StudentDocumentUpload.jsx exactly — same order, same spelling
@@ -180,6 +180,7 @@ export default function Documents() {
 
   useEffect(() => { load() }, [])
   useRefetchOnFocus(load)
+  useRefreshHold(showAddStudent || adding || !!editDoc)
 
   async function load() {
     setLoading(true)

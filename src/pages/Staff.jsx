@@ -6,7 +6,7 @@ import BottomButtons from '../components/BottomButtons'
 import StaffProfileModal, { getInitials, avatarColor } from '../components/StaffProfileModal'
 import { ROLES } from '../lib/staffRoles'
 import { useIsMobile } from '../hooks/useIsMobile'
-import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
+import { useRefetchOnFocus, useRefreshHold } from '../hooks/useRefetchOnFocus'
 
 const SUPABASE_URL = 'https://txwpmjtixdbebnbqorju.supabase.co'
 
@@ -25,6 +25,7 @@ export default function Staff() {
 
   useEffect(() => { load() }, [])
   useRefetchOnFocus(load)
+  useRefreshHold(showAdd || !!profileStaff)
 
   async function load() {
     setLoading(true)

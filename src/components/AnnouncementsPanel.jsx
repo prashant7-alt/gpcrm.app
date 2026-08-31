@@ -11,7 +11,7 @@
 import { useState, useEffect } from 'react'
 import { Megaphone, Pin, Pencil, Trash2, Plus, X } from 'lucide-react'
 import theme from '../theme'
-import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
+import { useRefetchOnFocus, useRefreshHold } from '../hooks/useRefetchOnFocus'
 import {
   fetchAnnouncements,
   createAnnouncement,
@@ -49,8 +49,11 @@ export default function AnnouncementsPanel({ audience, isAdmin = false, style })
     return () => { alive = false }
   }, [audience])
 
-  // Keep the feed live on every dashboard. Skip while an admin has the
-  // compose / edit form open so their draft is never disturbed.
+  // While an admin has the compose / edit form open, pause auto-refresh on the
+  // whole page so nothing disturbs the draft.
+  useRefreshHold(composing || !!editingId)
+
+  // Pick up new announcements when the user returns to the tab.
   useRefetchOnFocus(() => {
     if (composing || editingId) return
     fetchAnnouncements(audience).then(setItems)

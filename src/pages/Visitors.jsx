@@ -4,7 +4,7 @@ import theme from '../theme'
 import BottomButtons from '../components/BottomButtons'
 import { exportRows, asDate } from '../lib/exportCsv'
 import { useIsMobile } from '../hooks/useIsMobile'
-import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
+import { useRefetchOnFocus, useRefreshHold } from '../hooks/useRefetchOnFocus'
 
 const statusStyle = (status) => {
   if (status === 'Converted') return { bg: theme.status.success.bg, color: theme.status.success.text }
@@ -36,6 +36,7 @@ export default function Visitors() {
 
   useEffect(() => { load() }, [])
   useRefetchOnFocus(load)
+  useRefreshHold(showModal || !!viewVisitor)
 
   async function load() {
     const { data } = await supabase

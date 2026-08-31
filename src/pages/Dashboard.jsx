@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react'
 import theme from '../theme'
 import { supabase } from '../supabase'
 import { useIsMobile } from '../hooks/useIsMobile'
-import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
+import { useRefetchOnFocus, useRefreshHold } from '../hooks/useRefetchOnFocus'
 import AnnouncementsPanel from '../components/AnnouncementsPanel'
 
 // Lucide icons — lightweight SVG icon library
@@ -239,6 +239,7 @@ export default function Dashboard() {
 
   useEffect(() => { load() }, [])
   useRefetchOnFocus(load)
+  useRefreshHold(!!detailModal)
 
   const now      = new Date()
   const todayStr = now.toISOString().split('T')[0]

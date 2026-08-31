@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import theme from '../theme'
 import { supabase } from '../supabase'
 import { useIsMobile } from '../hooks/useIsMobile'
-import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
+import { useRefetchOnFocus, useRefreshHold } from '../hooks/useRefetchOnFocus'
 import {
   Plus,
   Search,
@@ -103,6 +103,7 @@ export default function Tasks() {
 
   useEffect(() => { load() }, [])
   useRefetchOnFocus(load)
+  useRefreshHold(showAdd || !!editTask)
 
   async function load() {
     setLoading(true)
