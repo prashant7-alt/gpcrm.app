@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import StudentLayout from './StudentLayout'
 import { useIsMobile } from '../../hooks/useIsMobile'
-import { Receipt, CheckCircle2, Hourglass, Bot, X, Send } from 'lucide-react'
+import { Receipt, CheckCircle2, Hourglass, Bot, X, Send, MessageSquare, BookOpen } from 'lucide-react'
 import AnnouncementsPanel from '../../components/AnnouncementsPanel'
 import { useRefetchOnFocus } from '../../hooks/useRefetchOnFocus'
 
@@ -572,8 +572,9 @@ function ChatBotWidget({ navigate, isMobile }) {
                         <button onClick={() => { setOpen(false); navigate('/student/chat') }} style={{
                           marginTop: 8, fontSize: 11, fontWeight: 600, color: theme.white,
                           background: theme.primary, border: 'none', borderRadius: 7,
-                          padding: '5px 12px', cursor: 'pointer', display: 'block',
-                        }}>💬 Open Chat →</button>
+                          padding: '5px 12px', cursor: 'pointer',
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                        }}><MessageSquare size={12} /> Open Chat</button>
                       )}
                     </div>
                   </div>
@@ -595,11 +596,13 @@ function ChatBotWidget({ navigate, isMobile }) {
                   background: showTopics ? theme.primary : theme.surfaceAlt,
                   border: `1px solid ${showTopics ? theme.primary : theme.border}`,
                   color: showTopics ? theme.white : theme.textMid, fontWeight: 600,
-                }}>📚 Browse all topics</button>
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                }}><BookOpen size={12} /> Browse all topics</button>
                 <button onClick={() => { setOpen(false); navigate('/student/chat') }} style={{
                   fontSize: 11, padding: '4px 10px', borderRadius: 20, cursor: 'pointer',
                   background: theme.status.success.bg, border: `1px solid ${theme.status.success.border}`, color: theme.status.success.text, fontWeight: 500,
-                }}>💬 Talk to counsellor</button>
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                }}><MessageSquare size={12} /> Talk to counsellor</button>
               </div>
             )}
 

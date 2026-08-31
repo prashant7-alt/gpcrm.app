@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Trash2, User, ClipboardList, FolderOpen, CheckCircle2, FileText, Pencil, Search, Info, Eye } from 'lucide-react'
+import { Trash2, User, ClipboardList, FolderOpen, CheckCircle2, FileText, Pencil, Search, Info, Eye, X } from 'lucide-react'
 import { supabase } from '../supabase'
 import theme from '../theme'
 import { advanceApplicantStage } from '../lib/pipelineStages'
@@ -907,8 +907,8 @@ export default function Documents() {
                 Add Student Documents
               </h3>
               <button onClick={() => setShowAddStudent(false)} style={{
-                background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textMuted,
-              }}>✕</button>
+                background: 'none', border: 'none', cursor: 'pointer', color: theme.textMuted, display: 'inline-flex',
+              }}><X size={18} /></button>
             </div>
 
             <div style={{ marginBottom: 18 }}>
@@ -1018,8 +1018,8 @@ export default function Documents() {
                 Update Document
               </h3>
               <button onClick={() => setEditDoc(null)} style={{
-                background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textMuted,
-              }}>✕</button>
+                background: 'none', border: 'none', cursor: 'pointer', color: theme.textMuted, display: 'inline-flex',
+              }}><X size={18} /></button>
             </div>
 
             {/* Document info */}
@@ -1083,8 +1083,8 @@ export default function Documents() {
                 style={{ fontSize: 13, color: theme.textMid }}
               />
               {editFile && (
-                <div style={{ fontSize: 12, color: theme.status.success.main, marginTop: 5 }}>
-                  ✓ {editFile.name}
+                <div style={{ fontSize: 12, color: theme.status.success.main, marginTop: 5, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <CheckCircle2 size={13} /> {editFile.name}
                 </div>
               )}
             </div>

@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Clock } from 'lucide-react'
 import theme from '../../theme'
 
 export default function EsewaFailure() {
@@ -19,7 +20,7 @@ export default function EsewaFailure() {
         background: theme.cardBg, border: `1px solid ${theme.border}`, borderRadius: 16,
         padding: 48, textAlign: 'center', maxWidth: 420, width: '100%',
       }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
+        <Clock size={44} style={{ color: theme.status.warning.main, marginBottom: 16 }} />
         <h2 style={{ fontSize: 20, fontWeight: 700, color: theme.status.warning.text }}>
           Payment awaiting confirmation
         </h2>

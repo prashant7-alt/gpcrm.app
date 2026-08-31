@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Search } from 'lucide-react'
+import { Search, MessageSquareText, Mail, Check } from 'lucide-react'
 import { supabase } from '../supabase'
 import theme from '../theme'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -424,7 +424,7 @@ export default function StaffChat() {
           flex: 1, display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center', color: theme.textMuted,
         }}>
-          <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.4 }}>💬</div>
+          <MessageSquareText size={44} style={{ marginBottom: 12, opacity: 0.4 }} />
           <div style={{ fontSize: 14, fontWeight: 600, color: theme.textMid }}>
             Select a student to start chatting
           </div>
@@ -493,7 +493,7 @@ export default function StaffChat() {
                 alignItems: 'center', justifyContent: 'center',
                 color: theme.textMuted, paddingTop: 60,
               }}>
-                <div style={{ fontSize: 36, marginBottom: 10, opacity: 0.4 }}>✉️</div>
+                <Mail size={32} style={{ marginBottom: 10, opacity: 0.4 }} />
                 <div style={{ fontSize: 13 }}>No messages yet with {selected.name}</div>
               </div>
             )}
@@ -552,7 +552,7 @@ export default function StaffChat() {
                           textAlign: 'right',
                         }}>
                           {formatTime(msg.created_at)}
-                          {mine && ' ✓'}
+                          {mine && <Check size={11} style={{ verticalAlign: '-1px', marginLeft: 3 }} />}
                         </div>
                       </div>
                     </div>

@@ -303,7 +303,7 @@ export default function Tasks() {
           borderRadius: 8, padding: '12px 16px', marginBottom: 16,
           fontSize: 13, color: theme.status.danger.text,
         }}>
-          ⚠️ {loadErr}
+          <AlertCircle size={14} style={{ verticalAlign: '-2px', marginRight: 5 }} />{loadErr}
           <br />
           <span style={{ fontSize: 11, color: theme.textMuted, marginTop: 4, display: 'block' }}>
             Go to Supabase → SQL Editor and make sure the <strong>tasks</strong> table exists,

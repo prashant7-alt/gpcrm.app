@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import theme from '../theme'
 import { useIsMobile } from '../hooks/useIsMobile'
-import { User, Lock, Eye, EyeOff, CheckCircle2, Percent } from 'lucide-react'
+import { User, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Percent } from 'lucide-react'
 import { COUNTRIES, COUNTRY_CODES, DEFAULT_VISA_RATES, fetchVisaRates } from '../lib/visaRates'
 
 const inputStyle = {
@@ -31,18 +31,18 @@ export default function Settings() {
   const [name,        setName]        = useState(storedProfile.name || '')
   const [phone,       setPhone]       = useState('')
   const [savingInfo,  setSavingInfo]  = useState(false)
-  const [infoMsg,     setInfoMsg]     = useState('')
+  const [infoMsg,     setInfoMsg]     = useState(null)   // { type: 'ok' | 'err', text }
 
   const [newPassword,     setNewPassword]     = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPw,           setShowPw]         = useState(false)
-  const [pwMessage,       setPwMessage]       = useState('')
+  const [pwMessage,       setPwMessage]       = useState(null)   // { type, text }
   const [pwLoading,       setPwLoading]       = useState(false)
 
   // Visa Rates (admin-editable, powers the country cards on the Students page)
   const isAdmin = (storedProfile.role || '') === 'admin'
   const [rates,       setRates]       = useState(DEFAULT_VISA_RATES)
-  const [ratesMsg,    setRatesMsg]    = useState('')
+  const [ratesMsg,    setRatesMsg]    = useState(null)   // { type, text }
   const [savingRates, setSavingRates] = useState(false)
 
   useEffect(() => { loadAccount() }, [])
@@ -73,7 +73,7 @@ export default function Settings() {
     if (!profileId)   return alert('Could not find your profile record')
 
     setSavingInfo(true)
-    setInfoMsg('')
+    setInfoMsg(null)
 
     const { error } = await supabase
       .from('profiles')
@@ -86,26 +86,26 @@ export default function Settings() {
     setSavingInfo(false)
 
     if (error) {
-      setInfoMsg('❌ ' + error.message)
+      setInfoMsg({ type: 'err', text: error.message })
       return
     }
 
     const updated = { ...storedProfile, name: name.trim() }
     localStorage.setItem('profile', JSON.stringify(updated))
 
-    setInfoMsg('✅ Account details updated!')
-    setTimeout(() => setInfoMsg(''), 3000)
+    setInfoMsg({ type: 'ok', text: 'Account details updated!' })
+    setTimeout(() => setInfoMsg(null), 3000)
   }
 
   async function changePassword() {
-    setPwMessage('')
+    setPwMessage(null)
 
     if (!newPassword || newPassword.length < 8) {
-      setPwMessage('Password must be at least 8 characters')
+      setPwMessage({ type: 'err', text: 'Password must be at least 8 characters' })
       return
     }
     if (newPassword !== confirmPassword) {
-      setPwMessage('Passwords do not match')
+      setPwMessage({ type: 'err', text: 'Passwords do not match' })
       return
     }
 
@@ -114,9 +114,9 @@ export default function Settings() {
     setPwLoading(false)
 
     if (error) {
-      setPwMessage('Error: ' + error.message)
+      setPwMessage({ type: 'err', text: error.message })
     } else {
-      setPwMessage('✅ Password updated successfully!')
+      setPwMessage({ type: 'ok', text: 'Password updated successfully!' })
       setNewPassword('')
       setConfirmPassword('')
     }
@@ -124,7 +124,7 @@ export default function Settings() {
 
   async function saveRates() {
     setSavingRates(true)
-    setRatesMsg('')
+    setRatesMsg(null)
 
     const rows = COUNTRIES.map(c => {
       const n = Number(rates[c])
@@ -143,11 +143,11 @@ export default function Settings() {
     setSavingRates(false)
 
     if (error) {
-      setRatesMsg('❌ ' + error.message)
+      setRatesMsg({ type: 'err', text: error.message })
       return
     }
-    setRatesMsg('✅ Visa rates saved. The Students page picks them up on next load.')
-    setTimeout(() => setRatesMsg(''), 4000)
+    setRatesMsg({ type: 'ok', text: 'Visa rates saved. The Students page picks them up on next load.' })
+    setTimeout(() => setRatesMsg(null), 4000)
   }
 
   const tabs = [
@@ -265,11 +265,15 @@ export default function Settings() {
           {infoMsg && (
             <div style={{
               padding: '9px 14px', borderRadius: 8, fontSize: 13, marginBottom: 16,
-              background: infoMsg.startsWith('✅') ? theme.status.success.bg : theme.status.danger.bg,
-              color:      infoMsg.startsWith('✅') ? theme.status.success.text : theme.status.danger.text,
-              border: `1px solid ${infoMsg.startsWith('✅') ? theme.status.success.border : theme.status.danger.border}`,
+              display: 'flex', alignItems: 'center', gap: 7,
+              background: infoMsg.type === 'ok' ? theme.status.success.bg : theme.status.danger.bg,
+              color:      infoMsg.type === 'ok' ? theme.status.success.text : theme.status.danger.text,
+              border: `1px solid ${infoMsg.type === 'ok' ? theme.status.success.border : theme.status.danger.border}`,
             }}>
-              {infoMsg}
+              {infoMsg.type === 'ok'
+                ? <CheckCircle2 size={15} style={{ flexShrink: 0 }} />
+                : <AlertCircle size={15} style={{ flexShrink: 0 }} />}
+              {infoMsg.text}
             </div>
           )}
 
@@ -309,11 +313,15 @@ export default function Settings() {
             <div style={{
               padding: '10px 14px', borderRadius: 8,
               marginBottom: 16, fontSize: 13,
-              background: pwMessage.startsWith('✅') ? theme.status.success.bg : theme.status.danger.bg,
-              color:      pwMessage.startsWith('✅') ? theme.status.success.text : theme.status.danger.text,
-              border: `1px solid ${pwMessage.startsWith('✅') ? theme.status.success.border : theme.status.danger.border}`,
+              display: 'flex', alignItems: 'center', gap: 7,
+              background: pwMessage.type === 'ok' ? theme.status.success.bg : theme.status.danger.bg,
+              color:      pwMessage.type === 'ok' ? theme.status.success.text : theme.status.danger.text,
+              border: `1px solid ${pwMessage.type === 'ok' ? theme.status.success.border : theme.status.danger.border}`,
             }}>
-              {pwMessage}
+              {pwMessage.type === 'ok'
+                ? <CheckCircle2 size={15} style={{ flexShrink: 0 }} />
+                : <AlertCircle size={15} style={{ flexShrink: 0 }} />}
+              {pwMessage.text}
             </div>
           )}
 
@@ -412,11 +420,15 @@ export default function Settings() {
           {ratesMsg && (
             <div style={{
               padding: '9px 14px', borderRadius: 8, fontSize: 13, marginBottom: 16,
-              background: ratesMsg.startsWith('✅') ? theme.status.success.bg : theme.status.danger.bg,
-              color:      ratesMsg.startsWith('✅') ? theme.status.success.text : theme.status.danger.text,
-              border: `1px solid ${ratesMsg.startsWith('✅') ? theme.status.success.border : theme.status.danger.border}`,
+              display: 'flex', alignItems: 'center', gap: 7,
+              background: ratesMsg.type === 'ok' ? theme.status.success.bg : theme.status.danger.bg,
+              color:      ratesMsg.type === 'ok' ? theme.status.success.text : theme.status.danger.text,
+              border: `1px solid ${ratesMsg.type === 'ok' ? theme.status.success.border : theme.status.danger.border}`,
             }}>
-              {ratesMsg}
+              {ratesMsg.type === 'ok'
+                ? <CheckCircle2 size={15} style={{ flexShrink: 0 }} />
+                : <AlertCircle size={15} style={{ flexShrink: 0 }} />}
+              {ratesMsg.text}
             </div>
           )}
 

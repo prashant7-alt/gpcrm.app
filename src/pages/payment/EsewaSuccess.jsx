@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { Loader2, CheckCircle2, XCircle } from 'lucide-react'
 import { functionHeaders } from '../../supabase'
 import theme from '../../theme'
 
@@ -72,6 +73,7 @@ export default function EsewaSuccess() {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontFamily: "'Segoe UI', Arial, sans-serif", padding: 20,
     }}>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       <div style={{
         background: theme.cardBg, border: `1px solid ${theme.border}`, borderRadius: 16,
         padding: 48, textAlign: 'center', maxWidth: 420, width: '100%',
@@ -80,7 +82,7 @@ export default function EsewaSuccess() {
 
         {status === 'verifying' && (
           <>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
+            <Loader2 size={44} style={{ color: theme.primary, marginBottom: 16, animation: 'spin 0.9s linear infinite' }} />
             <h2 style={{ fontSize: 20, fontWeight: 700, color: theme.textDark }}>Verifying payment...</h2>
             <p style={{ fontSize: 14, color: theme.textLight, marginTop: 8 }}>
               Please wait while we confirm your eSewa payment.
@@ -90,7 +92,7 @@ export default function EsewaSuccess() {
 
         {status === 'success' && (
           <>
-            <div style={{ fontSize: 56, marginBottom: 16 }}>✅</div>
+            <CheckCircle2 size={54} style={{ color: theme.status.success.main, marginBottom: 16 }} />
             <h2 style={{ fontSize: 20, fontWeight: 700, color: theme.status.success.text, marginBottom: 8 }}>
               Payment Successful!
             </h2>
@@ -127,7 +129,7 @@ export default function EsewaSuccess() {
 
         {status === 'failed' && (
           <>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>❌</div>
+            <XCircle size={48} style={{ color: theme.status.danger.main, marginBottom: 16 }} />
             <h2 style={{ fontSize: 20, fontWeight: 700, color: theme.status.danger.text, marginBottom: 8 }}>
               Verification Failed
             </h2>

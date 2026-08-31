@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { MessageSquareText, Mail, Check } from 'lucide-react'
 import theme from '../../theme'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
@@ -354,7 +355,7 @@ export default function StudentChat() {
           flex: 1, display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center', color: theme.textMuted,
         }}>
-          <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.4 }}>💬</div>
+          <MessageSquareText size={44} style={{ marginBottom: 12, opacity: 0.4 }} />
           <div style={{ fontSize: 14, fontWeight: 600, color: theme.textLight }}>
             Select a staff member to start chatting
           </div>
@@ -420,7 +421,7 @@ export default function StudentChat() {
                 alignItems: 'center', justifyContent: 'center',
                 color: theme.textMuted, paddingTop: 60,
               }}>
-                <div style={{ fontSize: 36, marginBottom: 10, opacity: 0.4 }}>✉️</div>
+                <Mail size={32} style={{ marginBottom: 10, opacity: 0.4 }} />
                 <div style={{ fontSize: 13 }}>
                   No messages yet. Say hello to {selected.name}!
                 </div>
@@ -492,7 +493,7 @@ export default function StudentChat() {
                           textAlign: 'right',
                         }}>
                           {formatTime(msg.created_at)}
-                          {mine && ' ✓'}
+                          {mine && <Check size={11} style={{ verticalAlign: '-1px', marginLeft: 3 }} />}
                         </div>
                       </div>
                     </div>

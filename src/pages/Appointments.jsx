@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { X } from 'lucide-react'
 import { supabase } from '../supabase'
 import theme from '../theme'
 import { statusChip } from '../lib/statusColors'
@@ -740,11 +741,11 @@ export default function Appointments() {
                 onClick={() => setShowModal(false)}
                 style={{
                   background: 'none', border: 'none',
-                  fontSize: 18, cursor: 'pointer',
-                  color: theme.textLight,
+                  cursor: 'pointer', color: theme.textLight,
+                  display: 'inline-flex',
                 }}
               >
-                ✕
+                <X size={18} />
               </button>
             </div>
 

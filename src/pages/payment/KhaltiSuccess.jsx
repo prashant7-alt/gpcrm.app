@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { Loader2, CheckCircle2, RefreshCw, HelpCircle, FlaskConical, Zap } from 'lucide-react'
 import { functionHeaders } from '../../supabase'
 import theme from '../../theme'
 
@@ -85,6 +86,7 @@ export default function KhaltiSuccess() {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontFamily: "'Segoe UI', Arial, sans-serif", padding: 20,
     }}>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       <div style={{
         background: theme.cardBg, border: `1px solid ${theme.border}`,
         borderRadius: 16, padding: 48, textAlign: 'center',
@@ -95,7 +97,7 @@ export default function KhaltiSuccess() {
         {/* Verifying */}
         {status === 'verifying' && (
           <>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
+            <Loader2 size={44} style={{ color: theme.primary, marginBottom: 16, animation: 'spin 0.9s linear infinite' }} />
             <h2 style={{ fontSize: 20, fontWeight: 700, color: theme.textDark, marginBottom: 8 }}>
               Verifying payment...
             </h2>
@@ -108,7 +110,7 @@ export default function KhaltiSuccess() {
         {/* Success */}
         {status === 'success' && (
           <>
-            <div style={{ fontSize: 56, marginBottom: 16 }}>✅</div>
+            <CheckCircle2 size={54} style={{ color: theme.status.success.main, marginBottom: 16 }} />
             <h2 style={{ fontSize: 20, fontWeight: 700, color: theme.status.success.text, marginBottom: 8 }}>
               Payment Successful!
             </h2>
@@ -143,7 +145,7 @@ export default function KhaltiSuccess() {
         {/* Pending — sandbox locked */}
         {status === 'pending' && (
           <>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>🔄</div>
+            <RefreshCw size={44} style={{ color: theme.status.warning.main, marginBottom: 16 }} />
             <h2 style={{ fontSize: 20, fontWeight: 700, color: theme.status.warning.text, marginBottom: 8 }}>
               Payment Pending
             </h2>
@@ -174,8 +176,8 @@ export default function KhaltiSuccess() {
                 background: theme.status.warning.bg, border: `1px solid ${theme.status.warning.border}`,
                 borderRadius: 10, padding: '14px 16px', marginBottom: 16, textAlign: 'left',
               }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: theme.status.warning.text, marginBottom: 6 }}>
-                  🧪 Sandbox Test Mode (dev build only)
+                <div style={{ fontSize: 12, fontWeight: 700, color: theme.status.warning.text, marginBottom: 6, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  <FlaskConical size={13} /> Sandbox Test Mode (dev build only)
                 </div>
                 <div style={{ fontSize: 12, color: theme.status.warning.text, marginBottom: 12, lineHeight: 1.6 }}>
                   Real Khalti payments auto-confirm. In sandbox,
@@ -191,9 +193,10 @@ export default function KhaltiSuccess() {
                     fontSize: 13, fontWeight: 700, color: theme.white,
                     cursor: simulating ? 'not-allowed' : 'pointer',
                     fontFamily: 'inherit',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                   }}
                 >
-                  {simulating ? 'Processing...' : '⚡ Simulate Successful Payment'}
+                  {simulating ? 'Processing...' : <><Zap size={14} /> Simulate Successful Payment</>}
                 </button>
               </div>
             )}
@@ -215,7 +218,7 @@ export default function KhaltiSuccess() {
         {/* No pidx */}
         {status === 'no_pidx' && (
           <>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>❓</div>
+            <HelpCircle size={44} style={{ color: theme.textMuted, marginBottom: 16 }} />
             <h2 style={{ fontSize: 20, fontWeight: 700, color: theme.textMid, marginBottom: 8 }}>
               No payment reference
             </h2>

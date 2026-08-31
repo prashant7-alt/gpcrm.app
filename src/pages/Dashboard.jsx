@@ -22,6 +22,8 @@ import {
   TrendingUp,   // visa approvals icon
   Target,       // conversion rate icon
   RefreshCw,    // refresh button icon
+  CheckCircle2, // "all clear" empty state
+  X,            // modal close
 } from 'lucide-react'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -711,8 +713,8 @@ export default function Dashboard() {
 
           {dueTasks.length === 0 ? (
             <div style={{ padding: '40px 20px', textAlign: 'center', color: C.textLight, fontSize: 13 }}>
-              <div style={{ fontSize: 28, marginBottom: 10, opacity: 0.3 }}>✓</div>
-              No tasks due in the next 3 days
+              <CheckCircle2 size={26} style={{ marginBottom: 10, opacity: 0.3 }} />
+              <div>No tasks due in the next 3 days</div>
             </div>
           ) : (
             dueTasks.map((t, i) => (
@@ -795,10 +797,10 @@ export default function Dashboard() {
                 onClick={() => setDetailModal(null)}
                 style={{
                   background: 'none', border: 'none',
-                  fontSize: 18, cursor: 'pointer', color: C.textLight,
+                  cursor: 'pointer', color: C.textLight, display: 'inline-flex',
                 }}
               >
-                ✕
+                <X size={18} />
               </button>
             </div>
 

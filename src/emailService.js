@@ -47,10 +47,10 @@ export async function sendWelcomeEmail({ student_name, student_email, student_pa
       student_email,
       student_password,
     })
-    console.log('✅ Welcome email sent to', student_email)
+    console.log('Welcome email sent to', student_email)
     return { success: true, result }
   } catch (error) {
-    console.error('❌ Welcome email failed:', error)
+    console.error('Welcome email failed:', error)
     return { success: false, error }
   }
 }
@@ -89,10 +89,10 @@ export async function sendPaymentConfirmedEmail({
       date:      date || new Date().toLocaleDateString(),
       reference: reference || '—',
     })
-    console.log('✅ Payment email sent to', student_email)
+    console.log('Payment email sent to', student_email)
     return { success: true, result }
   } catch (error) {
-    console.error('❌ Payment email failed:', error)
+    console.error('Payment email failed:', error)
     return { success: false, error }
   }
 }

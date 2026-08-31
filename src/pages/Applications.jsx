@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { supabase, functionHeaders } from '../supabase'
 import theme from '../theme'
 import { statusChip } from '../lib/statusColors'
@@ -109,7 +109,7 @@ export default function Applications() {
 
       if (!result.success) {
         alert(
-          `⚠️ Applicant added but login creation failed: ${result.message}\n\n` +
+          `Applicant added but login creation failed: ${result.message}\n\n` +
           `The applicant appears in the list. You can try creating their login manually later.`
         )
         setSaving(false)
@@ -126,7 +126,7 @@ export default function Applications() {
 
       if (linkError) {
         alert(
-          `⚠️ Login was created but linking it to the applicant record failed:\n` +
+          `Login was created but linking it to the applicant record failed:\n` +
           `${linkError.message}\n\n` +
           `This student's account may show "No application found" until this is fixed. ` +
           `Check that your RLS policy on "profiles" allows updating applicant_id ` +
@@ -152,7 +152,7 @@ export default function Applications() {
     load()
 
     alert(
-      `✅ Applicant added and student login created!\n\n` +
+      `Applicant added and student login created!\n\n` +
       `Name:     ${form.name}\n` +
       `Email:    ${form.email}\n` +
       `Password: ${form.password}\n\n` +
@@ -212,7 +212,7 @@ export default function Applications() {
 
           if (!res.ok || !result?.success) {
             alert(
-              `⚠️ Could not delete this student's login account: ${result?.message || 'Unknown error'}\n\n` +
+              `Could not delete this student's login account: ${result?.message || 'Unknown error'}\n\n` +
               `To prevent a login that can still access the portal after deletion, ` +
               `the applicant and profile records were NOT removed either. ` +
               `Please try again, or check the delete-user function logs in Supabase.`
@@ -222,7 +222,7 @@ export default function Applications() {
           }
         } catch (fnErr) {
           alert(
-            `⚠️ Network error while deleting the student's login account: ${fnErr.message}\n\n` +
+            `Network error while deleting the student's login account: ${fnErr.message}\n\n` +
             `Nothing was deleted, so the student's login still works. Please try again.`
           )
           setDeleting(null)
@@ -477,7 +477,7 @@ export default function Applications() {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
               <h3 style={{ fontSize: 16, fontWeight: 700, color: theme.textStrong, margin: 0 }}>Add New Applicant</h3>
-              <button onClick={() => setShowAdd(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: theme.textMuted }}>✕</button>
+              <button onClick={() => setShowAdd(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.textMuted, display: 'inline-flex' }}><X size={20} /></button>
             </div>
 
             <div style={{ padding: '10px 14px', background: theme.status.info.bg, border: `1px solid ${theme.status.info.border}`, borderRadius: 8, fontSize: 12, color: theme.primary, marginBottom: 18 }}>

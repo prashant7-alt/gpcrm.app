@@ -277,8 +277,8 @@ export default function Payments() {
           date:          payment.date   || new Date().toLocaleDateString(),
           reference:     payment.txn_ref || payment.reference || '—',
         }).then(res => {
-          if (res.success) console.log('✅ Email sent to', studentEmail)
-          else             console.warn('⚠️ Email failed:', res.error)
+          if (res.success) console.log('Email sent to', studentEmail)
+          else             console.warn('Email failed:', res.error)
         })
       }
     }

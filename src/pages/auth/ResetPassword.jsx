@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import theme from '../../theme'
 import { useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, KeyRound } from 'lucide-react'
+import { Eye, EyeOff, KeyRound, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { supabase } from '../../supabase'
 
 // Capture the landing URL at module load — before supabase-js's detectSessionInUrl
@@ -117,7 +117,7 @@ export default function ResetPassword() {
       setMessage('Error: ' + error.message)
     } else {
       setIsError(false)
-      setMessage('✅ Password updated successfully! Redirecting to login...')
+      setMessage('Password updated successfully! Redirecting to login...')
       await supabase.auth.signOut()
       localStorage.clear()
       setTimeout(() => navigate('/student-login'), 2500)
@@ -142,6 +142,7 @@ export default function ResetPassword() {
       fontFamily: "'Segoe UI', Arial, sans-serif",
       padding: 16,
     }}>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       <div style={{
         background: theme.white,
         borderRadius: 16,
@@ -177,8 +178,10 @@ export default function ResetPassword() {
             background: theme.status.warning.bg, border: `1px solid ${theme.status.warning.border}`,
             borderRadius: 8, padding: '12px 14px',
             fontSize: 13, color: theme.status.warning.text, marginBottom: 20,
+            display: 'flex', alignItems: 'center', gap: 7,
           }}>
-            ⏳ Verifying your reset link... please wait.
+            <Loader2 size={14} style={{ animation: 'spin 0.9s linear infinite', flexShrink: 0 }} />
+            Verifying your reset link... please wait.
           </div>
         )}
 
@@ -190,7 +193,11 @@ export default function ResetPassword() {
             background: isError ? theme.status.danger.bg : theme.status.success.bg,
             color:      isError ? theme.status.danger.text : theme.status.success.text,
             border: `1px solid ${isError ? theme.status.danger.border : theme.status.success.border}`,
+            display: 'flex', alignItems: 'center', gap: 7,
           }}>
+            {isError
+              ? <AlertCircle size={15} style={{ flexShrink: 0 }} />
+              : <CheckCircle2 size={15} style={{ flexShrink: 0 }} />}
             {message}
           </div>
         )}

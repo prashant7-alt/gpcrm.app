@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Mail, Phone, Calendar, Trash2, Search, IdCard } from 'lucide-react'
+import { Mail, Phone, Calendar, Trash2, Search, IdCard, Users, Check, X } from 'lucide-react'
 import { supabase, functionHeaders } from '../supabase'
 import theme from '../theme'
 import BottomButtons from '../components/BottomButtons'
@@ -125,7 +125,7 @@ export default function Staff() {
     load()
 
     alert(
-      `✅ Staff account created!\n\n` +
+      `Staff account created!\n\n` +
       `Name:  ${form.name}\n` +
       `Role:  ${roleLabel}\n` +
       `Email: ${form.email}\n\n` +
@@ -168,7 +168,7 @@ export default function Staff() {
           const result = await res.json()
           if (!res.ok || !result?.success) {
             alert(
-              `⚠️ Could not delete ${name}'s login account: ${result?.message || 'Unknown error'}\n\n` +
+              `Could not delete ${name}'s login account: ${result?.message || 'Unknown error'}\n\n` +
               `Nothing was removed. Please try again, or check the delete-user function logs.`
             )
             setDeleting(null)
@@ -176,7 +176,7 @@ export default function Staff() {
           }
         } catch (fnErr) {
           alert(
-            `⚠️ Network error while deleting ${name}'s login account: ${fnErr.message}\n\n` +
+            `Network error while deleting ${name}'s login account: ${fnErr.message}\n\n` +
             `Nothing was removed, so their login still works. Please try again.`
           )
           setDeleting(null)
@@ -289,7 +289,7 @@ export default function Staff() {
           borderRadius: 12, padding: isMobile ? '48px 20px' : 80, textAlign: 'center',
         }}>
           <div style={{ marginBottom: 14, display: 'flex', justifyContent: 'center' }}>
-            <div style={{ fontSize: 48 }}>👥</div>
+            <Users size={46} style={{ color: theme.textMuted }} />
           </div>
           <div style={{ fontSize: 16, fontWeight: 700, color: theme.textDark, marginBottom: 6 }}>No staff members yet</div>
           <div style={{ fontSize: 13, color: theme.textLight, marginBottom: 20 }}>Add your team members to get started</div>
@@ -369,8 +369,9 @@ export default function Staff() {
                     marginTop: 4, padding: '4px 10px', background: theme.status.success.bg,
                     border: `1px solid ${theme.status.success.border}`, borderRadius: 6, fontSize: 11,
                     color: theme.status.success.text, textAlign: 'center',
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
                   }}>
-                    ✓ Has login access
+                    <Check size={12} /> Has login access
                   </div>
                   <button
                     onClick={() => setProfileStaff(s)}
@@ -440,7 +441,7 @@ export default function Staff() {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
               <h3 style={{ fontSize: 16, fontWeight: 700, color: theme.textStrong, margin: 0 }}>Add Staff Member</h3>
-              <button onClick={() => setShowAdd(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: theme.textMuted }}>✕</button>
+              <button onClick={() => setShowAdd(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.textMuted, display: 'inline-flex' }}><X size={20} /></button>
             </div>
 
             <div style={{

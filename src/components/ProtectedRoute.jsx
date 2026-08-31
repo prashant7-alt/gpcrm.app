@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Loader2 } from 'lucide-react'
 import theme from '../theme'
 import { Navigate } from 'react-router-dom'
 import { supabase } from '../supabase'
@@ -12,9 +13,10 @@ function LoadingScreen() {
       background: theme.pageBg, fontFamily: 'inherit',
     }}>
       <div style={{ textAlign: 'center', color: theme.textLight }}>
-        <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
+        <Loader2 size={30} style={{ marginBottom: 12, animation: 'spin 0.9s linear infinite' }} />
         <div style={{ fontSize: 14 }}>Loading...</div>
       </div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   )
 }

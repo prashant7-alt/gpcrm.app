@@ -7,7 +7,7 @@ import StudentDetailModal from '../components/StudentDetailModal'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
 import { COUNTRIES, COUNTRY_CODES, DEFAULT_VISA_RATES, fetchVisaRates } from '../lib/visaRates'
-import { Eye } from 'lucide-react'
+import { Eye, Globe } from 'lucide-react'
 
 // Same shared status colours as the rest of the app (src/lib/statusColors.js).
 const stageStyle = (stage) => statusChip(stage || 'New')
@@ -195,7 +195,7 @@ export default function Students() {
                     }}
                   />
                 ) : (
-                  <span style={{ fontSize: isMobile ? 20 : 24 }}>🌍</span>
+                  <Globe size={isMobile ? 18 : 22} style={{ color: theme.textMuted }} />
                 )}
               </div>
               <div style={{

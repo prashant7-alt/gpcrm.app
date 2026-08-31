@@ -3,6 +3,7 @@ import theme from '../theme'
 import { supabase, functionHeaders } from '../supabase'
 import { sendWelcomeEmail } from '../emailService'
 import { useRefreshHold } from '../hooks/useRefetchOnFocus'
+import { CheckCircle2, Mail, X } from 'lucide-react'
 
 const SUPABASE_URL = 'https://txwpmjtixdbebnbqorju.supabase.co'
 
@@ -82,13 +83,13 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
           .maybeSingle()
 
         if (applicantCheckError) {
-          alert('❌ Error checking existing applicants: ' + applicantCheckError.message)
+          alert('Error checking existing applicants: ' + applicantCheckError.message)
           setSubmitting(false)
           return
         }
 
         if (existingApplicant) {
-          alert(`❌ An applicant with email "${form.email}" already exists.\n\nPlease use a different email address.`)
+          alert(`An applicant with email "${form.email}" already exists.\n\nPlease use a different email address.`)
           setSubmitting(false)
           return
         }
@@ -100,13 +101,13 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
           .maybeSingle()
 
         if (profileCheckError) {
-          alert('❌ Error checking existing accounts: ' + profileCheckError.message)
+          alert('Error checking existing accounts: ' + profileCheckError.message)
           setSubmitting(false)
           return
         }
 
         if (existingProfile) {
-          alert(`❌ A user account with email "${form.email}" already exists.\n\nThis person may already have a student portal login.`)
+          alert(`A user account with email "${form.email}" already exists.\n\nThis person may already have a student portal login.`)
           setSubmitting(false)
           return
         }
@@ -129,7 +130,7 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
         // Catches the case where the DB unique constraint rejects it even
         // if the check above somehow missed it (race condition safety net).
         if (error.code === '23505') {
-          alert(`❌ An applicant with email "${form.email}" already exists.`)
+          alert(`An applicant with email "${form.email}" already exists.`)
           setSubmitting(false)
           return
         }
@@ -150,7 +151,7 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
       onAdd?.()
 
       if (!result) {
-        alert('✅ Applicant added!\n(No login password set — no portal login created. You can add one later from the Applications page.)')
+        alert('Applicant added!\n(No login password set — no portal login created. You can add one later from the Applications page.)')
 
       } else if (result.userId && !result.error) {
         // Welcome email delivers the login email + password to the student.
@@ -160,37 +161,37 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
           student_password: savedPassword,
         }).then(res => {
           if (res.success) {
-            console.log('✅ Welcome email sent to', savedEmail)
+            console.log('Welcome email sent to', savedEmail)
           } else {
-            console.warn('⚠️ Welcome email failed:', res.error)
+            console.warn('Welcome email failed:', res.error)
           }
         })
 
         alert(
-          '✅ Applicant added!\n\n' +
-          '🔑 Student portal login created:\n' +
+          'Applicant added!\n\n' +
+          'Student portal login created:\n' +
           'Email:    ' + savedEmail + '\n' +
           'Password: ' + savedPassword + '\n\n' +
-          '📧 A welcome email with these login details has been sent to the student.'
+          'A welcome email with these login details has been sent to the student.'
         )
 
       } else if (result.userId && result.error) {
         alert(
           'Applicant added!\n\n' +
-          '⚠️ Auth account created but profile failed:\n' + result.error
+          'Auth account created but profile failed:\n' + result.error
         )
 
       } else {
         alert(
-          '✅ Applicant added!\n\n' +
-          '❌ Portal login FAILED:\n' + (result.error || 'Unknown error') + '\n\n' +
+          'Applicant added!\n\n' +
+          'Portal login FAILED:\n' + (result.error || 'Unknown error') + '\n\n' +
           'FIX: In Supabase → Authentication → Sign In / Providers\n' +
           'Turn ON "Allow new users to sign up" then save.'
         )
       }
 
     } catch (err) {
-      alert('❌ Error saving applicant: ' + err.message)
+      alert('Error saving applicant: ' + err.message)
 
     } finally {
       setSubmitting(false)
@@ -208,7 +209,7 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
       status:   'pending',
     })
 
-    setModal(null); setForm({}); alert('✅ Task added!')
+    setModal(null); setForm({}); alert('Task added!')
   }
 
   const submitPayment = async () => {
@@ -222,7 +223,7 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
       date:         new Date().toISOString().split('T')[0],
     })
 
-    setModal(null); setForm({}); alert('✅ Payment added!')
+    setModal(null); setForm({}); alert('Payment added!')
   }
 
   return (
@@ -236,7 +237,7 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
                   <h3 style={{ fontSize: 16, fontWeight: 700, color: theme.textStrong, margin: 0 }}>Add New Applicant</h3>
-                  <button onClick={() => setModal(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textLight }}>✕</button>
+                  <button onClick={() => setModal(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textLight, display: 'inline-flex' }}><X size={18} /></button>
                 </div>
 
                 {[
@@ -260,9 +261,14 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
 
                 {form.email && form.password && (
                   <div style={{ background: theme.status.success.bg, border: `1px solid ${theme.status.success.border}`, borderRadius: 8, padding: '8px 12px', fontSize: 12, color: theme.status.success.text, marginBottom: 12 }}>
-                    ✅ Portal login will be created for <strong>{form.email}</strong>
-                    <br />
-                    📧 A welcome email (no password) will be sent to the student. Share the password directly.
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                      <CheckCircle2 size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+                      <span>Portal login will be created for <strong>{form.email}</strong></span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 4 }}>
+                      <Mail size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+                      <span>A welcome email (no password) will be sent to the student. Share the password directly.</span>
+                    </div>
                   </div>
                 )}
 
@@ -290,7 +296,7 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
                   <h3 style={{ fontSize: 16, fontWeight: 700, color: theme.textStrong, margin: 0 }}>Add New Task</h3>
-                  <button onClick={() => setModal(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textLight }}>✕</button>
+                  <button onClick={() => setModal(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textLight, display: 'inline-flex' }}><X size={18} /></button>
                 </div>
 
                 {[
@@ -333,7 +339,7 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
                   <h3 style={{ fontSize: 16, fontWeight: 700, color: theme.textStrong, margin: 0 }}>Add Payment</h3>
-                  <button onClick={() => setModal(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textLight }}>✕</button>
+                  <button onClick={() => setModal(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textLight, display: 'inline-flex' }}><X size={18} /></button>
                 </div>
 
                 {[
