@@ -1,6 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import theme from '../../theme'
 import { useNavigate } from 'react-router-dom'
+import { Eye, EyeOff, KeyRound } from 'lucide-react'
 import { supabase } from '../../supabase'
+
+// Capture the landing URL at module load — before supabase-js's detectSessionInUrl
+// pass strips the token params out of the address bar.
+const LANDING_URL = window.location.href
 
 export default function ResetPassword() {
   const navigate = useNavigate()
@@ -11,30 +17,84 @@ export default function ResetPassword() {
   const [message,         setMessage]         = useState('')
   const [isError,         setIsError]         = useState(false)
   const [sessionReady,    setSessionReady]    = useState(false)
+  const ranRef = useRef(false)
 
   useEffect(() => {
-    // Supabase sends the token in the URL hash
-    // onAuthStateChange catches the PASSWORD_RECOVERY event
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'PASSWORD_RECOVERY') {
-          setSessionReady(true)
+    // Run the verification exactly once. A `cancelled` flag is deliberately NOT
+    // used here: under React StrictMode the first mount's cleanup would flip it
+    // and the guarded second mount would never re-run, leaving the page stuck on
+    // "Verifying". This is a one-shot token exchange — let it finish.
+    if (ranRef.current) return
+    ranRef.current = true
+
+    const fail = msg => { setIsError(true); setMessage(msg) }
+
+    const url    = new URL(LANDING_URL)
+    const search = url.searchParams
+    const hash   = new URLSearchParams(url.hash.replace(/^#\/?/, ''))
+    const get    = k => search.get(k) || hash.get(k)
+
+    const code         = get('code')
+    const tokenHash    = get('token_hash') || get('token')
+    const type         = get('type')
+    const accessToken  = get('access_token')
+    const refreshToken = get('refresh_token')
+    const urlError     = get('error_description') || get('error')
+
+    ;(async () => {
+      try {
+        // 1. Supabase handed back an explicit error (expired / already-used link)
+        if (urlError) {
+          fail('Reset link problem: ' + decodeURIComponent(urlError.replace(/\+/g, ' ')))
+          return
         }
+
+        // 2. token_hash flow — verifyOtp, works across browsers/devices
+        if (tokenHash) {
+          const { error } = await supabase.auth.verifyOtp({
+            type: type || 'recovery',
+            token_hash: tokenHash,
+          })
+          if (error) { fail('Could not verify reset link: ' + error.message); return }
+          setSessionReady(true)
+          return
+        }
+
+        // 3. implicit flow — session tokens delivered directly in the URL hash
+        if (accessToken && refreshToken) {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken, refresh_token: refreshToken,
+          })
+          if (error) { fail('Could not verify reset link: ' + error.message); return }
+          setSessionReady(true)
+          return
+        }
+
+        // 4. PKCE ?code= flow — supabase-js auto-exchanges it; give that a beat,
+        //    then fall back to an explicit exchange so real errors surface.
+        if (code) {
+          await new Promise(r => setTimeout(r, 1500))
+          let { data: { session } } = await supabase.auth.getSession()
+          if (session) { setSessionReady(true); return }
+
+          const { error } = await supabase.auth.exchangeCodeForSession(code)
+          if (error) { fail('Could not verify reset link: ' + error.message); return }
+          setSessionReady(true)
+          return
+        }
+
+        fail('This page was opened without a valid reset link. Use the ' +
+             '"Forgot password?" link on the login page to request one.')
+      } catch (e) {
+        fail('Could not verify your reset link: ' + (e?.message || String(e)))
       }
-    )
-
-    // also check if session already exists from the link
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) setSessionReady(true)
-    })
-
-    return () => subscription.unsubscribe()
+    })()
   }, [])
 
   async function handleReset() {
-    if (!newPassword || newPassword.length < 6) {
+    if (!newPassword || newPassword.length < 8) {
       setIsError(true)
-      setMessage('Password must be at least 6 characters')
+      setMessage('Password must be at least 8 characters')
       return
     }
     if (newPassword !== confirmPassword) {
@@ -60,22 +120,22 @@ export default function ResetPassword() {
       setMessage('✅ Password updated successfully! Redirecting to login...')
       await supabase.auth.signOut()
       localStorage.clear()
-      setTimeout(() => navigate('/login'), 2500)
+      setTimeout(() => navigate('/student-login'), 2500)
     }
   }
 
   const inputStyle = {
     width: '100%', padding: '11px 14px',
-    border: '1px solid #d1d5db', borderRadius: 8,
-    fontSize: 14, color: '#111827', outline: 'none',
+    border: `1px solid ${theme.inputBorder}`, borderRadius: 8,
+    fontSize: 14, color: theme.textStrong, outline: 'none',
     fontFamily: 'inherit', boxSizing: 'border-box',
-    background: '#fff',
+    background: theme.white,
   }
 
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#f3f4f6',
+      background: theme.surfaceAlt,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -83,7 +143,7 @@ export default function ResetPassword() {
       padding: 16,
     }}>
       <div style={{
-        background: '#fff',
+        background: theme.white,
         borderRadius: 16,
         padding: 40,
         width: '100%',
@@ -95,28 +155,28 @@ export default function ResetPassword() {
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <div style={{
             width: 52, height: 52, borderRadius: 14,
-            background: '#16a34a',
+            background: theme.status.success.main,
             display: 'flex', alignItems: 'center',
             justifyContent: 'center',
             margin: '0 auto 12px',
-            fontSize: 24,
+            color: theme.white,
           }}>
-            🔑
+            <KeyRound size={24} />
           </div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: '#111827', margin: 0 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: theme.textStrong, margin: 0 }}>
             Set New Password
           </h1>
-          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 6 }}>
+          <p style={{ fontSize: 13, color: theme.textLight, marginTop: 6 }}>
             Enter your new password below
           </p>
         </div>
 
         {/* not ready yet */}
-        {!sessionReady && (
+        {!sessionReady && !message && (
           <div style={{
-            background: '#fef9c3', border: '1px solid #fde047',
+            background: theme.status.warning.bg, border: `1px solid ${theme.status.warning.border}`,
             borderRadius: 8, padding: '12px 14px',
-            fontSize: 13, color: '#a16207', marginBottom: 20,
+            fontSize: 13, color: theme.status.warning.text, marginBottom: 20,
           }}>
             ⏳ Verifying your reset link... please wait.
           </div>
@@ -127,9 +187,9 @@ export default function ResetPassword() {
           <div style={{
             padding: '12px 14px', borderRadius: 8,
             fontSize: 13, marginBottom: 18,
-            background: isError ? '#fee2e2' : '#dcfce7',
-            color:      isError ? '#b91c1c' : '#15803d',
-            border: `1px solid ${isError ? '#fca5a5' : '#86efac'}`,
+            background: isError ? theme.status.danger.bg : theme.status.success.bg,
+            color:      isError ? theme.status.danger.text : theme.status.success.text,
+            border: `1px solid ${isError ? theme.status.danger.border : theme.status.success.border}`,
           }}>
             {message}
           </div>
@@ -139,7 +199,7 @@ export default function ResetPassword() {
         <div style={{ marginBottom: 14 }}>
           <label style={{
             display: 'block', fontSize: 11, fontWeight: 600,
-            color: '#6b7280', textTransform: 'uppercase',
+            color: theme.textLight, textTransform: 'uppercase',
             marginBottom: 5, letterSpacing: '0.04em',
           }}>
             New Password
@@ -155,14 +215,16 @@ export default function ResetPassword() {
             <button
               type="button"
               onClick={() => setShowPass(!showPass)}
+              aria-label={showPass ? 'Hide password' : 'Show password'}
               style={{
                 position: 'absolute', right: 12,
                 top: '50%', transform: 'translateY(-50%)',
                 background: 'none', border: 'none',
-                fontSize: 16, cursor: 'pointer', color: '#9ca3af',
+                cursor: 'pointer', color: theme.textMuted,
+                display: 'flex', alignItems: 'center',
               }}
             >
-              {showPass ? '🙈' : '👁'}
+              {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
         </div>
@@ -170,7 +232,7 @@ export default function ResetPassword() {
         <div style={{ marginBottom: 24 }}>
           <label style={{
             display: 'block', fontSize: 11, fontWeight: 600,
-            color: '#6b7280', textTransform: 'uppercase',
+            color: theme.textLight, textTransform: 'uppercase',
             marginBottom: 5, letterSpacing: '0.04em',
           }}>
             Confirm Password
@@ -189,9 +251,9 @@ export default function ResetPassword() {
           disabled={loading || !sessionReady}
           style={{
             width: '100%', padding: 13,
-            background: loading || !sessionReady ? '#9ca3af' : '#16a34a',
+            background: loading || !sessionReady ? theme.textMuted : theme.status.success.main,
             border: 'none', borderRadius: 8,
-            fontSize: 14, fontWeight: 700, color: '#fff',
+            fontSize: 14, fontWeight: 700, color: theme.white,
             cursor: loading || !sessionReady ? 'not-allowed' : 'pointer',
             fontFamily: 'inherit',
           }}
@@ -201,9 +263,9 @@ export default function ResetPassword() {
 
         <div style={{ textAlign: 'center', marginTop: 16 }}>
           <span
-            onClick={() => navigate('/login')}
+            onClick={() => navigate('/student-login')}
             style={{
-              fontSize: 13, color: '#6b7280',
+              fontSize: 13, color: theme.textLight,
               cursor: 'pointer', textDecoration: 'underline',
             }}
           >

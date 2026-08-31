@@ -1,34 +1,14 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../supabase'
+import { Mail, Phone, Calendar, Trash2, Search, IdCard } from 'lucide-react'
+import { supabase, functionHeaders } from '../supabase'
 import theme from '../theme'
 import BottomButtons from '../components/BottomButtons'
+import StaffProfileModal, { getInitials, avatarColor } from '../components/StaffProfileModal'
+import { ROLES } from '../lib/staffRoles'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
 
 const SUPABASE_URL = 'https://txwpmjtixdbebnbqorju.supabase.co'
-
-const getInitials = (name) => {
-  if (!name) return '?'
-  return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
-}
-
-const avatarColor = (name) => {
-  const colors = ['#16a34a','#2563eb','#f59e0b','#db2777','#7c3aed','#0891b2','#dc2626','#059669']
-  if (!name) return colors[0]
-  return colors[name.charCodeAt(0) % colors.length]
-}
-
-const ROLES = [
-  { label: 'Counselor',        value: 'counselor',        access: 'Dashboard, Students, Appointments, Tasks, Chat' },
-  { label: 'Visa Officer',     value: 'visa_officer',     access: 'Dashboard, Applications, Students, Appointments, Documents, Tasks, Chat' },
-  { label: 'Document Handler', value: 'document_handler', access: 'Dashboard, Students, Documents, Tasks, Chat' },
-  { label: 'Receptionist',     value: 'receptionist',     access: 'Dashboard, Applications, Students, Visitors, Appointments, Payments, Tasks, Chat' },
-  { label: 'Finance Officer',  value: 'finance_officer',  access: 'Dashboard, Payments, Reports, Students (view), Tasks, Chat' },
-  { label: 'Marketing',        value: 'marketing',        access: 'Dashboard, Applications, Reports, Tasks, Chat' },
-  { label: 'Manager',          value: 'manager',          access: 'Dashboard, everything except Staff & Settings' },
-  { label: 'Staff',            value: 'staff',            access: 'Dashboard, Applications, Students, Visitors, Appointments, Payments, Documents, Tasks, Chat' },
-  { label: 'Admin',            value: 'admin',            access: 'Full access to everything' },
-  { label: 'Other',            value: 'other',            access: 'Dashboard, Tasks, Chat' },
-]
 
 export default function Staff() {
   const isMobile = useIsMobile()
@@ -41,16 +21,35 @@ export default function Staff() {
   const [deleting,      setDeleting]      = useState(null)
   const [staffPassword, setStaffPassword] = useState('')
   const [form,          setForm]          = useState({ name: '', role: '', email: '', phone: '', joined: '' })
+  const [profileStaff,  setProfileStaff]  = useState(null) // staff row currently open in the profile modal
 
   useEffect(() => { load() }, [])
+  useRefetchOnFocus(load)
 
   async function load() {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('staff')
-      .select('*')
-      .order('created_at', { ascending: true })
-    if (!error) setStaff(data || [])
+
+    const [{ data, error }, { data: profileRows }] = await Promise.all([
+      supabase.from('staff').select('*').order('created_at', { ascending: true }),
+      // Staff members can only be trusted to update their OWN `profiles` row
+      // (RLS on `staff` generally restricts writes to admins), so a photo
+      // someone uploaded from "My Profile" may only have landed in
+      // `profiles.avatar_url`. Fall back to that here so it still shows up
+      // on this admin page even when the `staff` row's own copy didn't sync.
+      supabase.from('profiles').select('email, avatar_url'),
+    ])
+
+    if (!error) {
+      const photoByEmail = {}
+      ;(profileRows || []).forEach(p => {
+        if (p.email && p.avatar_url) photoByEmail[p.email.trim().toLowerCase()] = p.avatar_url
+      })
+      const merged = (data || []).map(s => ({
+        ...s,
+        avatar_url: s.avatar_url || photoByEmail[(s.email || '').trim().toLowerCase()] || null,
+      }))
+      setStaff(merged)
+    }
     setLoading(false)
   }
 
@@ -66,7 +65,7 @@ export default function Staff() {
     if (!form.name.trim())  return alert('Full name is required')
     if (!form.role)         return alert('Role is required')
     if (!form.email.trim()) return alert('Email is required to create a login')
-    if (!staffPassword || staffPassword.length < 6) return alert('Password must be at least 6 characters')
+    if (!staffPassword || staffPassword.length < 8) return alert('Password must be at least 8 characters')
 
     const roleObj   = ROLES.find(r => r.value === form.role)
     const roleLabel = roleObj?.label || 'Staff'
@@ -92,7 +91,7 @@ export default function Staff() {
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/create-staff-user`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await functionHeaders(),
         body: JSON.stringify({
           email:    form.email.trim().toLowerCase(),
           password: staffPassword,
@@ -126,20 +125,109 @@ export default function Staff() {
 
     alert(
       `✅ Staff account created!\n\n` +
-      `Name:     ${form.name}\n` +
-      `Role:     ${roleLabel}\n` +
-      `Email:    ${form.email}\n` +
-      `Password: ${staffPassword}\n\n` +
-      `Share these credentials with the staff member.`
+      `Name:  ${form.name}\n` +
+      `Role:  ${roleLabel}\n` +
+      `Email: ${form.email}\n\n` +
+      `Give the staff member their login email and the password you just set — ` +
+      `share it directly (in person or by phone), not by email.`
     )
   }
 
-  async function removeStaff(id, name) {
-    if (!window.confirm(`Remove ${name} from staff?`)) return
+  async function removeStaff(id, name, email) {
+    if (!window.confirm(
+      `Remove ${name} from staff?\n\n` +
+      `This also deletes their login account and revokes portal access.`
+    )) return
     setDeleting(id)
-    await supabase.from('staff').delete().eq('id', id)
-    setDeleting(null)
-    load()
+    try {
+      // Find the linked login profile so we can revoke portal access too.
+      // A former staff whose `profiles` row is left behind keeps a working
+      // login AND still shows up wherever the app lists staff from
+      // `profiles` (e.g. the student chat).
+      let profileId = null
+      if (email) {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('id')
+          .ilike('email', email.trim())
+          .maybeSingle()
+        profileId = prof?.id || null
+      }
+
+      if (profileId) {
+        // Delete the auth user first. If this fails, abort without removing
+        // anything else — otherwise the person keeps a usable login while
+        // disappearing from this page.
+        try {
+          const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-user`, {
+            method:  'POST',
+            headers: await functionHeaders(),
+            body:    JSON.stringify({ user_id: profileId }),
+          })
+          const result = await res.json()
+          if (!res.ok || !result?.success) {
+            alert(
+              `⚠️ Could not delete ${name}'s login account: ${result?.message || 'Unknown error'}\n\n` +
+              `Nothing was removed. Please try again, or check the delete-user function logs.`
+            )
+            setDeleting(null)
+            return
+          }
+        } catch (fnErr) {
+          alert(
+            `⚠️ Network error while deleting ${name}'s login account: ${fnErr.message}\n\n` +
+            `Nothing was removed, so their login still works. Please try again.`
+          )
+          setDeleting(null)
+          return
+        }
+        await supabase.from('profiles').delete().eq('id', profileId)
+      }
+
+      await supabase.from('staff').delete().eq('id', id)
+    } catch (err) {
+      alert('Error removing staff: ' + err.message)
+    } finally {
+      setDeleting(null)
+      load()
+    }
+  }
+
+  // Best-effort sync into the matching login profile so the staff member
+  // sees admin-made edits immediately on their own "My Profile" — they
+  // usually can't read the `staff` table row directly (that's admin-only),
+  // but they can always read their own `profiles` row. Never blocks the
+  // main save: the `staff` table write above is the source of truth for
+  // this admin-facing page, this is just propagation.
+  async function syncToProfile(email, fields) {
+    if (!email) return
+    const { data, error } = await supabase.from('profiles').update(fields).ilike('email', email).select()
+    if (error || !data || data.length === 0) {
+      console.warn('Could not sync to this person\'s login profile (no matching row, or blocked by permissions):', error?.message)
+    }
+  }
+
+  async function saveStaffProfile(fields) {
+    const { error } = await supabase
+      .from('staff')
+      .update({
+        name:  fields.name,
+        role:  fields.role,
+        phone: fields.phone || null,
+        joined: fields.joined || null,
+      })
+      .eq('id', profileStaff.id)
+
+    if (error) throw error
+    await syncToProfile(profileStaff.email, { name: fields.name, phone_new: fields.phone || null })
+    await load()
+  }
+
+  async function saveStaffAvatar(url) {
+    const { error } = await supabase.from('staff').update({ avatar_url: url }).eq('id', profileStaff.id)
+    if (error) throw error
+    await syncToProfile(profileStaff.email, { avatar_url: url })
+    await load()
   }
 
   const filtered = staff.filter(s =>
@@ -174,7 +262,7 @@ export default function Staff() {
             borderRadius: 8, padding: '7px 14px', width: isMobile ? '100%' : 220,
             boxSizing: 'border-box',
           }}>
-            <span style={{ color: theme.textMuted, fontSize: 13 }}>🔍</span>
+            <Search size={16} style={{ color: theme.textMuted, flexShrink: 0 }} />
             <input
               placeholder="Search staff..."
               value={search}
@@ -184,7 +272,7 @@ export default function Staff() {
           </div>
           <button onClick={openAdd} style={{
             padding: '8px 18px', background: theme.primary,
-            border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer',
+            border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, color: theme.white, cursor: 'pointer',
             width: isMobile ? '100%' : 'auto',
           }}>
             + Add Staff
@@ -199,20 +287,21 @@ export default function Staff() {
           background: theme.cardBg, border: `1px solid ${theme.border}`,
           borderRadius: 12, padding: isMobile ? '48px 20px' : 80, textAlign: 'center',
         }}>
-          <div style={{ fontSize: 48, marginBottom: 14 }}>👥</div>
+          <div style={{ marginBottom: 14, display: 'flex', justifyContent: 'center' }}>
+            <div style={{ fontSize: 48 }}>👥</div>
+          </div>
           <div style={{ fontSize: 16, fontWeight: 700, color: theme.textDark, marginBottom: 6 }}>No staff members yet</div>
           <div style={{ fontSize: 13, color: theme.textLight, marginBottom: 20 }}>Add your team members to get started</div>
           <button onClick={openAdd} style={{
             padding: '10px 22px', background: theme.primary,
-            border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer',
+            border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, color: theme.white, cursor: 'pointer',
           }}>
             + Add First Staff Member
           </button>
         </div>
       )}
 
-      {/* staff cards — auto-fill grid already collapses to a single column on
-          narrow screens; just tighten the minimum card width a bit on phone */}
+      {/* staff cards */}
       {!loading && filtered.length > 0 && (
         <div style={{
           display: 'grid',
@@ -226,15 +315,29 @@ export default function Staff() {
               background: theme.cardBg, border: `1px solid ${theme.border}`,
               borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column',
             }}>
-              <div style={{ height: 5, background: avatarColor(s.name) }} />
-              <div style={{ padding: '22px 20px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
-                <div style={{
-                  width: 68, height: 68, borderRadius: '50%', background: avatarColor(s.name),
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 22, fontWeight: 700, color: '#fff', marginBottom: 12,
-                }}>
-                  {getInitials(s.name)}
-                </div>
+              <div
+                onClick={() => setProfileStaff(s)}
+                title="View / edit profile"
+                style={{ padding: '22px 20px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, cursor: 'pointer' }}
+              >
+                {s.avatar_url ? (
+                  <img
+                    src={s.avatar_url}
+                    alt={s.name}
+                    style={{
+                      width: 68, height: 68, borderRadius: '50%', objectFit: 'cover',
+                      border: `1px solid ${theme.border}`, marginBottom: 12,
+                    }}
+                  />
+                ) : (
+                  <div style={{
+                    width: 68, height: 68, borderRadius: '50%', background: avatarColor(s.name),
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 22, fontWeight: 700, color: theme.white, marginBottom: 12,
+                  }}>
+                    {getInitials(s.name)}
+                  </div>
+                )}
                 <div style={{ fontSize: 15, fontWeight: 700, color: theme.textDark, marginBottom: 6, textAlign: 'center' }}>
                   {s.name}
                 </div>
@@ -244,47 +347,60 @@ export default function Staff() {
                 }}>
                   {s.role}
                 </div>
-                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: theme.textMid }}>
-                    <span>📧</span>
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                    <Mail size={14} style={{ flexShrink: 0, color: theme.textMuted }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {s.email || '—'}
                     </span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: theme.textMid }}>
-                    <span>📱</span>{s.phone || '—'}
+                    <Phone size={14} style={{ flexShrink: 0, color: theme.textMuted }} />
+                    <span>{s.phone || '—'}</span>
                   </div>
                   {s.joined && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: theme.textLight }}>
-                      <span>📅</span>
-                      Joined {new Date(s.joined).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                      <Calendar size={14} style={{ flexShrink: 0, color: theme.textMuted }} />
+                      <span>Joined {new Date(s.joined).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
                     </div>
                   )}
                   <div style={{
-                    marginTop: 4, padding: '4px 10px', background: '#f0fdf4',
-                    border: '1px solid #bbf7d0', borderRadius: 6, fontSize: 11,
-                    color: '#15803d', textAlign: 'center',
+                    marginTop: 4, padding: '4px 10px', background: theme.status.success.bg,
+                    border: `1px solid ${theme.status.success.border}`, borderRadius: 6, fontSize: 11,
+                    color: theme.status.success.text, textAlign: 'center',
                   }}>
                     ✓ Has login access
                   </div>
+                  <button
+                    onClick={() => setProfileStaff(s)}
+                    style={{
+                      marginTop: 2, padding: '6px 10px', background: theme.status.info.bg,
+                      border: `1px solid ${theme.status.info.border}`, borderRadius: 6, fontSize: 11,
+                      fontWeight: 600, color: theme.primary, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                    }}
+                  >
+                    <IdCard size={12} /> View Profile
+                  </button>
                 </div>
               </div>
               <button
-                onClick={() => removeStaff(s.id, s.name)}
+                onClick={() => removeStaff(s.id, s.name, s.email)}
                 disabled={deleting === s.id}
                 style={{
                   width: '100%', padding: '10px',
-                  background: deleting === s.id ? '#f9fafb' : '#fff5f5',
+                  background: deleting === s.id ? theme.pageBg : theme.status.danger.bg,
                   border: 'none', borderTop: `1px solid ${theme.border}`,
                   fontSize: 12, fontWeight: 500,
-                  color: deleting === s.id ? theme.textMuted : '#dc2626',
+                  color: deleting === s.id ? theme.textMuted : theme.status.danger.main,
                   cursor: deleting === s.id ? 'not-allowed' : 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 }}
-                onMouseEnter={e => { if (deleting !== s.id) e.currentTarget.style.background = '#fee2e2' }}
-                onMouseLeave={e => { if (deleting !== s.id) e.currentTarget.style.background = '#fff5f5' }}
+                onMouseEnter={e => { if (deleting !== s.id) e.currentTarget.style.background = theme.status.danger.bg }}
+                onMouseLeave={e => { if (deleting !== s.id) e.currentTarget.style.background = theme.status.danger.bg }}
               >
-                {deleting === s.id ? 'Removing...' : '🗑️ Remove'}
+                <Trash2 size={14} />
+                {deleting === s.id ? 'Removing...' : 'Remove'}
               </button>
             </div>
           ))}
@@ -293,7 +409,9 @@ export default function Staff() {
 
       {!loading && staff.length > 0 && filtered.length === 0 && (
         <div style={{ padding: 60, textAlign: 'center', color: theme.textLight }}>
-          <div style={{ fontSize: 36, marginBottom: 10 }}>🔍</div>
+          <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center' }}>
+            <Search size={48} style={{ color: theme.textMuted }} />
+          </div>
           <div style={{ fontSize: 14, fontWeight: 600, color: theme.textMid }}>No staff match "{search}"</div>
         </div>
       )}
@@ -310,7 +428,7 @@ export default function Staff() {
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              background: '#fff', border: '1px solid #e5e7eb',
+              background: theme.white, border: `1px solid ${theme.border}`,
               borderRadius: isMobile ? '14px 14px 0 0' : 14,
               padding: isMobile ? 20 : 28,
               width: isMobile ? '100%' : 440,
@@ -320,13 +438,13 @@ export default function Staff() {
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: 0 }}>Add Staff Member</h3>
-              <button onClick={() => setShowAdd(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#9ca3af' }}>✕</button>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: theme.textStrong, margin: 0 }}>Add Staff Member</h3>
+              <button onClick={() => setShowAdd(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: theme.textMuted }}>✕</button>
             </div>
 
             <div style={{
-              padding: '10px 14px', background: '#eff6ff', border: '1px solid #bfdbfe',
-              borderRadius: 8, fontSize: 12, color: '#1d4ed8', marginBottom: 18,
+              padding: '10px 14px', background: theme.status.info.bg, border: `1px solid ${theme.status.info.border}`,
+              borderRadius: 8, fontSize: 12, color: theme.primary, marginBottom: 18,
             }}>
               ℹ️ Creates a login account. The role controls which pages they can access.
             </div>
@@ -345,8 +463,8 @@ export default function Staff() {
             {selectedRole && (
               <div style={{
                 marginTop: -8, marginBottom: 14, padding: '8px 12px',
-                background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 7,
-                fontSize: 11, color: '#15803d',
+                background: theme.status.success.bg, border: `1px solid ${theme.status.success.border}`, borderRadius: 7,
+                fontSize: 11, color: theme.status.success.text,
               }}>
                 <strong>Access:</strong> {selectedRole.access}
               </div>
@@ -356,9 +474,9 @@ export default function Staff() {
               <input type="email" placeholder="nabin@globalpathway.com" value={form.email} onChange={e => set('email', e.target.value)} style={fieldStyle} />
             </FormField>
 
-            <FormField label="Login Password * (min 6 characters)">
+            <FormField label="Login Password * (min 8 characters)">
               <input type="text" placeholder="Set a password for this staff member" value={staffPassword} onChange={e => setStaffPassword(e.target.value)} style={fieldStyle} />
-              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Share this email + password directly with the staff member.</div>
+              <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 4 }}>Share this email + password directly with the staff member.</div>
             </FormField>
 
             <FormField label="Phone">
@@ -375,13 +493,13 @@ export default function Staff() {
               justifyContent: 'flex-end', marginTop: 22,
             }}>
               <button onClick={() => setShowAdd(false)} style={{
-                padding: '9px 18px', background: '#f9fafb', border: '1px solid #e5e7eb',
-                borderRadius: 8, fontSize: 13, color: '#6b7280', cursor: 'pointer',
+                padding: '9px 18px', background: theme.pageBg, border: `1px solid ${theme.border}`,
+                borderRadius: 8, fontSize: 13, color: theme.textLight, cursor: 'pointer',
                 width: isMobile ? '100%' : 'auto',
               }}>Cancel</button>
               <button onClick={addStaff} disabled={saving} style={{
-                padding: '9px 22px', background: saving ? '#9ca3af' : theme.primary,
-                border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#fff',
+                padding: '9px 22px', background: saving ? theme.textMuted : theme.primary,
+                border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, color: theme.white,
                 cursor: saving ? 'not-allowed' : 'pointer',
                 width: isMobile ? '100%' : 'auto',
               }}>
@@ -392,22 +510,35 @@ export default function Staff() {
         </div>
       )}
 
+      {/* staff profile popup — view/edit any staff member, photo is device-local */}
+      {profileStaff && (
+        <StaffProfileModal
+          staff={{ ...profileStaff, avatarUrl: profileStaff.avatar_url }}
+          roleOptions={ROLES}
+          showJoined
+          title="Staff Profile"
+          onClose={() => setProfileStaff(null)}
+          onSave={saveStaffProfile}
+          onPhotoChange={saveStaffAvatar}
+        />
+      )}
+
       <BottomButtons onAdd={load} />
     </div>
   )
 }
 
 const fieldStyle = {
-  width: '100%', padding: '9px 12px', background: '#f9fafb',
-  border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13,
-  color: '#374151', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
+  width: '100%', padding: '9px 12px', background: theme.pageBg,
+  border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13,
+  color: theme.textMid, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
 }
 
 function FormField({ label, children }) {
   return (
     <div style={{ marginBottom: 14 }}>
       <label style={{
-        display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280',
+        display: 'block', fontSize: 11, fontWeight: 600, color: theme.textLight,
         textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5,
       }}>
         {label}

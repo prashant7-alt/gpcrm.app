@@ -2,18 +2,19 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import theme from '../theme'
 import { useIsMobile } from '../hooks/useIsMobile'
-import { User, Lock, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
+import { User, Lock, Eye, EyeOff, CheckCircle2, Percent } from 'lucide-react'
+import { COUNTRIES, COUNTRY_CODES, DEFAULT_VISA_RATES, fetchVisaRates } from '../lib/visaRates'
 
 const inputStyle = {
   width: '100%', padding: '10px 12px',
-  border: '1px solid #d1d5db', borderRadius: 8,
-  fontSize: 13, color: '#111827', outline: 'none',
-  fontFamily: 'inherit', boxSizing: 'border-box', background: '#fff',
+  border: `1px solid ${theme.inputBorder}`, borderRadius: 8,
+  fontSize: 13, color: theme.textStrong, outline: 'none',
+  fontFamily: 'inherit', boxSizing: 'border-box', background: theme.white,
 }
 
 const labelStyle = {
   display: 'block', fontSize: 11, fontWeight: 600,
-  color: '#6b7280', textTransform: 'uppercase',
+  color: theme.textLight, textTransform: 'uppercase',
   marginBottom: 5, letterSpacing: '0.04em',
 }
 
@@ -38,7 +39,14 @@ export default function Settings() {
   const [pwMessage,       setPwMessage]       = useState('')
   const [pwLoading,       setPwLoading]       = useState(false)
 
+  // Visa Rates (admin-editable, powers the country cards on the Students page)
+  const isAdmin = (storedProfile.role || '') === 'admin'
+  const [rates,       setRates]       = useState(DEFAULT_VISA_RATES)
+  const [ratesMsg,    setRatesMsg]    = useState('')
+  const [savingRates, setSavingRates] = useState(false)
+
   useEffect(() => { loadAccount() }, [])
+  useEffect(() => { if (isAdmin) fetchVisaRates().then(setRates) }, [isAdmin])
 
   async function loadAccount() {
     setLoading(true)
@@ -92,8 +100,8 @@ export default function Settings() {
   async function changePassword() {
     setPwMessage('')
 
-    if (!newPassword || newPassword.length < 6) {
-      setPwMessage('Password must be at least 6 characters')
+    if (!newPassword || newPassword.length < 8) {
+      setPwMessage('Password must be at least 8 characters')
       return
     }
     if (newPassword !== confirmPassword) {
@@ -114,21 +122,50 @@ export default function Settings() {
     }
   }
 
+  async function saveRates() {
+    setSavingRates(true)
+    setRatesMsg('')
+
+    const rows = COUNTRIES.map(c => {
+      const n = Number(rates[c])
+      return {
+        country: c,
+        rate: Math.max(0, Math.min(100, Number.isFinite(n) ? n : 0)),
+        updated_at: new Date().toISOString(),
+        updated_by: profileId || null,
+      }
+    })
+
+    const { error } = await supabase
+      .from('visa_rates')
+      .upsert(rows, { onConflict: 'country' })
+
+    setSavingRates(false)
+
+    if (error) {
+      setRatesMsg('❌ ' + error.message)
+      return
+    }
+    setRatesMsg('✅ Visa rates saved. The Students page picks them up on next load.')
+    setTimeout(() => setRatesMsg(''), 4000)
+  }
+
   const tabs = [
     { key: 'account',  label: 'My Account',      Icon: User },
     { key: 'password', label: 'Change Password', Icon: Lock },
+    ...(isAdmin ? [{ key: 'visarates', label: 'Visa Rates', Icon: Percent }] : []),
   ]
 
   const sectionCard = {
-    background: '#fff',
-    border: '1px solid #e5e7eb',
+    background: theme.white,
+    border: `1px solid ${theme.border}`,
     borderRadius: 12,
     padding: isMobile ? 16 : 24,
     marginBottom: 20,
   }
 
   if (loading) return (
-    <div style={{ padding: 40, color: '#6b7280', fontSize: 13 }}>
+    <div style={{ padding: 40, color: theme.textLight, fontSize: 13 }}>
       Loading settings...
     </div>
   )
@@ -137,10 +174,10 @@ export default function Settings() {
     <div style={{ fontFamily: "'Segoe UI', Arial, sans-serif", maxWidth: 640 }}>
 
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>
+        <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: theme.textStrong, margin: '0 0 4px' }}>
           Settings
         </h1>
-        <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
+        <p style={{ fontSize: 13, color: theme.textLight, margin: 0 }}>
           Manage your account details and password
         </p>
       </div>
@@ -148,7 +185,7 @@ export default function Settings() {
       <div style={{
         display: 'flex', gap: 4,
         marginBottom: 20,
-        background: '#f3f4f6', borderRadius: 10,
+        background: theme.surfaceAlt, borderRadius: 10,
         padding: 4,
       }}>
         {tabs.map(tab => (
@@ -161,8 +198,8 @@ export default function Settings() {
               borderRadius: 7, border: 'none',
               fontSize: 13, fontWeight: 500,
               cursor: 'pointer', fontFamily: 'inherit',
-              background: activeTab === tab.key ? '#fff' : 'transparent',
-              color: activeTab === tab.key ? '#111827' : '#6b7280',
+              background: activeTab === tab.key ? theme.white : 'transparent',
+              color: activeTab === tab.key ? theme.textStrong : theme.textLight,
               boxShadow: activeTab === tab.key ? '0 1px 4px rgba(0,0,0,0.10)' : 'none',
               transition: 'all 0.15s',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
@@ -177,12 +214,12 @@ export default function Settings() {
       {activeTab === 'account' && (
         <div style={sectionCard}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <User size={16} color="#1a56db" />
-            <h2 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>
+            <User size={16} color={theme.primary} />
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: theme.textStrong, margin: 0 }}>
               My Account
             </h2>
           </div>
-          <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 20px' }}>
+          <p style={{ fontSize: 13, color: theme.textLight, margin: '0 0 20px' }}>
             Update your name and phone number. Changes appear in the sidebar and across the CRM immediately.
           </p>
 
@@ -208,8 +245,8 @@ export default function Settings() {
 
           <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>Email</label>
-            <input value={email} disabled style={{ ...inputStyle, background: '#f9fafb', color: '#6b7280' }} />
-            <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>
+            <input value={email} disabled style={{ ...inputStyle, background: theme.pageBg, color: theme.textLight }} />
+            <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 4 }}>
               Email is tied to your login and can't be changed here.
             </div>
           </div>
@@ -218,7 +255,7 @@ export default function Settings() {
             <label style={labelStyle}>Role</label>
             <div style={{
               display: 'inline-block', padding: '4px 12px', borderRadius: 20,
-              background: '#dcfce7', color: '#15803d', fontSize: 12, fontWeight: 600,
+              background: theme.status.success.bg, color: theme.status.success.text, fontSize: 12, fontWeight: 600,
               textTransform: 'capitalize',
             }}>
               {role || 'Staff'}
@@ -228,9 +265,9 @@ export default function Settings() {
           {infoMsg && (
             <div style={{
               padding: '9px 14px', borderRadius: 8, fontSize: 13, marginBottom: 16,
-              background: infoMsg.startsWith('✅') ? '#f0fdf4' : '#fef2f2',
-              color:      infoMsg.startsWith('✅') ? '#15803d' : '#b91c1c',
-              border: `1px solid ${infoMsg.startsWith('✅') ? '#bbf7d0' : '#fecaca'}`,
+              background: infoMsg.startsWith('✅') ? theme.status.success.bg : theme.status.danger.bg,
+              color:      infoMsg.startsWith('✅') ? theme.status.success.text : theme.status.danger.text,
+              border: `1px solid ${infoMsg.startsWith('✅') ? theme.status.success.border : theme.status.danger.border}`,
             }}>
               {infoMsg}
             </div>
@@ -241,9 +278,9 @@ export default function Settings() {
             disabled={savingInfo}
             style={{
               padding: '10px 22px',
-              background: savingInfo ? '#9ca3af' : '#111827',
+              background: savingInfo ? theme.textMuted : theme.textStrong,
               border: 'none', borderRadius: 8,
-              fontSize: 13, fontWeight: 700, color: '#fff',
+              fontSize: 13, fontWeight: 700, color: theme.white,
               cursor: savingInfo ? 'not-allowed' : 'pointer',
               fontFamily: 'inherit',
               width: isMobile ? '100%' : 'auto',
@@ -259,12 +296,12 @@ export default function Settings() {
       {activeTab === 'password' && (
         <div style={sectionCard}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <Lock size={16} color="#1a56db" />
-            <h2 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>
+            <Lock size={16} color={theme.primary} />
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: theme.textStrong, margin: 0 }}>
               Change Password
             </h2>
           </div>
-          <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 24px' }}>
+          <p style={{ fontSize: 13, color: theme.textLight, margin: '0 0 24px' }}>
             Update your login password. You will stay logged in after changing.
           </p>
 
@@ -272,9 +309,9 @@ export default function Settings() {
             <div style={{
               padding: '10px 14px', borderRadius: 8,
               marginBottom: 16, fontSize: 13,
-              background: pwMessage.startsWith('✅') ? '#dcfce7' : '#fee2e2',
-              color:      pwMessage.startsWith('✅') ? '#15803d' : '#b91c1c',
-              border: `1px solid ${pwMessage.startsWith('✅') ? '#86efac' : '#fca5a5'}`,
+              background: pwMessage.startsWith('✅') ? theme.status.success.bg : theme.status.danger.bg,
+              color:      pwMessage.startsWith('✅') ? theme.status.success.text : theme.status.danger.text,
+              border: `1px solid ${pwMessage.startsWith('✅') ? theme.status.success.border : theme.status.danger.border}`,
             }}>
               {pwMessage}
             </div>
@@ -295,7 +332,7 @@ export default function Settings() {
                   onClick={() => setShowPw(s => !s)}
                   style={{
                     position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-                    background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af',
+                    background: 'none', border: 'none', cursor: 'pointer', color: theme.textMuted,
                     display: 'flex', padding: 0,
                   }}
                 >
@@ -320,9 +357,9 @@ export default function Settings() {
               disabled={pwLoading}
               style={{
                 width: '100%', padding: 12,
-                background: pwLoading ? '#9ca3af' : '#111827',
+                background: pwLoading ? theme.textMuted : theme.textStrong,
                 border: 'none', borderRadius: 8,
-                fontSize: 14, fontWeight: 700, color: '#fff',
+                fontSize: 14, fontWeight: 700, color: theme.white,
                 cursor: pwLoading ? 'not-allowed' : 'pointer',
                 fontFamily: 'inherit',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -335,27 +372,102 @@ export default function Settings() {
 
           <div style={{
             marginTop: 32, paddingTop: 20,
-            borderTop: '1px solid #e5e7eb',
+            borderTop: `1px solid ${theme.border}`,
           }}>
             <div style={{
               fontSize: 12, fontWeight: 600,
-              color: '#9ca3af', textTransform: 'uppercase',
+              color: theme.textMuted, textTransform: 'uppercase',
               marginBottom: 8,
             }}>
               Current Account
             </div>
-            <div style={{ fontSize: 13, color: '#374151', wordBreak: 'break-word' }}>
+            <div style={{ fontSize: 13, color: theme.textMid, wordBreak: 'break-word' }}>
               <strong>{name || storedProfile.name}</strong> — {email}
             </div>
             <div style={{
               display: 'inline-block', marginTop: 6,
               padding: '2px 10px', borderRadius: 20,
-              background: '#dcfce7', color: '#15803d',
+              background: theme.status.success.bg, color: theme.status.success.text,
               fontSize: 11, fontWeight: 600, textTransform: 'capitalize',
             }}>
               {role}
             </div>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'visarates' && isAdmin && (
+        <div style={sectionCard}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <Percent size={16} color={theme.primary} />
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: theme.textStrong, margin: 0 }}>
+              Visa Success Rates
+            </h2>
+          </div>
+          <p style={{ fontSize: 13, color: theme.textLight, margin: '0 0 20px' }}>
+            Shown on the country cards on the Students page. Enter the current student-visa
+            success rate (%) for each destination — update these whenever official figures change.
+          </p>
+
+          {ratesMsg && (
+            <div style={{
+              padding: '9px 14px', borderRadius: 8, fontSize: 13, marginBottom: 16,
+              background: ratesMsg.startsWith('✅') ? theme.status.success.bg : theme.status.danger.bg,
+              color:      ratesMsg.startsWith('✅') ? theme.status.success.text : theme.status.danger.text,
+              border: `1px solid ${ratesMsg.startsWith('✅') ? theme.status.success.border : theme.status.danger.border}`,
+            }}>
+              {ratesMsg}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 22 }}>
+            {COUNTRIES.map(country => (
+              <div key={country} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <img
+                  src={`https://flagcdn.com/w40/${COUNTRY_CODES[country]}.png`}
+                  alt={country}
+                  style={{ width: 28, height: 19, objectFit: 'cover', borderRadius: 3, boxShadow: '0 0 0 1px rgba(0,0,0,0.08)', flexShrink: 0 }}
+                />
+                <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: theme.textStrong }}>
+                  {country}
+                </span>
+                <div style={{ position: 'relative', width: 96 }}>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={rates[country] ?? ''}
+                    onChange={e => setRates(r => ({ ...r, [country]: e.target.value }))}
+                    style={{ ...inputStyle, textAlign: 'right', paddingRight: 28 }}
+                  />
+                  <span style={{
+                    position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                    fontSize: 12, color: theme.textMuted, pointerEvents: 'none',
+                  }}>
+                    %
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={saveRates}
+            disabled={savingRates}
+            style={{
+              padding: '10px 22px',
+              background: savingRates ? theme.textMuted : theme.textStrong,
+              border: 'none', borderRadius: 8,
+              fontSize: 13, fontWeight: 700, color: theme.white,
+              cursor: savingRates ? 'not-allowed' : 'pointer',
+              fontFamily: 'inherit',
+              width: isMobile ? '100%' : 'auto',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+            }}
+          >
+            <CheckCircle2 size={15} />
+            {savingRates ? 'Saving...' : 'Save Rates'}
+          </button>
         </div>
       )}
 

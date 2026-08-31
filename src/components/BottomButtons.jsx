@@ -1,6 +1,9 @@
 import { useState, forwardRef, useImperativeHandle } from 'react'
-import { supabase } from '../supabase'
-import { sendWelcomeEmail } from '../emailService'   // ← NEW
+import theme from '../theme'
+import { supabase, functionHeaders } from '../supabase'
+import { sendWelcomeEmail } from '../emailService'
+
+const SUPABASE_URL = 'https://txwpmjtixdbebnbqorju.supabase.co'
 
 const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
 
@@ -17,40 +20,36 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
     }
   }))
 
+  // Creates the student portal login via the hardened create-staff-user Edge
+  // Function (server-side auth + role check). The password is set by staff in
+  // the form — never derived from the phone number, never emailed.
   async function createStudentAccount(applicantData, applicantId) {
-    if (!applicantData.email || !applicantData.phone) return null
+    if (!applicantData.email || !applicantData.password) return null
 
     try {
-      const { data: { session: adminSession } } = await supabase.auth.getSession()
-
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email:    applicantData.email.toLowerCase().trim(),
-        password: applicantData.phone.trim(),
-        options:  { data: { name: applicantData.name, role: 'student', phone: applicantData.phone } },
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/create-staff-user`, {
+        method:  'POST',
+        headers: await functionHeaders(),
+        body: JSON.stringify({
+          email:    applicantData.email.toLowerCase().trim(),
+          password: applicantData.password,
+          name:     applicantData.name,
+          role:     'student',
+        }),
       })
 
-      if (adminSession) {
-        await supabase.auth.setSession({
-          access_token:  adminSession.access_token,
-          refresh_token: adminSession.refresh_token,
-        })
-      }
+      const result = await res.json()
+      if (!result.success) return { error: result.message || 'Login creation failed' }
 
-      if (authError) return { error: authError.message }
+      const authUserId = result.user_id
+      if (!authUserId) return { error: 'No user ID returned' }
 
-      const authUserId = authData?.user?.id
-      if (!authUserId) return { error: 'No user ID returned from signUp' }
+      const { error: linkError } = await supabase
+        .from('profiles')
+        .update({ applicant_id: applicantId })
+        .eq('id', authUserId)
 
-      const { error: profileError } = await supabase.from('profiles').insert({
-        id:           authUserId,
-        name:         applicantData.name,
-        email:        applicantData.email.toLowerCase().trim(),
-        phone:        applicantData.phone,
-        role:         'student',
-        applicant_id: applicantId,
-      })
-
-      if (profileError) return { userId: authUserId, error: 'Profile error: ' + profileError.message }
+      if (linkError) return { userId: authUserId, error: 'Profile link error: ' + linkError.message }
 
       return { userId: authUserId }
 
@@ -61,6 +60,10 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
 
   const submitApplicant = async () => {
     if (!form.name || submitting) return
+    if (form.email && form.password && form.password.length < 8) {
+      alert('Login password must be at least 8 characters (or leave it blank to skip creating a portal login).')
+      return
+    }
     setSubmitting(true)
 
     try {
@@ -130,12 +133,11 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
       }
 
       let result = null
-      if (form.email && form.phone) {
+      if (form.email && form.password) {
         result = await createStudentAccount(form, applicant.id)
       }
 
       const savedEmail = form.email
-      const savedPhone = form.phone
       const savedName  = form.name
 
       setModal(null)
@@ -143,15 +145,14 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
       onAdd?.()
 
       if (!result) {
-        alert('✅ Applicant added!\n(No email/phone — no portal login created)')
+        alert('✅ Applicant added!\n(No login password set — no portal login created. You can add one later from the Applications page.)')
 
       } else if (result.userId && !result.error) {
-        // ── SEND WELCOME EMAIL ──────────────────────────────
-        // Only send if account was created successfully
+        // Welcome email tells the student their account exists — it never
+        // contains the password. Staff shares that directly.
         sendWelcomeEmail({
-          student_name:     savedName,
-          student_email:    savedEmail,
-          student_password: savedPhone,   // phone is the default password
+          student_name:  savedName,
+          student_email: savedEmail,
         }).then(res => {
           if (res.success) {
             console.log('✅ Welcome email sent to', savedEmail)
@@ -159,14 +160,12 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
             console.warn('⚠️ Welcome email failed:', res.error)
           }
         })
-        // ────────────────────────────────────────────────────
 
         alert(
           '✅ Applicant added!\n\n' +
-          '🔑 Student portal login created:\n' +
-          'Email: ' + savedEmail + '\n' +
-          'Password: ' + savedPhone + '\n\n' +
-          '📧 Welcome email sent to student!'
+          '🔑 Student portal login created for: ' + savedEmail + '\n\n' +
+          'Give the student their login email and the password you just set — ' +
+          'share it directly (in person or by phone), not by email.'
         )
 
       } else if (result.userId && result.error) {
@@ -224,52 +223,53 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
     <>
       {modal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}>
-          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, padding: 28, width: 420, boxShadow: '0 8px 32px rgba(0,0,0,0.15)' }}>
+          <div style={{ background: theme.white, border: `1px solid ${theme.border}`, borderRadius: 14, padding: 28, width: 420, boxShadow: '0 8px 32px rgba(0,0,0,0.15)' }}>
 
             {/* ── APPLICANT MODAL ── */}
             {modal === 'applicant' && (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
-                  <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: 0 }}>Add New Applicant</h3>
-                  <button onClick={() => setModal(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#6b7280' }}>✕</button>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, color: theme.textStrong, margin: 0 }}>Add New Applicant</h3>
+                  <button onClick={() => setModal(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textLight }}>✕</button>
                 </div>
 
                 {[
                   { label: 'Full Name *', key: 'name',    placeholder: 'Ram Sharma' },
                   { label: 'Email',       key: 'email',   placeholder: 'ram@email.com' },
                   { label: 'Phone',       key: 'phone',   placeholder: '98XXXXXXXX' },
+                  { label: 'Login Password (min 8 — leave blank to skip portal login)', key: 'password', placeholder: 'Set student password', type: 'text' },
                   { label: 'Course',      key: 'course',  placeholder: 'BSc Computer Science' },
                   { label: 'Country',     key: 'country', placeholder: 'UK, Australia...' },
                 ].map(f => (
                   <div key={f.key} style={{ marginBottom: 12 }}>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', marginBottom: 5 }}>{f.label}</label>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: theme.textLight, textTransform: 'uppercase', marginBottom: 5 }}>{f.label}</label>
                     <input
                       placeholder={f.placeholder}
                       value={form[f.key] || ''}
                       onChange={e => set(f.key, e.target.value)}
-                      style={{ width: '100%', padding: '9px 12px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#374151', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                      style={{ width: '100%', padding: '9px 12px', background: theme.pageBg, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, color: theme.textMid, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
                     />
                   </div>
                 ))}
 
-                {form.email && form.phone && (
-                  <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#15803d', marginBottom: 12 }}>
-                    ✅ Portal login will be created — Password: <strong>{form.phone}</strong>
+                {form.email && form.password && (
+                  <div style={{ background: theme.status.success.bg, border: `1px solid ${theme.status.success.border}`, borderRadius: 8, padding: '8px 12px', fontSize: 12, color: theme.status.success.text, marginBottom: 12 }}>
+                    ✅ Portal login will be created for <strong>{form.email}</strong>
                     <br />
-                    📧 Welcome email will be sent to <strong>{form.email}</strong>
+                    📧 A welcome email (no password) will be sent to the student. Share the password directly.
                   </div>
                 )}
 
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
-                  <button onClick={() => setModal(null)} style={{ padding: '9px 18px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#6b7280', cursor: 'pointer' }}>Cancel</button>
+                  <button onClick={() => setModal(null)} style={{ padding: '9px 18px', background: theme.pageBg, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, color: theme.textLight, cursor: 'pointer' }}>Cancel</button>
                   <button
                     onClick={submitApplicant}
                     disabled={submitting}
                     style={{
                       padding: '9px 18px',
-                      background: submitting ? '#86efac' : '#16a34a',
+                      background: submitting ? theme.status.success.border : theme.status.success.main,
                       border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600,
-                      color: '#fff',
+                      color: theme.white,
                       cursor: submitting ? 'not-allowed' : 'pointer',
                     }}
                   >
@@ -283,8 +283,8 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
             {modal === 'task' && (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
-                  <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: 0 }}>Add New Task</h3>
-                  <button onClick={() => setModal(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#6b7280' }}>✕</button>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, color: theme.textStrong, margin: 0 }}>Add New Task</h3>
+                  <button onClick={() => setModal(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textLight }}>✕</button>
                 </div>
 
                 {[
@@ -293,31 +293,31 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
                   { label: 'Due Date',     key: 'due_date', placeholder: '', type: 'date' },
                 ].map(f => (
                   <div key={f.key} style={{ marginBottom: 12 }}>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', marginBottom: 5 }}>{f.label}</label>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: theme.textLight, textTransform: 'uppercase', marginBottom: 5 }}>{f.label}</label>
                     <input
                       type={f.type || 'text'}
                       placeholder={f.placeholder}
                       value={form[f.key] || ''}
                       onChange={e => set(f.key, e.target.value)}
-                      style={{ width: '100%', padding: '9px 12px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#374151', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                      style={{ width: '100%', padding: '9px 12px', background: theme.pageBg, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, color: theme.textMid, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
                     />
                   </div>
                 ))}
 
                 <div style={{ marginBottom: 12 }}>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', marginBottom: 5 }}>Priority</label>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: theme.textLight, textTransform: 'uppercase', marginBottom: 5 }}>Priority</label>
                   <select
                     value={form.priority || 'Normal'}
                     onChange={e => set('priority', e.target.value)}
-                    style={{ width: '100%', padding: '9px 12px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#374151', outline: 'none', fontFamily: 'inherit' }}
+                    style={{ width: '100%', padding: '9px 12px', background: theme.pageBg, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, color: theme.textMid, outline: 'none', fontFamily: 'inherit' }}
                   >
                     <option>Low</option><option>Normal</option><option>High</option><option>Urgent</option>
                   </select>
                 </div>
 
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
-                  <button onClick={() => setModal(null)} style={{ padding: '9px 18px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#6b7280', cursor: 'pointer' }}>Cancel</button>
-                  <button onClick={submitTask} style={{ padding: '9px 18px', background: '#2563eb', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer' }}>Add Task</button>
+                  <button onClick={() => setModal(null)} style={{ padding: '9px 18px', background: theme.pageBg, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, color: theme.textLight, cursor: 'pointer' }}>Cancel</button>
+                  <button onClick={submitTask} style={{ padding: '9px 18px', background: theme.primary, border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, color: theme.white, cursor: 'pointer' }}>Add Task</button>
                 </div>
               </>
             )}
@@ -326,8 +326,8 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
             {modal === 'payment' && (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
-                  <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: 0 }}>Add Payment</h3>
-                  <button onClick={() => setModal(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#6b7280' }}>✕</button>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, color: theme.textStrong, margin: 0 }}>Add Payment</h3>
+                  <button onClick={() => setModal(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textLight }}>✕</button>
                 </div>
 
                 {[
@@ -335,31 +335,31 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
                   { label: 'Amount (Rs) *',  key: 'amount',       placeholder: '5000', type: 'number' },
                 ].map(f => (
                   <div key={f.key} style={{ marginBottom: 12 }}>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', marginBottom: 5 }}>{f.label}</label>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: theme.textLight, textTransform: 'uppercase', marginBottom: 5 }}>{f.label}</label>
                     <input
                       type={f.type || 'text'}
                       placeholder={f.placeholder}
                       value={form[f.key] || ''}
                       onChange={e => set(f.key, e.target.value)}
-                      style={{ width: '100%', padding: '9px 12px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#374151', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                      style={{ width: '100%', padding: '9px 12px', background: theme.pageBg, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, color: theme.textMid, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
                     />
                   </div>
                 ))}
 
                 <div style={{ marginBottom: 12 }}>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', marginBottom: 5 }}>Payment Method</label>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: theme.textLight, textTransform: 'uppercase', marginBottom: 5 }}>Payment Method</label>
                   <select
                     value={form.method || 'Cash'}
                     onChange={e => set('method', e.target.value)}
-                    style={{ width: '100%', padding: '9px 12px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#374151', outline: 'none', fontFamily: 'inherit' }}
+                    style={{ width: '100%', padding: '9px 12px', background: theme.pageBg, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, color: theme.textMid, outline: 'none', fontFamily: 'inherit' }}
                   >
                     <option>Cash</option><option>eSewa</option><option>Khalti</option><option>Bank Transfer</option>
                   </select>
                 </div>
 
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
-                  <button onClick={() => setModal(null)} style={{ padding: '9px 18px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#6b7280', cursor: 'pointer' }}>Cancel</button>
-                  <button onClick={submitPayment} style={{ padding: '9px 18px', background: '#f59e0b', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer' }}>Add Payment</button>
+                  <button onClick={() => setModal(null)} style={{ padding: '9px 18px', background: theme.pageBg, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, color: theme.textLight, cursor: 'pointer' }}>Cancel</button>
+                  <button onClick={submitPayment} style={{ padding: '9px 18px', background: theme.status.warning.main, border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, color: theme.white, cursor: 'pointer' }}>Add Payment</button>
                 </div>
               </>
             )}

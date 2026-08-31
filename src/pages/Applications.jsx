@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../supabase'
+import { Search } from 'lucide-react'
+import { supabase, functionHeaders } from '../supabase'
 import theme from '../theme'
+import { statusChip } from '../lib/statusColors'
 import BottomButtons from '../components/BottomButtons'
 import { sendWelcomeEmail } from '../emailService'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
 
 const SUPABASE_URL = 'https://txwpmjtixdbebnbqorju.supabase.co'
 
@@ -21,21 +24,16 @@ const STATUS_OPTIONS = [
   'Applied', 'Visa Process', 'Class/Enrolled', 'Abroad',
 ]
 
+// Pipeline stage badges. Outcome states (Approved / Pending / Rejected) and the
+// early stages come from the shared status system; the "active work" stages use
+// the teal accent so the pipeline still reads left-to-right at a glance.
+const stageTeal = {
+  bg: theme.accentLight, color: theme.accentHover, border: 'rgba(21,154,156,0.28)',
+}
 const badgeStyle = (status) => {
-  const map = {
-    'Approved':       { bg: '#dcfce7', color: '#15803d' },
-    'Pending':        { bg: '#fef9c3', color: '#a16207' },
-    'Rejected':       { bg: '#fee2e2', color: '#b91c1c' },
-    'New':            { bg: '#dbeafe', color: '#1d4ed8' },
-    'Inquiring':      { bg: '#ede9fe', color: '#7c3aed' },
-    'Counseling':     { bg: '#fef9c3', color: '#ca8a04' },
-    'Documentation':  { bg: '#ffedd5', color: '#ea580c' },
-    'Applied':        { bg: '#dbeafe', color: '#2563eb' },
-    'Visa Process':   { bg: '#cffafe', color: '#0891b2' },
-    'Class/Enrolled': { bg: '#ede9fe', color: '#7c3aed' },
-    'Abroad':         { bg: '#dcfce7', color: '#16a34a' },
-  }
-  return map[status] || { bg: '#f3f4f6', color: '#6b7280' }
+  const teal = ['Documentation', 'Applied', 'Visa Process']
+  if (teal.includes(status)) return stageTeal
+  return statusChip(status)
 }
 
 export default function Applications() {
@@ -55,6 +53,7 @@ export default function Applications() {
   })
 
   useEffect(() => { load() }, [])
+  useRefetchOnFocus(load)
 
   async function load() {
     const { data } = await supabase
@@ -70,7 +69,7 @@ export default function Applications() {
   async function addApplicant() {
     if (!form.name.trim())  return alert('Name is required')
     if (!form.email.trim()) return alert('Email is required so the student can log in')
-    if (!form.password || form.password.length < 6) return alert('Password must be at least 6 characters')
+    if (!form.password || form.password.length < 8) return alert('Password must be at least 8 characters')
 
     setSaving(true)
 
@@ -96,7 +95,7 @@ export default function Applications() {
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/create-staff-user`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await functionHeaders(),
         body: JSON.stringify({
           email:    form.email.trim().toLowerCase(),
           password: form.password,
@@ -134,10 +133,10 @@ export default function Applications() {
         )
       }
 
+      // Note: the password is intentionally NOT emailed. Staff shares it directly.
       await sendWelcomeEmail({
-        student_name:     form.name.trim(),
-        student_email:    form.email.trim().toLowerCase(),
-        student_password: form.password,
+        student_name:  form.name.trim(),
+        student_email: form.email.trim().toLowerCase(),
       })
 
     } catch (err) {
@@ -153,10 +152,10 @@ export default function Applications() {
 
     alert(
       `✅ Applicant added and student login created!\n\n` +
-      `Name:     ${form.name}\n` +
-      `Email:    ${form.email}\n` +
-      `Password: ${form.password}\n\n` +
-      `Share these login credentials with the student.`
+      `Name:  ${form.name}\n` +
+      `Email: ${form.email}\n\n` +
+      `Give the student their login email and the password you just set — ` +
+      `share it with them directly (in person or by phone), not by email.`
     )
   }
 
@@ -205,7 +204,7 @@ export default function Applications() {
         try {
           const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-user`, {
             method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: await functionHeaders(),
             body: JSON.stringify({ user_id: profile.id }),
           })
           result = await res.json()
@@ -271,7 +270,7 @@ export default function Applications() {
         </div>
         <button onClick={() => setShowAdd(true)} style={{
           padding: '9px 16px', background: theme.primary,
-          border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer',
+          border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, color: theme.white, cursor: 'pointer',
           width: isMobile ? '100%' : 'auto',
         }}>
           + Add Applicant
@@ -289,7 +288,7 @@ export default function Applications() {
           background: theme.cardBg, border: `1px solid ${theme.border}`,
           borderRadius: 8, padding: '8px 14px', flex: 1,
         }}>
-          <span style={{ color: theme.textMuted }}>🔍</span>
+          <Search size={16} style={{ color: theme.textMuted, flexShrink: 0 }} />
           <input
             placeholder="Search by name..."
             value={search}
@@ -327,7 +326,7 @@ export default function Applications() {
             padding: '10px 16px', background: theme.pageBg, borderBottom: `1px solid ${theme.border}`,
           }}>
             {['Name','Course','Country','Status','Date','Actions'].map(h => (
-              <span key={h} style={{ fontSize: 11, fontWeight: 600, color: theme.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</span>
+              <span key={h} style={{ fontSize: 11, fontWeight: 700, color: theme.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</span>
             ))}
           </div>
         )}
@@ -384,9 +383,9 @@ export default function Applications() {
                   disabled={deleting === a.id}
                   style={{
                     padding: '6px 14px',
-                    background: deleting === a.id ? '#f3f4f6' : '#fee2e2',
+                    background: deleting === a.id ? theme.surfaceAlt : theme.status.danger.bg,
                     border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600,
-                    color: deleting === a.id ? '#9ca3af' : '#b91c1c',
+                    color: deleting === a.id ? theme.textMuted : theme.status.danger.text,
                     cursor: deleting === a.id ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
                   }}
                 >
@@ -447,9 +446,9 @@ export default function Applications() {
                 disabled={deleting === a.id}
                 style={{
                   padding: '5px 10px',
-                  background: deleting === a.id ? '#f3f4f6' : '#fee2e2',
+                  background: deleting === a.id ? theme.surfaceAlt : theme.status.danger.bg,
                   border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600,
-                  color: deleting === a.id ? '#9ca3af' : '#b91c1c',
+                  color: deleting === a.id ? theme.textMuted : theme.status.danger.text,
                   cursor: deleting === a.id ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
                 }}
               >
@@ -467,7 +466,7 @@ export default function Applications() {
           display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 200,
         }}>
           <div onClick={e => e.stopPropagation()} style={{
-            background: '#fff', border: '1px solid #e5e7eb',
+            background: theme.white, border: `1px solid ${theme.border}`,
             borderRadius: isMobile ? '14px 14px 0 0' : 14,
             padding: isMobile ? 20 : 28,
             width: isMobile ? '100%' : 440,
@@ -476,34 +475,34 @@ export default function Applications() {
             boxSizing: 'border-box',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: 0 }}>Add New Applicant</h3>
-              <button onClick={() => setShowAdd(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#9ca3af' }}>✕</button>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: theme.textStrong, margin: 0 }}>Add New Applicant</h3>
+              <button onClick={() => setShowAdd(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: theme.textMuted }}>✕</button>
             </div>
 
-            <div style={{ padding: '10px 14px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, fontSize: 12, color: '#1d4ed8', marginBottom: 18 }}>
+            <div style={{ padding: '10px 14px', background: theme.status.info.bg, border: `1px solid ${theme.status.info.border}`, borderRadius: 8, fontSize: 12, color: theme.primary, marginBottom: 18 }}>
               ℹ️ This creates the applicant record and a student login account in one step.
             </div>
 
             {[
               { label: 'Full Name *',              key: 'name',     placeholder: 'Ram Sharma',          type: 'text'     },
               { label: 'Email * (for login)',       key: 'email',   placeholder: 'ram@email.com',        type: 'email'    },
-              { label: 'Login Password * (min 6)', key: 'password', placeholder: 'Set student password', type: 'text'     },
+              { label: 'Login Password * (min 8)', key: 'password', placeholder: 'Set student password', type: 'text'     },
               { label: 'Phone',                    key: 'phone',    placeholder: '98XXXXXXXX',           type: 'text'     },
               { label: 'Course',                   key: 'course',   placeholder: 'BSc Computer Science', type: 'text'     },
             ].map(f => (
               <div key={f.key} style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>{f.label}</label>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: theme.textLight, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>{f.label}</label>
                 <input
                   type={f.type} placeholder={f.placeholder} value={form[f.key]}
                   onChange={e => set(f.key, e.target.value)}
-                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#111827', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', background: '#f9fafb' }}
+                  style={{ width: '100%', padding: '9px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, color: theme.textStrong, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', background: theme.pageBg }}
                 />
               </div>
             ))}
 
             <div style={{ marginBottom: 22 }}>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Country</label>
-              <select value={form.country} onChange={e => set('country', e.target.value)} style={{ width: '100%', padding: '9px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#111827', outline: 'none', fontFamily: 'inherit', background: '#f9fafb', boxSizing: 'border-box', cursor: 'pointer' }}>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: theme.textLight, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Country</label>
+              <select value={form.country} onChange={e => set('country', e.target.value)} style={{ width: '100%', padding: '9px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, color: theme.textStrong, outline: 'none', fontFamily: 'inherit', background: theme.pageBg, boxSizing: 'border-box', cursor: 'pointer' }}>
                 <option value="">Select country...</option>
                 {COUNTRY_OPTIONS.map(c => <option key={c}>{c}</option>)}
               </select>
@@ -514,8 +513,8 @@ export default function Applications() {
               flexDirection: isMobile ? 'column-reverse' : 'row',
               justifyContent: 'flex-end',
             }}>
-              <button onClick={() => setShowAdd(false)} style={{ padding: '9px 18px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#6b7280', cursor: 'pointer', width: isMobile ? '100%' : 'auto' }}>Cancel</button>
-              <button onClick={addApplicant} disabled={saving} style={{ padding: '9px 20px', background: saving ? '#9ca3af' : theme.primary, border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#fff', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit', width: isMobile ? '100%' : 'auto' }}>
+              <button onClick={() => setShowAdd(false)} style={{ padding: '9px 18px', background: theme.pageBg, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, color: theme.textLight, cursor: 'pointer', width: isMobile ? '100%' : 'auto' }}>Cancel</button>
+              <button onClick={addApplicant} disabled={saving} style={{ padding: '9px 20px', background: saving ? theme.textMuted : theme.primary, border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, color: theme.white, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit', width: isMobile ? '100%' : 'auto' }}>
                 {saving ? 'Creating...' : 'Add Applicant + Create Login'}
               </button>
             </div>
