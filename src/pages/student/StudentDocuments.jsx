@@ -26,7 +26,6 @@ import {
   CheckCircle2,
   FileText,
   FileQuestion,
-  MessageSquare,
   Trash2,
   Loader2,
   PartyPopper,
@@ -407,7 +406,7 @@ export default function StudentDocuments() {
                   transition: 'background 0.15s',
                 }}
               >
-                {/* Document name + counsellor note */}
+                {/* Document name */}
                 <div>
                   <div style={{
                     fontSize: 13, fontWeight: 600, color: theme.textStrong,
@@ -421,17 +420,6 @@ export default function StudentDocuments() {
                     }
                     {type}
                   </div>
-                  {doc.note && (
-                    <div style={{
-                      fontSize: 11, color: theme.status.warning.text, marginTop: 5,
-                      background: theme.status.warning.bg, border: `1px solid ${theme.status.warning.border}`,
-                      padding: '3px 9px', borderRadius: 5, display: 'inline-flex',
-                      alignItems: 'center', gap: 5,
-                    }}>
-                      <MessageSquare size={12} color={theme.status.warning.text} />
-                      {doc.note}
-                    </div>
-                  )}
                 </div>
 
                 {/* Status badge */}
