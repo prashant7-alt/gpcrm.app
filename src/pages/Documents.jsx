@@ -28,7 +28,7 @@ const STATUS_OPTIONS  = ['Missing', 'Received', 'Verified']
 const STATUS_PRIORITY = { 'Verified': 2, 'Received': 1, 'Missing': 0 }
 
 // Grid templates — header rows and body rows must use the same one.
-const PS_COLS  = '2.4fr 0.9fr 1.4fr 2.2fr'          // per-student: Document | Status | Note | Actions
+const PS_COLS  = '2.6fr 1fr 2.4fr'                  // per-student: Document | Status | Actions
 const ALL_COLS = '1.7fr 2fr 0.9fr 1.3fr 2.2fr'      // all docs:    Student | Document | Status | Note | Actions
 
 function bestDoc(rows, type) {
@@ -619,7 +619,7 @@ export default function Documents() {
                       padding: '10px 18px',
                       background: theme.pageBg, borderBottom: `1px solid ${theme.border}`,
                     }}>
-                      {['Document', 'Status', 'Note', 'Actions'].map(h => (
+                      {['Document', 'Status', 'Actions'].map(h => (
                         <span key={h} style={{
                           fontSize: 11, fontWeight: 700, color: theme.textMuted,
                           textTransform: 'uppercase', letterSpacing: '0.05em',
@@ -668,7 +668,6 @@ export default function Documents() {
                             fontWeight: 600, display: 'inline-block',
                             background: theme.surfaceAlt, color: theme.textMuted,
                           }}>Not set up</span>
-                          <div style={{ fontSize: 12, color: theme.textMuted }}>Run SQL to add</div>
                           <div />
                         </div>
                       )
@@ -694,10 +693,6 @@ export default function Documents() {
                             <StatusBadge status={doc.status} />
                           </div>
                         </div>
-
-                        {doc.note && (
-                          <div style={{ fontSize: 12, color: theme.textMuted }}>{doc.note}</div>
-                        )}
 
                         <div style={{ marginTop: 2 }}>
                           <DocActions doc={doc} onEdit={openEdit} onChanged={load} isMobile />
@@ -726,13 +721,6 @@ export default function Documents() {
                         </div>
 
                         <StatusBadge status={doc.status} />
-
-                        <div style={{
-                          fontSize: 12, color: theme.textMuted,
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        }}>
-                          {doc.note || '—'}
-                        </div>
 
                         <DocActions doc={doc} onEdit={openEdit} onChanged={load} />
                       </div>
