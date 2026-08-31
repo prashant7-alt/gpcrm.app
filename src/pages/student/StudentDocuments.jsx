@@ -16,6 +16,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import theme from '../../theme'
 import { supabase } from '../../supabase'
+import { useRefetchOnFocus } from '../../hooks/useRefetchOnFocus'
 import {
   FolderOpen,
   GraduationCap,
@@ -80,6 +81,7 @@ export default function StudentDocuments() {
     if (!profile.id) { navigate('/student-login'); return }
     loadByProfile()
   }, [])
+  useRefetchOnFocus(loadByProfile)
 
   // ── Look up this logged-in student's documents by their profile email ──
   async function loadByProfile() {

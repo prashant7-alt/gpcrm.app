@@ -7,6 +7,7 @@ import theme from '../../theme'
 import { statusChip } from '../../lib/statusColors'
 import { openReceipt } from '../../lib/receipt'
 import { useIsMobile } from '../../hooks/useIsMobile'
+import { useRefetchOnFocus } from '../../hooks/useRefetchOnFocus'
 import {
   Receipt,
   CheckCircle2,
@@ -79,6 +80,7 @@ export default function StudentPayments() {
     if (!profile.id) { navigate('/student-login'); return }
     load()
   }, [])
+  useRefetchOnFocus(load)
 
   // Realtime — when a counsellor confirms a payment, the badge here flips to
   // "Paid" on its own. No refresh needed.

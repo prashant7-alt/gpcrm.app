@@ -6,6 +6,7 @@ import { openReceipt } from '../lib/receipt'
 import { exportRows, asDate } from '../lib/exportCsv'
 import { sendPaymentConfirmedEmail } from '../emailService'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
 import {
   Download,
   Plus,
@@ -181,6 +182,7 @@ export default function Payments() {
   })
 
   useEffect(() => { loadPayments() }, [])
+  useRefetchOnFocus(loadPayments)
 
   // Realtime — pick up new payment requests from students and changes made by
   // other staff without needing a manual refresh.

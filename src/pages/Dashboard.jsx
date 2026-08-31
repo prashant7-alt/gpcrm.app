@@ -371,18 +371,14 @@ export default function Dashboard() {
   )
 
   return (
-    <div style={{
-      background: C.pageBg,
-      minHeight: '100vh',
-      padding: isMobile ? '16px 14px 28px' : '28px 28px 40px',
-    }}>
+    <div style={{ background: C.pageBg }}>
 
       {/* ── HEADER ROW ── */}
       <div style={{
         display: 'flex',
         justifyContent: isMobile ? 'space-between' : 'flex-end',
         alignItems: 'center',
-        marginBottom: 22, gap: 10, fontSize: 12, color: C.textMuted,
+        marginBottom: 12, gap: 10, fontSize: 12, color: C.textMuted,
         flexWrap: 'wrap',
       }}>
         <span>Last updated {timeStr}</span>

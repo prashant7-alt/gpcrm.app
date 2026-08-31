@@ -6,6 +6,7 @@ import StudentLayout from './StudentLayout'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { Receipt, CheckCircle2, Hourglass, Bot, X, Send } from 'lucide-react'
 import AnnouncementsPanel from '../../components/AnnouncementsPanel'
+import { useRefetchOnFocus } from '../../hooks/useRefetchOnFocus'
 
 // ── KNOWLEDGE BASE ─────────────────────────────────────────────────────────
 // Every intent has: id, topic (for the "Browse topics" menu), q (the canonical
@@ -716,6 +717,7 @@ export default function StudentDashboard() {
     if (!profile.id) { navigate('/student-login'); return }
     loadData()
   }, [])
+  useRefetchOnFocus(loadData)
 
   async function loadData() {
     try {
@@ -783,14 +785,11 @@ export default function StudentDashboard() {
     <StudentLayout>
 
       {/* ── GREETING ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <div>
-          <h1 style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: theme.textStrong, margin: '0 0 4px' }}>
-            Welcome back, {(profile.name || 'Student').split(' ')[0]} 
+          <h1 style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: theme.textStrong, margin: 0 }}>
+            Welcome back, {(profile.name || 'Student').split(' ')[0]}
           </h1>
-          <p style={{ fontSize: 13, color: theme.textLight, margin: 0 }}>
-
-          </p>
         </div>
       </div>
 

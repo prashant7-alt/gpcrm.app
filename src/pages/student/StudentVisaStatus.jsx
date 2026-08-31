@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import StudentLayout from './StudentLayout'
 import { useIsMobile } from '../../hooks/useIsMobile'
+import { useRefetchOnFocus } from '../../hooks/useRefetchOnFocus'
 import {
   ClipboardList,
   Phone,
@@ -100,6 +101,7 @@ export default function StudentVisaStatus() {
 
     return () => { supabase.removeChannel(channel) }
   }, [profile])
+  useRefetchOnFocus(load)
 
   async function load() {
     setLoading(true)

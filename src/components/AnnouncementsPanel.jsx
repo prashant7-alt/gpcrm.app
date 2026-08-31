@@ -11,6 +11,7 @@
 import { useState, useEffect } from 'react'
 import { Megaphone, Pin, Pencil, Trash2, Plus, X } from 'lucide-react'
 import theme from '../theme'
+import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
 import {
   fetchAnnouncements,
   createAnnouncement,
@@ -47,6 +48,13 @@ export default function AnnouncementsPanel({ audience, isAdmin = false, style })
     })
     return () => { alive = false }
   }, [audience])
+
+  // Keep the feed live on every dashboard. Skip while an admin has the
+  // compose / edit form open so their draft is never disturbed.
+  useRefetchOnFocus(() => {
+    if (composing || editingId) return
+    fetchAnnouncements(audience).then(setItems)
+  })
 
   const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
 
@@ -109,13 +117,13 @@ export default function AnnouncementsPanel({ audience, isAdmin = false, style })
     background: theme.white,
     border: `1px solid ${theme.border}`,
     borderRadius: 12,
-    marginBottom: 20,
+    marginBottom: 14,
     overflow: 'hidden',
     ...style,
   }
   const head = {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    gap: 10, padding: '14px 18px', borderBottom: `1px solid ${theme.border}`,
+    gap: 10, padding: '10px 16px', borderBottom: `1px solid ${theme.border}`,
   }
   const field = {
     width: '100%', padding: '9px 12px', boxSizing: 'border-box',
@@ -213,7 +221,7 @@ export default function AnnouncementsPanel({ audience, isAdmin = false, style })
           <div
             key={a.id}
             style={{
-              padding: '14px 18px',
+              padding: '11px 16px',
               borderBottom: i < items.length - 1 ? `1px solid ${theme.border}` : 'none',
               background: a.pinned ? theme.accentLight : 'transparent',
             }}
@@ -238,13 +246,13 @@ export default function AnnouncementsPanel({ audience, isAdmin = false, style })
             </div>
 
             <p style={{
-              margin: '6px 0 0', fontSize: 13, lineHeight: 1.5,
+              margin: '3px 0 0', fontSize: 13, lineHeight: 1.45,
               color: theme.textMid, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
             }}>
-              {a.body}
+              {(a.body || '').replace(/\n{3,}/g, '\n\n').trim()}
             </p>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 11.5, color: theme.textMuted }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 11.5, color: theme.textMuted }}>
               <span>{timeAgo(a.updated_at && a.updated_at !== a.created_at ? a.updated_at : a.created_at)}</span>
               {a.updated_at && a.updated_at !== a.created_at && <span>· edited</span>}
               {a.audience && a.audience !== 'all' && (
