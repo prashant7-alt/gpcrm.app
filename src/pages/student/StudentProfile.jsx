@@ -1,26 +1,33 @@
 import { useState, useEffect } from 'react'
+import theme from '../../theme'
 import { supabase } from '../../supabase'
 import StudentLayout from './StudentLayout'
 import { useIsMobile } from '../../hooks/useIsMobile'
+import { useRefetchOnFocus } from '../../hooks/useRefetchOnFocus'
 import {
   User, Lock, Pencil, Eye, EyeOff,
   AlertTriangle, Mail, Check, X,
 } from 'lucide-react'
 
+// Same as the login page — open a Gmail compose tab instead of the OS mail
+// client (which is Outlook on Windows for a plain mailto: link).
+const SUPPORT_EMAIL = 'crm.gpnepal@gmail.com'
+const GMAIL_COMPOSE = `https://mail.google.com/mail/?view=cm&fs=1&to=${SUPPORT_EMAIL}`
+
 // ── Password strength ─────────────────────────────────────────────────────────
 function getStrength(pw) {
-  if (!pw) return { score: 0, label: '', color: '#e5e7eb' }
+  if (!pw) return { score: 0, label: '', color: theme.border }
   let score = 0
   if (pw.length >= 8)          score++
   if (/[A-Z]/.test(pw))        score++
   if (/[0-9]/.test(pw))        score++
   if (/[^A-Za-z0-9]/.test(pw)) score++
   const map = [
-    { label: 'Too short', color: '#ef4444' },
-    { label: 'Weak',      color: '#f97316' },
-    { label: 'Fair',      color: '#eab308' },
-    { label: 'Good',      color: '#22c55e' },
-    { label: 'Strong',    color: '#16a34a' },
+    { label: 'Too short', color: theme.status.danger.main },
+    { label: 'Weak',      color: theme.status.warning.main },
+    { label: 'Fair',      color: theme.status.warning.text },
+    { label: 'Good',      color: theme.status.success.main },
+    { label: 'Strong',    color: theme.status.success.main },
   ]
   return { score, ...map[score] }
 }
@@ -29,11 +36,11 @@ function getStrength(pw) {
 const inp = (disabled) => ({
   width: '100%',
   padding: '10px 13px',
-  border: `1px solid ${disabled ? '#f3f4f6' : '#d1d5db'}`,
+  border: `1px solid ${disabled ? theme.surfaceAlt : theme.inputBorder}`,
   borderRadius: 9,
   fontSize: 13,
-  color: '#111827',
-  background: disabled ? '#f9fafb' : '#fff',
+  color: theme.textStrong,
+  background: disabled ? theme.pageBg : theme.white,
   outline: 'none',
   fontFamily: 'inherit',
   boxSizing: 'border-box',
@@ -44,7 +51,7 @@ const lbl = {
   display: 'block',
   fontSize: 11,
   fontWeight: 700,
-  color: '#6b7280',
+  color: theme.textLight,
   textTransform: 'uppercase',
   letterSpacing: '.06em',
   marginBottom: 5,
@@ -54,8 +61,8 @@ const lbl = {
 function Section({ title, subtitle, Icon, iconBg, iconColor, isMobile, children }) {
   return (
     <div style={{
-      background: '#fff',
-      border: '1px solid #e5e7eb',
+      background: theme.white,
+      border: `1px solid ${theme.border}`,
       borderRadius: 14,
       overflow: 'hidden',
       boxShadow: '0 1px 4px rgba(0,0,0,.05)',
@@ -63,7 +70,7 @@ function Section({ title, subtitle, Icon, iconBg, iconColor, isMobile, children 
     }}>
       <div style={{
         padding: isMobile ? '14px 16px' : '16px 22px',
-        borderBottom: '1px solid #f3f4f6',
+        borderBottom: `1px solid ${theme.surfaceAlt}`,
         display: 'flex',
         alignItems: 'center',
         gap: 10,
@@ -77,9 +84,9 @@ function Section({ title, subtitle, Icon, iconBg, iconColor, isMobile, children 
           <Icon size={16} color={iconColor} strokeWidth={2.2} />
         </div>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>{title}</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: theme.textStrong }}>{title}</div>
           {subtitle && (
-            <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{subtitle}</div>
+            <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 1 }}>{subtitle}</div>
           )}
         </div>
       </div>
@@ -111,6 +118,7 @@ export default function StudentProfile() {
   const strength = getStrength(pwForm.next)
 
   useEffect(() => { load() }, [])
+  useRefetchOnFocus(load)
 
   async function load() {
     const stored = JSON.parse(localStorage.getItem('profile') || '{}')
@@ -134,21 +142,32 @@ export default function StudentProfile() {
     setSavingInfo(true)
     setInfoMsg('')
 
+    const name  = editName.trim()
+    const phone = editPhone.trim()
+
     const { error } = await supabase
       .from('profiles')
-      .update({
-        name:      editName.trim(),
-        phone_new: editPhone.trim(),
-      })
+      .update({ name, phone_new: phone })
       .eq('id', profile.id)
+
+    // Mirror the change onto the linked applicant row — every staff screen
+    // reads `applicants`, so without this the edit only shows in the portal.
+    // RLS restricts this to the student's own row and to name + phone only.
+    if (!error) {
+      if (profile.applicant_id) {
+        await supabase.from('applicants').update({ name, phone }).eq('id', profile.applicant_id)
+      } else if (profile.email) {
+        await supabase.from('applicants').update({ name, phone }).ilike('email', profile.email.trim())
+      }
+    }
 
     setSavingInfo(false)
 
     if (error) {
       setInfoMsg('error:' + error.message)
     } else {
-      setProfile(p => ({ ...p, name: editName.trim(), phone_new: editPhone.trim() }))
-      localStorage.setItem('profile', JSON.stringify({ ...profile, name: editName.trim() }))
+      setProfile(p => ({ ...p, name, phone_new: phone }))
+      localStorage.setItem('profile', JSON.stringify({ ...profile, name }))
       setInfoMsg('success:Profile updated!')
       setEditMode(false)
       setTimeout(() => setInfoMsg(''), 3000)
@@ -198,7 +217,7 @@ export default function StudentProfile() {
   if (loading) {
     return (
       <StudentLayout>
-        <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af', fontSize: 14 }}>
+        <div style={{ textAlign: 'center', padding: 60, color: theme.textMuted, fontSize: 14 }}>
           Loading profile…
         </div>
       </StudentLayout>
@@ -219,10 +238,10 @@ export default function StudentProfile() {
 
         {/* Page heading */}
         <div style={{ marginBottom: 20 }}>
-          <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>
+          <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: theme.textStrong, margin: '0 0 4px' }}>
             My Profile
           </h1>
-          <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
+          <p style={{ fontSize: 13, color: theme.textLight, margin: 0 }}>
             Manage your personal information and account security
           </p>
         </div>
@@ -232,8 +251,8 @@ export default function StudentProfile() {
             ══════════════════════════════════════ */}
         <Section
           Icon={User}
-          iconBg="#ede9fe"
-          iconColor="#7c3aed"
+          iconBg={theme.purpleLight}
+          iconColor={theme.purple}
           title="Personal Information"
           subtitle="Your registered details — name and phone can be updated"
           isMobile={isMobile}
@@ -264,7 +283,7 @@ export default function StudentProfile() {
                 disabled
                 style={inp(true)}
               />
-              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>
+              <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 3 }}>
                 Email cannot be changed. Contact admin.
               </div>
             </div>
@@ -289,7 +308,7 @@ export default function StudentProfile() {
                 disabled
                 style={inp(true)}
               />
-              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>
+              <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 3 }}>
                 Contact admin to update course.
               </div>
             </div>
@@ -304,9 +323,9 @@ export default function StudentProfile() {
               borderRadius: 8,
               fontSize: 13,
               marginBottom: 14,
-              background: infoIsSuccess ? '#f0fdf4' : '#fef2f2',
-              color:      infoIsSuccess ? '#15803d' : '#b91c1c',
-              border: `1px solid ${infoIsSuccess ? '#bbf7d0' : '#fecaca'}`,
+              background: infoIsSuccess ? theme.status.success.bg : theme.status.danger.bg,
+              color:      infoIsSuccess ? theme.status.success.text : theme.status.danger.text,
+              border: `1px solid ${infoIsSuccess ? theme.status.success.border : theme.status.danger.border}`,
             }}>
               {infoIsSuccess
                 ? <Check size={15} strokeWidth={2.6} />
@@ -326,11 +345,11 @@ export default function StudentProfile() {
                   onClick={() => { setEditMode(false); setInfoMsg('') }}
                   style={{
                     padding: '8px 18px',
-                    background: '#f9fafb',
-                    border: '1px solid #e5e7eb',
+                    background: theme.pageBg,
+                    border: `1px solid ${theme.border}`,
                     borderRadius: 8,
                     fontSize: 13,
-                    color: '#6b7280',
+                    color: theme.textLight,
                     cursor: 'pointer',
                     fontFamily: 'inherit',
                     width: isMobile ? '100%' : 'auto',
@@ -343,12 +362,12 @@ export default function StudentProfile() {
                   disabled={savingInfo}
                   style={{
                     padding: '8px 18px',
-                    background: savingInfo ? '#9ca3af' : '#1a56db',
+                    background: savingInfo ? theme.textMuted : theme.primary,
                     border: 'none',
                     borderRadius: 8,
                     fontSize: 13,
                     fontWeight: 600,
-                    color: '#fff',
+                    color: theme.white,
                     cursor: savingInfo ? 'not-allowed' : 'pointer',
                     fontFamily: 'inherit',
                     width: isMobile ? '100%' : 'auto',
@@ -362,12 +381,12 @@ export default function StudentProfile() {
                 onClick={() => setEditMode(true)}
                 style={{
                   padding: '8px 18px',
-                  background: '#eff6ff',
-                  border: '1px solid #bfdbfe',
+                  background: theme.status.info.bg,
+                  border: `1px solid ${theme.status.info.border}`,
                   borderRadius: 8,
                   fontSize: 13,
                   fontWeight: 600,
-                  color: '#1a56db',
+                  color: theme.primary,
                   cursor: 'pointer',
                   fontFamily: 'inherit',
                   width: isMobile ? '100%' : 'auto',
@@ -386,8 +405,8 @@ export default function StudentProfile() {
             ══════════════════════════════════════ */}
         <Section
           Icon={Lock}
-          iconBg="#fef3c7"
-          iconColor="#b45309"
+          iconBg={theme.status.warning.bg}
+          iconColor={theme.status.warning.main}
           title="Change Password"
           subtitle="Keep your account secure — use a strong unique password"
           isMobile={isMobile}
@@ -412,7 +431,7 @@ export default function StudentProfile() {
                     transform: 'translateY(-50%)',
                     background: 'none', border: 'none',
                     cursor: 'pointer', padding: 0,
-                    display: 'flex', color: '#9ca3af',
+                    display: 'flex', color: theme.textMuted,
                   }}
                 >
                   {showPw.current ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -438,7 +457,7 @@ export default function StudentProfile() {
                     transform: 'translateY(-50%)',
                     background: 'none', border: 'none',
                     cursor: 'pointer', padding: 0,
-                    display: 'flex', color: '#9ca3af',
+                    display: 'flex', color: theme.textMuted,
                   }}
                 >
                   {showPw.next ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -453,14 +472,14 @@ export default function StudentProfile() {
                   {[0, 1, 2, 3].map(i => (
                     <div key={i} style={{
                       flex: 1, height: 4, borderRadius: 99,
-                      background: i < strength.score ? strength.color : '#e5e7eb',
+                      background: i < strength.score ? strength.color : theme.border,
                       transition: 'background .2s',
                     }} />
                   ))}
                 </div>
                 <div style={{ fontSize: 11, color: strength.color, fontWeight: 600 }}>
                   {strength.label}
-                  <span style={{ color: '#9ca3af', fontWeight: 400, marginLeft: 6 }}>
+                  <span style={{ color: theme.textMuted, fontWeight: 400, marginLeft: 6 }}>
                     — use uppercase, numbers &amp; symbols
                   </span>
                 </div>
@@ -481,7 +500,7 @@ export default function StudentProfile() {
                     paddingRight: 42,
                     borderColor:
                       pwForm.confirm && pwForm.next !== pwForm.confirm
-                        ? '#ef4444'
+                        ? theme.status.danger.main
                         : undefined,
                   }}
                 />
@@ -492,7 +511,7 @@ export default function StudentProfile() {
                     transform: 'translateY(-50%)',
                     background: 'none', border: 'none',
                     cursor: 'pointer', padding: 0,
-                    display: 'flex', color: '#9ca3af',
+                    display: 'flex', color: theme.textMuted,
                   }}
                 >
                   {showPw.confirm ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -501,13 +520,13 @@ export default function StudentProfile() {
 
               {/* match / no match indicator */}
               {pwForm.confirm && pwForm.next !== pwForm.confirm && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#ef4444', marginTop: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: theme.status.danger.main, marginTop: 4 }}>
                   <X size={12} strokeWidth={2.8} />
                   Passwords do not match
                 </div>
               )}
               {pwForm.confirm && pwForm.next === pwForm.confirm && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#16a34a', marginTop: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: theme.status.success.main, marginTop: 4 }}>
                   <Check size={12} strokeWidth={2.8} />
                   Passwords match
                 </div>
@@ -522,9 +541,9 @@ export default function StudentProfile() {
                 borderRadius: 8,
                 fontSize: 13,
                 marginBottom: 16,
-                background: pwMsg.ok ? '#f0fdf4' : '#fef2f2',
-                color:      pwMsg.ok ? '#15803d' : '#b91c1c',
-                border: `1px solid ${pwMsg.ok ? '#bbf7d0' : '#fecaca'}`,
+                background: pwMsg.ok ? theme.status.success.bg : theme.status.danger.bg,
+                color:      pwMsg.ok ? theme.status.success.text : theme.status.danger.text,
+                border: `1px solid ${pwMsg.ok ? theme.status.success.border : theme.status.danger.border}`,
               }}>
                 {pwMsg.ok
                   ? <Check size={15} strokeWidth={2.6} />
@@ -538,12 +557,12 @@ export default function StudentProfile() {
               disabled={savingPw}
               style={{
                 padding: '10px 22px',
-                background: savingPw ? '#9ca3af' : '#1a56db',
+                background: savingPw ? theme.textMuted : theme.primary,
                 border: 'none',
                 borderRadius: 9,
                 fontSize: 13,
                 fontWeight: 700,
-                color: '#fff',
+                color: theme.white,
                 cursor: savingPw ? 'not-allowed' : 'pointer',
                 fontFamily: 'inherit',
                 boxShadow: savingPw ? 'none' : '0 2px 8px rgba(26,86,219,.25)',
@@ -562,8 +581,8 @@ export default function StudentProfile() {
             CONTACT ADMIN BANNER
             ══════════════════════════════════════ */}
         <div style={{
-          background: '#fff',
-          border: '1px solid #fecaca',
+          background: theme.white,
+          border: `1px solid ${theme.status.danger.border}`,
           borderRadius: 14,
           padding: isMobile ? '16px' : '16px 22px',
           display: 'flex',
@@ -574,31 +593,33 @@ export default function StudentProfile() {
         }}>
           <div style={{
             width: 36, height: 36, borderRadius: 9,
-            background: '#fef2f2',
+            background: theme.status.danger.bg,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             flexShrink: 0,
           }}>
-            <AlertTriangle size={18} color="#dc2626" strokeWidth={2.2} />
+            <AlertTriangle size={18} color={theme.status.danger.main} strokeWidth={2.2} />
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#b91c1c', marginBottom: 3 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: theme.status.danger.text, marginBottom: 3 }}>
               Need to update your email, course or country?
             </div>
-            <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.6 }}>
+            <div style={{ fontSize: 12, color: theme.textLight, lineHeight: 1.6 }}>
               Email, course and country changes must be processed by your counsellor.
               Contact Global Pathway and they will update your profile.
             </div>
           </div>
           <a
-            href="mailto:crm.gpnepal@gmail.com"
+            href={GMAIL_COMPOSE}
+            target="_blank"
+            rel="noopener noreferrer"
             style={{
               padding: '8px 16px',
-              background: '#fef2f2',
-              border: '1px solid #fecaca',
+              background: theme.status.danger.bg,
+              border: `1px solid ${theme.status.danger.border}`,
               borderRadius: 8,
               fontSize: 12,
               fontWeight: 600,
-              color: '#b91c1c',
+              color: theme.status.danger.text,
               textDecoration: 'none',
               whiteSpace: 'nowrap',
               flexShrink: 0,

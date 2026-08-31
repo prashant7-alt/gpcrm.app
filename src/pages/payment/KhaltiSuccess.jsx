@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { functionHeaders } from '../../supabase'
+import theme from '../../theme'
 
 const SUPABASE_URL = 'https://txwpmjtixdbebnbqorju.supabase.co'
+
+// The "simulate payment" helper bypasses the real gateway. It must NEVER be
+// reachable in a production build — only show it during local development.
+const ALLOW_SIMULATE = import.meta.env.DEV
 
 export default function KhaltiSuccess() {
   const [searchParams] = useSearchParams()
@@ -22,7 +28,7 @@ export default function KhaltiSuccess() {
     try {
       const res    = await fetch(`${SUPABASE_URL}/functions/v1/khalti-verify`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await functionHeaders(),
         body:    JSON.stringify({ pidx, payment_id }),
       })
       const result = await res.json()
@@ -43,6 +49,7 @@ export default function KhaltiSuccess() {
   }
 
   async function simulateSuccess() {
+    if (!ALLOW_SIMULATE) return
     const pid = payment_id || JSON.parse(localStorage.getItem('pending_khalti_txn') || '{}').payment_id
     if (!pid) {
       alert('No payment ID found. Go back to payments and try again.')
@@ -52,7 +59,7 @@ export default function KhaltiSuccess() {
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/khalti-verify`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await functionHeaders(),
         body:    JSON.stringify({
           pidx:       pidx || `SIM-${Date.now()}`,
           payment_id: pid,
@@ -74,12 +81,12 @@ export default function KhaltiSuccess() {
 
   return (
     <div style={{
-      minHeight: '100vh', background: '#f9fafb',
+      minHeight: '100vh', background: theme.pageBg,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontFamily: "'Segoe UI', Arial, sans-serif", padding: 20,
     }}>
       <div style={{
-        background: '#fff', border: '1px solid #e5e7eb',
+        background: theme.cardBg, border: `1px solid ${theme.border}`,
         borderRadius: 16, padding: 48, textAlign: 'center',
         maxWidth: 440, width: '100%',
         boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
@@ -89,10 +96,10 @@ export default function KhaltiSuccess() {
         {status === 'verifying' && (
           <>
             <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
-            <h2 style={{ fontSize: 20, fontWeight: 700, color: '#111827', marginBottom: 8 }}>
+            <h2 style={{ fontSize: 20, fontWeight: 700, color: theme.textDark, marginBottom: 8 }}>
               Verifying payment...
             </h2>
-            <p style={{ fontSize: 14, color: '#6b7280' }}>
+            <p style={{ fontSize: 14, color: theme.textLight }}>
               Confirming your Khalti payment, please wait.
             </p>
           </>
@@ -102,19 +109,19 @@ export default function KhaltiSuccess() {
         {status === 'success' && (
           <>
             <div style={{ fontSize: 56, marginBottom: 16 }}>✅</div>
-            <h2 style={{ fontSize: 20, fontWeight: 700, color: '#15803d', marginBottom: 8 }}>
+            <h2 style={{ fontSize: 20, fontWeight: 700, color: theme.status.success.text, marginBottom: 8 }}>
               Payment Successful!
             </h2>
-            <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 6 }}>
+            <p style={{ fontSize: 14, color: theme.textLight, marginBottom: 6 }}>
               Your Khalti payment has been confirmed and recorded.
             </p>
             {paymentInfo?.amount && (
               <div style={{
-                background: '#f0fdf4', border: '1px solid #bbf7d0',
+                background: theme.status.success.bg, border: `1px solid ${theme.status.success.border}`,
                 borderRadius: 10, padding: '12px 16px', margin: '16px 0', textAlign: 'left',
               }}>
-                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Amount paid</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: '#15803d' }}>
+                <div style={{ fontSize: 12, color: theme.textLight, marginBottom: 4 }}>Amount paid</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: theme.status.success.text }}>
                   Rs {(paymentInfo.amount / 100).toLocaleString()}
                 </div>
               </div>
@@ -124,8 +131,8 @@ export default function KhaltiSuccess() {
               onClick={() => { window.location.href = '/student/payments' }}
               style={{
                 width: '100%', padding: '12px 0', marginTop: 8,
-                background: '#5C2D91', border: 'none', borderRadius: 8,
-                fontSize: 14, fontWeight: 700, color: '#fff', cursor: 'pointer',
+                background: theme.status.success.main, border: 'none', borderRadius: 8,
+                fontSize: 14, fontWeight: 700, color: theme.white, cursor: 'pointer',
               }}
             >
               View My Payments →
@@ -137,64 +144,66 @@ export default function KhaltiSuccess() {
         {status === 'pending' && (
           <>
             <div style={{ fontSize: 48, marginBottom: 16 }}>🔄</div>
-            <h2 style={{ fontSize: 20, fontWeight: 700, color: '#92400e', marginBottom: 8 }}>
+            <h2 style={{ fontSize: 20, fontWeight: 700, color: theme.status.warning.text, marginBottom: 8 }}>
               Payment Pending
             </h2>
-            <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 20 }}>
+            <p style={{ fontSize: 14, color: theme.textLight, marginBottom: 20 }}>
               Khalti returned but payment isn't confirmed yet.
               This is normal in sandbox — use the simulate button below to test.
             </p>
 
             {paymentInfo && (
               <div style={{
-                background: '#f9fafb', border: '1px solid #e5e7eb',
+                background: theme.pageBg, border: `1px solid ${theme.border}`,
                 borderRadius: 10, padding: '12px 16px', marginBottom: 16, textAlign: 'left',
               }}>
-                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Reference</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', wordBreak: 'break-all' }}>
+                <div style={{ fontSize: 12, color: theme.textLight, marginBottom: 4 }}>Reference</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: theme.textDark, wordBreak: 'break-all' }}>
                   {paymentInfo.pidx || 'N/A'}
                 </div>
                 {paymentInfo.khaltiStatus && (
-                  <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>
+                  <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 4 }}>
                     Khalti status: {paymentInfo.khaltiStatus}
                   </div>
                 )}
               </div>
             )}
 
-            <div style={{
-              background: '#fffbeb', border: '1px solid #fde68a',
-              borderRadius: 10, padding: '14px 16px', marginBottom: 16, textAlign: 'left',
-            }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e', marginBottom: 6 }}>
-                🧪 Sandbox Test Mode
+            {ALLOW_SIMULATE && (
+              <div style={{
+                background: theme.status.warning.bg, border: `1px solid ${theme.status.warning.border}`,
+                borderRadius: 10, padding: '14px 16px', marginBottom: 16, textAlign: 'left',
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: theme.status.warning.text, marginBottom: 6 }}>
+                  🧪 Sandbox Test Mode (dev build only)
+                </div>
+                <div style={{ fontSize: 12, color: theme.status.warning.text, marginBottom: 12, lineHeight: 1.6 }}>
+                  Real Khalti payments auto-confirm. In sandbox,
+                  use this button to simulate confirmation for testing.
+                </div>
+                <button
+                  onClick={simulateSuccess}
+                  disabled={simulating}
+                  style={{
+                    width: '100%', padding: '10px 0',
+                    background: simulating ? theme.textMuted : theme.status.warning.main,
+                    border: 'none', borderRadius: 8,
+                    fontSize: 13, fontWeight: 700, color: theme.white,
+                    cursor: simulating ? 'not-allowed' : 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  {simulating ? 'Processing...' : '⚡ Simulate Successful Payment'}
+                </button>
               </div>
-              <div style={{ fontSize: 12, color: '#78350f', marginBottom: 12, lineHeight: 1.6 }}>
-                Real Khalti payments auto-confirm. In sandbox,
-                use this button to simulate confirmation for testing.
-              </div>
-              <button
-                onClick={simulateSuccess}
-                disabled={simulating}
-                style={{
-                  width: '100%', padding: '10px 0',
-                  background: simulating ? '#9ca3af' : '#d97706',
-                  border: 'none', borderRadius: 8,
-                  fontSize: 13, fontWeight: 700, color: '#fff',
-                  cursor: simulating ? 'not-allowed' : 'pointer',
-                  fontFamily: 'inherit',
-                }}
-              >
-                {simulating ? 'Processing...' : '⚡ Simulate Successful Payment'}
-              </button>
-            </div>
+            )}
 
             <button
               onClick={() => { window.location.href = '/student/payments' }}
               style={{
                 width: '100%', padding: '10px 0',
-                background: '#f9fafb', border: '1px solid #e5e7eb',
-                borderRadius: 8, fontSize: 13, color: '#6b7280',
+                background: theme.pageBg, border: `1px solid ${theme.border}`,
+                borderRadius: 8, fontSize: 13, color: theme.textLight,
                 cursor: 'pointer', fontFamily: 'inherit',
               }}
             >
@@ -207,18 +216,18 @@ export default function KhaltiSuccess() {
         {status === 'no_pidx' && (
           <>
             <div style={{ fontSize: 48, marginBottom: 16 }}>❓</div>
-            <h2 style={{ fontSize: 20, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
+            <h2 style={{ fontSize: 20, fontWeight: 700, color: theme.textMid, marginBottom: 8 }}>
               No payment reference
             </h2>
-            <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 20 }}>
+            <p style={{ fontSize: 14, color: theme.textLight, marginBottom: 20 }}>
               This page should only be reached after a Khalti payment.
             </p>
             <button
               onClick={() => { window.location.href = '/student/payments' }}
               style={{
-                padding: '10px 24px', background: '#111827',
+                padding: '10px 24px', background: theme.navy,
                 border: 'none', borderRadius: 8,
-                color: '#fff', fontSize: 14, cursor: 'pointer',
+                color: theme.white, fontSize: 14, cursor: 'pointer',
               }}
             >
               Go to Payments

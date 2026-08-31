@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import theme from '../theme'
 import { Navigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 
@@ -8,9 +9,9 @@ function LoadingScreen() {
     <div style={{
       minHeight: '100vh', display: 'flex',
       alignItems: 'center', justifyContent: 'center',
-      background: '#f9fafb', fontFamily: 'inherit',
+      background: theme.pageBg, fontFamily: 'inherit',
     }}>
-      <div style={{ textAlign: 'center', color: '#6b7280' }}>
+      <div style={{ textAlign: 'center', color: theme.textLight }}>
         <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
         <div style={{ fontSize: 14 }}>Loading...</div>
       </div>
@@ -103,7 +104,12 @@ export default function ProtectedRoute({ roles, children }) {
   const { authState, profile } = useAuth()
 
   if (authState === 'loading') return <LoadingScreen />
-  if (authState === 'unauthed') return <Navigate to="/login" replace />
+  if (authState === 'unauthed') {
+    // Route each role to its own sign-in page.
+    const studentOnly = Array.isArray(roles) && roles.length === 1 && roles[0] === 'student'
+    // Staff login path is intentionally obscure (see App.jsx) and unlinked.
+    return <Navigate to={studentOnly ? '/student-login' : '/team-portal-x7k2f9'} replace />
+  }
 
   if (roles && !roles.includes(profile?.role)) {
     // Logged in, but wrong role for this route — send them somewhere sane.

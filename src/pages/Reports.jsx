@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import theme from '../theme'
+import { exportRows } from '../lib/exportCsv'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
 import {
   Download,
   Printer,
@@ -29,25 +31,28 @@ export default function Reports() {
   const [payments,   setPayments]   = useState([])
   const [staff,      setStaff]      = useState([])
   const [tasks,      setTasks]      = useState([])
+  const [profiles,   setProfiles]   = useState([])
   const [loading,    setLoading]    = useState(true)
 
   // load everything at once when page opens
-  useEffect(() => {
-    async function load() {
-      const [a, p, s, t] = await Promise.all([
-        supabase.from('applicants').select('*'),
-        supabase.from('payments').select('*'),
-        supabase.from('staff').select('*'),
-        supabase.from('tasks').select('*'),
-      ])
-      setApplicants(a.data || [])
-      setPayments(p.data   || [])
-      setStaff(s.data      || [])
-      setTasks(t.data      || [])
-      setLoading(false)
-    }
-    load()
-  }, [])
+  async function load() {
+    const [a, p, s, t, pr] = await Promise.all([
+      supabase.from('applicants').select('*'),
+      supabase.from('payments').select('*'),
+      supabase.from('staff').select('*'),
+      supabase.from('tasks').select('*'),
+      supabase.from('profiles').select('id, name, email, role').neq('role', 'student'),
+    ])
+    setApplicants(a.data || [])
+    setPayments(p.data   || [])
+    setStaff(s.data      || [])
+    setTasks(t.data      || [])
+    setProfiles(pr.data  || [])
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [])
+  useRefetchOnFocus(load)
 
   // ── calculated numbers ────────────────────────────────────────────────────
 
@@ -90,17 +95,17 @@ export default function Reports() {
   // of only 4 hand-picked ones — so every applicant is represented
   // somewhere in this chart, not just the ones matching 4 old labels.
   const FUNNEL_STATUSES = [
-    { label: 'New',            color: '#ef4444' },
-    { label: 'Pending',        color: '#f97316' },
-    { label: 'Inquiring',      color: '#8b5cf6' },
-    { label: 'Counseling',     color: '#a855f7' },
-    { label: 'Documentation',  color: '#f59e0b' },
-    { label: 'Applied',        color: '#3b82f6' },
-    { label: 'Visa Process',   color: '#06b6d4' },
-    { label: 'Class/Enrolled', color: '#6366f1' },
-    { label: 'Approved',       color: '#22c55e' },
+    { label: 'New',            color: theme.status.danger.main },
+    { label: 'Pending',        color: theme.status.warning.main },
+    { label: 'Inquiring',      color: theme.purple },
+    { label: 'Counseling',     color: theme.purple },
+    { label: 'Documentation',  color: theme.status.warning.main },
+    { label: 'Applied',        color: theme.primary },
+    { label: 'Visa Process',   color: theme.accent },
+    { label: 'Class/Enrolled', color: theme.purple },
+    { label: 'Approved',       color: theme.status.success.main },
     { label: 'Abroad',         color: theme.primary },
-    { label: 'Rejected',       color: '#dc2626' },
+    { label: 'Rejected',       color: theme.status.danger.main },
   ]
   const funnelData = FUNNEL_STATUSES.map(s => ({
     ...s,
@@ -123,33 +128,73 @@ export default function Reports() {
   const countryMax = Math.max(...countryData.map(d => d.total), 1)
 
   // ── staff performance ─────────────────────────────────────────────────────
-  // count assigned applicants and completed tasks per staff member
-  const staffWithStats = staff.map(s => ({
-    ...s,
-    applicantCount: applicants.filter(a => a.assigned_to === s.id).length,
-    taskCount:      tasks.filter(t => t.assigned_to === s.id).length,
-    doneCount:      tasks.filter(t => t.assigned_to === s.id && t.status === 'done').length,
-  }))
+  // Tasks store the real assignee as `assignee_id` (FK → profiles.id) plus a
+  // display-only `assigned_to` name string — NOT the `staff` table id. So we
+  // bridge each staff row to its profile (by email) and count by profile id,
+  // with a name fallback for older tasks. Completed tasks are status
+  // 'completed' (the Tasks page value), not 'done'.
+  const lc = v => (v || '').trim().toLowerCase()
+  const staffWithStats = staff.map(s => {
+    const prof  = profiles.find(p => lc(p.email) === lc(s.email))
+    const pid   = prof?.id
+    const names = [lc(s.name), lc(prof?.name)].filter(Boolean)
+
+    const mine = row =>
+      (pid && row.assignee_id === pid) ||
+      (pid && row.assigned_to === pid) ||
+      row.assigned_to === s.id ||
+      names.includes(lc(row.assigned_to))
+
+    const myTasks = tasks.filter(mine)
+
+    return {
+      ...s,
+      applicantCount: applicants.filter(mine).length,
+      taskCount:      myTasks.length,
+      doneCount:      myTasks.filter(t => t.status === 'completed').length,
+    }
+  })
 
   // ── top stat cards ────────────────────────────────────────────────────────
   const topCards = [
-    { label: 'New This Month',  value: newThisMonth,                        sub: 'Applicants',    border: '#2563eb', Icon: UserPlus   },
-    { label: 'Conversions',     value: conversions,                         sub: 'Lead → Abroad', border: '#16a34a', Icon: TrendingUp },
-    { label: 'Month Revenue',   value: `Rs ${monthRevenue.toLocaleString()}`, sub: 'Collected',   border: '#ca8a04', Icon: Wallet     },
-    { label: 'Visa Approvals',  value: visaApprovals,                       sub: 'This month',    border: '#7c3aed', Icon: BadgeCheck },
+    { label: 'New This Month',  value: newThisMonth,                        sub: 'Applicants',    border: theme.primary, Icon: UserPlus   },
+    { label: 'Conversions',     value: conversions,                         sub: 'Lead → Abroad', border: theme.status.success.main, Icon: TrendingUp },
+    { label: 'Month Revenue',   value: `Rs ${monthRevenue.toLocaleString()}`, sub: 'Collected',   border: theme.status.warning.text, Icon: Wallet     },
+    { label: 'Visa Approvals',  value: visaApprovals,                       sub: 'This month',    border: theme.purple, Icon: BadgeCheck },
   ]
 
   // ─────────────────────────────────────────────────────────────────────────
   // role badge style — each role gets a different tint
   const roleBadge = (role) => {
     const map = {
-      'C.E.O':       { bg: '#dbeafe', color: '#1d4ed8' },
-      'M.D':         { bg: '#ede9fe', color: '#6d28d9' },
-      'Visa Officer':{ bg: '#d1fae5', color: '#065f46' },
-      'Admin':       { bg: '#fef3c7', color: '#92400e' },
-      'Counselor':   { bg: '#fce7f3', color: '#9d174d' },
+      'C.E.O':       { bg: theme.status.info.bg, color: theme.primary },
+      'M.D':         { bg: theme.purpleLight, color: theme.purple },
+      'Visa Officer':{ bg: theme.status.success.bg, color: theme.status.success.text },
+      'Admin':       { bg: theme.status.warning.bg, color: theme.status.warning.text },
+      'Counselor':   { bg: theme.pinkLight, color: theme.pink },
     }
-    return map[role] || { bg: '#f3f4f6', color: '#374151' }
+    return map[role] || { bg: theme.surfaceAlt, color: theme.textMid }
+  }
+
+  // Flatten every panel into one summary spreadsheet.
+  function handleExportAll() {
+    const rows = [
+      ...topCards.map(c => ({ section: 'Summary', item: c.label, value: c.value, detail: c.sub })),
+      ...funnelData.map(f => ({ section: 'Pipeline stage', item: f.label, value: f.count, detail: '' })),
+      ...countryData.map(d => ({ section: 'Country', item: d.country, value: d.total, detail: `${d.abroad} gone abroad` })),
+      ...staffWithStats.map(s => ({
+        section: 'Staff performance',
+        item: s.name || s.email || '—',
+        value: `${s.applicantCount} applicants`,
+        detail: `${s.doneCount}/${s.taskCount} tasks done`,
+      })),
+    ]
+    exportRows('report', rows, [
+      { header: 'Section', value: r => r.section },
+      { header: 'Item',    value: r => r.item },
+      { header: 'Value',   value: r => r.value },
+      { header: 'Detail',  value: r => r.detail },
+    ])
   }
 
   // shared card shell for the analytics panels
@@ -164,9 +209,9 @@ export default function Reports() {
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
       <span style={{
         width: 30, height: 30, borderRadius: 8,
-        background: theme.primaryLight || '#eff6ff',
+        background: theme.primaryLight || theme.status.info.bg,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexShrink: 0, color: theme.primary || '#2563eb',
+        flexShrink: 0, color: theme.primary || theme.primary,
       }}>
         <Icon size={16} strokeWidth={2.2} />
       </span>
@@ -216,39 +261,45 @@ export default function Reports() {
 
         {/* export + print buttons */}
         <div style={{ display: 'flex', gap: 10, flexDirection: isMobile ? 'column' : 'row' }}>
-          <button style={{
-            padding: '8px 16px',
-            background: theme.cardBg,
-            border: `1px solid ${theme.border}`,
-            borderRadius: 8,
-            fontSize: 13,
-            fontWeight: 500,
-            color: theme.textMid,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 7,
-            width: isMobile ? '100%' : 'auto',
-          }}>
+          <button
+            onClick={handleExportAll}
+            style={{
+              padding: '8px 16px',
+              background: theme.cardBg,
+              border: `1px solid ${theme.border}`,
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: 500,
+              color: theme.textMid,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 7,
+              width: isMobile ? '100%' : 'auto',
+            }}
+          >
             <Download size={15} />
             Export All
           </button>
-          <button style={{
-            padding: '8px 16px',
-            background: theme.cardBg,
-            border: `1px solid ${theme.border}`,
-            borderRadius: 8,
-            fontSize: 13,
-            fontWeight: 500,
-            color: theme.textMid,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 7,
-            width: isMobile ? '100%' : 'auto',
-          }}>
+          <button
+            onClick={() => window.print()}
+            style={{
+              padding: '8px 16px',
+              background: theme.cardBg,
+              border: `1px solid ${theme.border}`,
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: 500,
+              color: theme.textMid,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 7,
+              width: isMobile ? '100%' : 'auto',
+            }}
+          >
             <Printer size={15} />
             Print Report
           </button>
@@ -266,7 +317,6 @@ export default function Reports() {
           <div key={card.label} style={{
             background: theme.cardBg,
             border: `1px solid ${theme.border}`,
-            borderTop: `3px solid ${card.border}`,
             borderRadius: 12,
             padding: isMobile ? '14px 16px' : '20px',
           }}>
@@ -370,7 +420,7 @@ export default function Reports() {
             marginBottom: 20,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div style={{ width: 28, height: 10, background: '#8b5cf6', borderRadius: 2 }} />
+              <div style={{ width: 28, height: 10, background: theme.purple, borderRadius: 2 }} />
               <span style={{ fontSize: 12, color: theme.textLight }}>Total</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -412,7 +462,7 @@ export default function Reports() {
                     <div style={{
                       width: '45%',
                       height: Math.max((d.total / countryMax) * 130, d.total > 0 ? 4 : 0),
-                      background: '#8b5cf6',
+                      background: theme.purple,
                       borderRadius: '3px 3px 0 0',
                       transition: 'height 0.5s ease',
                     }} />
@@ -471,7 +521,7 @@ export default function Reports() {
             {['Staff Member','Role','Applicants','Tasks','Done'].map(h => (
               <span key={h} style={{
                 fontSize: 11,
-                fontWeight: 600,
+                fontWeight: 700,
                 color: theme.textMuted,
                 textTransform: 'uppercase',
                 letterSpacing: '0.06em',

@@ -6,8 +6,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect } from 'react'
+import theme from '../theme'
 import { supabase } from '../supabase'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
 
 // Lucide icons — lightweight SVG icon library
 import {
@@ -15,7 +17,7 @@ import {
   GraduationCap,// students icon
   PlaneTakeoff, // abroad / travel icon
   CalendarCheck,// appointments icon
-  DollarSign,   // revenue icon
+  Wallet,       // revenue icon
   TrendingUp,   // visa approvals icon
   Target,       // conversion rate icon
   RefreshCw,    // refresh button icon
@@ -25,56 +27,72 @@ import {
 // C — design tokens (colors used across the whole dashboard)
 // ─────────────────────────────────────────────────────────────────────────────
 const C = {
-  pageBg:    '#083ca525',
-  cardBg:    '#ffffff',
-  border:    '#e8eaed',
-  textDark:  '#111827',
-  textMid:   '#374151',
-  textLight: '#6b7280',
-  textMuted: '#9ca3af',
+  pageBg:    theme.pageBg,
+  cardBg:    theme.white,
+  border:    theme.border,
+  textDark:  theme.textStrong,
+  textMid:   theme.textMid,
+  textLight: theme.textLight,
+  textMuted: theme.textMuted,
 
-  green:     '#16a34a',
-  greenBg:   '#dcfce7',
-  greenText: '#15803d',
-  blue:      '#2563eb',
-  blueBg:    '#dbeafe',
-  purple:    '#7c3aed',
-  purpleBg:  '#ede9fe',
-  orange:    '#ea580c',
-  orangeBg:  '#ffedd5',
-  yellow:    '#ca8a04',
-  yellowBg:  '#fef9c3',
-  red:       '#dc2626',
-  redBg:     '#fee2e2',
-  teal:      '#0891b2',
-  tealBg:    '#cffafe',
+  green:     theme.status.success.main,
+  greenBg:   theme.status.success.bg,
+  greenText: theme.status.success.text,
+  blue:      theme.primary,
+  blueBg:    theme.status.info.bg,
+  purple:    theme.purple,
+  purpleBg:  theme.purpleLight,
+  orange:    theme.status.warning.main,
+  orangeBg:  theme.status.warning.bg,
+  yellow:    theme.status.warning.text,
+  yellowBg:  theme.status.warning.bg,
+  red:       theme.status.danger.main,
+  redBg:     theme.status.danger.bg,
+  teal:      theme.accent,
+  tealBg:    theme.accentLight,
 
+  // One distinct, readable colour per pipeline stage — early stages cool,
+  // ending on green at "Abroad". (Previously Lead/Inquiring/Counseling/Visa
+  // Process all shared the faint input-border grey and barely showed.)
   barColors: {
-    'Lead':           '#d1d5db',
-    'Inquiring':      '#d1d5db',
-    'Counseling':     '#d1d5db',
-    'Documentation':  '#f59e0b',
-    'Applied':        '#3b82f6',
-    'Visa Process':   '#d1d5db',
-    'Class/Enrolled': '#8b5cf6',
-    'Abroad':         '#22c55e',
+    'Lead':           theme.status.neutral.main,   // slate — visible, "just entered"
+    'Inquiring':      theme.primary,               // blue
+    'Counseling':     theme.accent,                // teal
+    'Documentation':  theme.status.warning.main,   // amber
+    'Applied':        theme.purple,                // purple
+    'Visa Process':   theme.pink,                  // pink
+    'Class/Enrolled': theme.navy,                  // navy
+    'Abroad':         theme.status.success.main,   // green — "made it"
   },
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // StatCard
 // ─────────────────────────────────────────────────────────────────────────────
-function StatCard({ label, value, sub, Icon, iconColor, iconBg, valueColor }) {
+function StatCard({ label, value, sub, Icon, iconColor, iconBg, valueColor, onClick }) {
   return (
-    <div style={{
-      background: C.cardBg,
-      border: `1px solid ${C.border}`,
-      borderRadius: 12,
-      padding: '20px 22px',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: 8,
-    }}>
+    <div
+      onClick={onClick}
+      style={{
+        background: C.cardBg,
+        border: `1px solid ${C.border}`,
+        borderRadius: 12,
+        padding: '20px 22px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'box-shadow 0.15s ease, border-color 0.15s ease',
+      }}
+      onMouseEnter={onClick ? e => {
+        e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)'
+        e.currentTarget.style.borderColor = iconColor || C.border
+      } : undefined}
+      onMouseLeave={onClick ? e => {
+        e.currentTarget.style.boxShadow = 'none'
+        e.currentTarget.style.borderColor = C.border
+      } : undefined}
+    >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <span style={{
           fontSize: 11.5,
@@ -89,7 +107,7 @@ function StatCard({ label, value, sub, Icon, iconColor, iconBg, valueColor }) {
         <div style={{
           width: 36, height: 36,
           borderRadius: 10,
-          background: iconBg || '#f3f4f6',
+          background: iconBg || theme.surfaceAlt,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0,
         }}>
@@ -109,6 +127,12 @@ function StatCard({ label, value, sub, Icon, iconColor, iconBg, valueColor }) {
       {sub && (
         <div style={{ fontSize: 11.5, color: C.textMuted }}>{sub}</div>
       )}
+
+      {onClick && !sub && (
+        <div style={{ fontSize: 11.5, color: iconColor || C.textMuted, fontWeight: 600 }}>
+          View monthly history →
+        </div>
+      )}
     </div>
   )
 }
@@ -118,21 +142,21 @@ function StatCard({ label, value, sub, Icon, iconColor, iconBg, valueColor }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function StageBadge({ stage }) {
   const map = {
-    'Lead':           { bg: '#f3f4f6', color: '#6b7280' },
-    'Inquiring':      { bg: '#dbeafe', color: '#1d4ed8' },
-    'Counseling':     { bg: '#fef9c3', color: '#a16207' },
-    'Documentation':  { bg: '#ffedd5', color: '#ea580c' },
-    'Applied':        { bg: '#dbeafe', color: '#2563eb' },
-    'Visa Process':   { bg: '#cffafe', color: '#0891b2' },
-    'Class/Enrolled': { bg: '#ede9fe', color: '#7c3aed' },
-    'Abroad':         { bg: '#dcfce7', color: '#16a34a' },
-    'Approved':       { bg: '#dcfce7', color: '#16a34a' },
-    'Pending':        { bg: '#fef9c3', color: '#a16207' },
-    'Rejected':       { bg: '#fee2e2', color: '#dc2626' },
-    'New':            { bg: '#dbeafe', color: '#1d4ed8' },
+    'Lead':           { bg: theme.surfaceAlt, color: theme.textLight },
+    'Inquiring':      { bg: theme.status.info.bg, color: theme.primary },
+    'Counseling':     { bg: theme.status.warning.bg, color: theme.status.warning.text },
+    'Documentation':  { bg: theme.status.warning.bg, color: theme.status.warning.main },
+    'Applied':        { bg: theme.status.info.bg, color: theme.primary },
+    'Visa Process':   { bg: theme.accentLight, color: theme.accent },
+    'Class/Enrolled': { bg: theme.purpleLight, color: theme.purple },
+    'Abroad':         { bg: theme.status.success.bg, color: theme.status.success.main },
+    'Approved':       { bg: theme.status.success.bg, color: theme.status.success.main },
+    'Pending':        { bg: theme.status.warning.bg, color: theme.status.warning.text },
+    'Rejected':       { bg: theme.status.danger.bg, color: theme.status.danger.main },
+    'New':            { bg: theme.status.info.bg, color: theme.primary },
   }
 
-  const s = map[stage] || { bg: '#f3f4f6', color: '#6b7280' }
+  const s = map[stage] || { bg: theme.surfaceAlt, color: theme.textLight }
 
   return (
     <span style={{
@@ -153,12 +177,12 @@ function StageBadge({ stage }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function PriorityBadge({ priority }) {
   const map = {
-    'Hot':    { bg: '#fee2e2', color: '#dc2626' },
-    'Warm':   { bg: '#ffedd5', color: '#ea580c' },
-    'Cold':   { bg: '#dbeafe', color: '#2563eb' },
-    'Normal': { bg: '#f3f4f6', color: '#6b7280' },
+    'Hot':    { bg: theme.status.danger.bg, color: theme.status.danger.main },
+    'Warm':   { bg: theme.status.warning.bg, color: theme.status.warning.main },
+    'Cold':   { bg: theme.status.info.bg, color: theme.primary },
+    'Normal': { bg: theme.surfaceAlt, color: theme.textLight },
   }
-  const s = map[priority] || { bg: '#f3f4f6', color: '#6b7280' }
+  const s = map[priority] || { bg: theme.surfaceAlt, color: theme.textLight }
 
   return (
     <span style={{
@@ -187,6 +211,7 @@ export default function Dashboard() {
   const [appointments, setAppointments] = useState([])
   const [loading,      setLoading]      = useState(true)
   const [lastUpdated,  setLastUpdated]  = useState(new Date())
+  const [detailModal,  setDetailModal]  = useState(null) // { title, rows, totalDisplay } for the stat-history popup
 
   async function load() {
     setLoading(true)
@@ -209,6 +234,7 @@ export default function Dashboard() {
   }
 
   useEffect(() => { load() }, [])
+  useRefetchOnFocus(load)
 
   const now      = new Date()
   const todayStr = now.toISOString().split('T')[0]
@@ -245,6 +271,46 @@ export default function Dashboard() {
   ).length
   const convRate = totalApplicants > 0
     ? Math.round((converted / totalApplicants) * 100) : 0
+
+  // ── Monthly history — every month up to now, for the clickable stat cards ──
+  const monthKey   = d => {
+    const dt = new Date(d)
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`
+  }
+  const monthLabel = k => {
+    const [y, m] = k.split('-').map(Number)
+    return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  }
+
+  const revenueByMonth = {}
+  payments.forEach(p => {
+    if (p.status !== 'paid') return
+    const k = monthKey(p.created_at || p.date || Date.now())
+    revenueByMonth[k] = (revenueByMonth[k] || 0) + (p.amount || 0)
+  })
+
+  const visaByMonth = {}
+  applicants.forEach(a => {
+    if (a.status !== 'Approved') return
+    const k = monthKey(a.updated_at || a.created_at || Date.now())
+    visaByMonth[k] = (visaByMonth[k] || 0) + 1
+  })
+
+  const openRevenueHistory = () => {
+    const rows = Object.keys(revenueByMonth).sort().reverse().map(k => ({
+      key: k, label: monthLabel(k), display: `Rs. ${fmt(revenueByMonth[k])}`,
+    }))
+    const total = Object.values(revenueByMonth).reduce((a, b) => a + b, 0)
+    setDetailModal({ title: 'Revenue — Monthly History', rows, totalDisplay: `Rs. ${fmt(total)}` })
+  }
+
+  const openVisaHistory = () => {
+    const rows = Object.keys(visaByMonth).sort().reverse().map(k => ({
+      key: k, label: monthLabel(k), display: String(visaByMonth[k]),
+    }))
+    const total = Object.values(visaByMonth).reduce((a, b) => a + b, 0)
+    setDetailModal({ title: 'Visa Approvals — Monthly History', rows, totalDisplay: String(total) })
+  }
 
   const STAGES = ['Lead','Inquiring','Counseling','Documentation','Applied','Visa Process','Class/Enrolled','Abroad']
 
@@ -382,10 +448,11 @@ export default function Dashboard() {
         <StatCard
           label="Revenue This Month"
           value={`Rs. ${fmt(monthRevenue)}`}
-          Icon={DollarSign}
+          Icon={Wallet}
           iconColor={C.green}
           iconBg={C.greenBg}
           valueColor="black"
+          onClick={openRevenueHistory}
         />
         <StatCard
           label="Visa Approvals (Month)"
@@ -394,6 +461,7 @@ export default function Dashboard() {
           iconColor={C.blue}
           iconBg={C.blueBg}
           valueColor={visaApprovals > 0 ? "black" : C.textMuted}
+          onClick={openVisaHistory}
         />
         <StatCard
           label="Conversion Rate"
@@ -440,13 +508,13 @@ export default function Dashboard() {
 
                   <div style={{
                     flex: 1, height: 8, borderRadius: 6,
-                    background: '#f0f0f0', overflow: 'hidden',
+                    background: theme.surfaceAlt, overflow: 'hidden',
                   }}>
                     <div style={{
                       height: '100%',
                       width: pct > 0 ? `${pct}%` : '3px',
                       borderRadius: 6,
-                      background: C.barColors[stage] || '#d1d5db',
+                      background: C.barColors[stage] || theme.inputBorder,
                       transition: 'width 0.45s ease',
                     }} />
                   </div>
@@ -568,7 +636,7 @@ export default function Dashboard() {
             <>
               <div style={{
                 display: 'grid', gridTemplateColumns: '2fr 1.3fr 1.6fr 1fr',
-                padding: '8px 22px', background: '#fafafa', borderBottom: `1px solid ${C.border}`,
+                padding: '8px 22px', background: theme.pageBg, borderBottom: `1px solid ${C.border}`,
               }}>
                 {['NAME', 'DESTINATION', 'STAGE', 'PRIORITY'].map(h => (
                   <span key={h} style={{
@@ -594,7 +662,7 @@ export default function Dashboard() {
                       borderBottom: i < recentApplicants.length - 1 ? `1px solid ${C.border}` : 'none',
                       alignItems: 'center', cursor: 'default',
                     }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#fafafa'}
+                    onMouseEnter={e => e.currentTarget.style.background = theme.pageBg}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
                     <div>
@@ -651,7 +719,7 @@ export default function Dashboard() {
                   borderBottom: i < dueTasks.length - 1 ? `1px solid ${C.border}` : 'none',
                   display: 'flex', alignItems: 'center', gap: 11,
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = '#fafafa'}
+                onMouseEnter={e => e.currentTarget.style.background = theme.pageBg}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
               >
                 <div style={{
@@ -687,6 +755,85 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* ── STAT HISTORY MODAL — month-by-month, all months up to now ── */}
+      {detailModal && (
+        <div
+          onClick={() => setDetailModal(null)}
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(0,0,0,0.4)',
+            display: 'flex', alignItems: isMobile ? 'flex-end' : 'center',
+            justifyContent: 'center', zIndex: 300,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: C.cardBg,
+              border: `1px solid ${C.border}`,
+              borderRadius: isMobile ? '14px 14px 0 0' : 14,
+              padding: isMobile ? 20 : 26,
+              width: isMobile ? '100%' : 420,
+              maxHeight: '85vh', overflowY: 'auto',
+              boxSizing: 'border-box',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+            }}
+          >
+            <div style={{
+              display: 'flex', justifyContent: 'space-between',
+              alignItems: 'center', marginBottom: 18,
+            }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: C.textDark, margin: 0 }}>
+                {detailModal.title}
+              </h3>
+              <button
+                onClick={() => setDetailModal(null)}
+                style={{
+                  background: 'none', border: 'none',
+                  fontSize: 18, cursor: 'pointer', color: C.textLight,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {detailModal.rows.length === 0 ? (
+              <div style={{ padding: '30px 0', textAlign: 'center', color: C.textMuted, fontSize: 13 }}>
+                No data yet
+              </div>
+            ) : (
+              detailModal.rows.map(r => (
+                <div key={r.key} style={{
+                  display: 'flex', justifyContent: 'space-between', gap: 16,
+                  padding: '11px 0',
+                  borderBottom: `1px solid ${C.border}`,
+                }}>
+                  <span style={{ fontSize: 13, color: C.textMid }}>{r.label}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: C.textDark }}>{r.display}</span>
+                </div>
+              ))
+            )}
+
+            {detailModal.rows.length > 0 && (
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', gap: 16,
+                padding: '13px 0 2px', marginTop: 4,
+              }}>
+                <span style={{
+                  fontSize: 11.5, fontWeight: 700, color: C.textLight,
+                  textTransform: 'uppercase', letterSpacing: '0.05em',
+                }}>
+                  All-time total
+                </span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: C.green }}>
+                  {detailModal.totalDisplay}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   )

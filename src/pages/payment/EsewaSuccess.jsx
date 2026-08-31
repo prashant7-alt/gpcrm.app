@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { functionHeaders } from '../../supabase'
+import theme from '../../theme'
 
 const SUPABASE_URL = 'https://txwpmjtixdbebnbqorju.supabase.co'
 
@@ -39,7 +41,7 @@ export default function EsewaSuccess() {
       // Call edge function — it uses service role key so no auth needed
       const res = await fetch(`${SUPABASE_URL}/functions/v1/verify-esewa-payment`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await functionHeaders(),
         body: JSON.stringify({
           transaction_uuid: esewaData.transaction_uuid,
           total_amount:     esewaData.total_amount,
@@ -66,12 +68,12 @@ export default function EsewaSuccess() {
 
   return (
     <div style={{
-      minHeight: '100vh', background: '#f9fafb',
+      minHeight: '100vh', background: theme.pageBg,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontFamily: "'Segoe UI', Arial, sans-serif", padding: 20,
     }}>
       <div style={{
-        background: '#fff', border: '1px solid #e5e7eb', borderRadius: 16,
+        background: theme.cardBg, border: `1px solid ${theme.border}`, borderRadius: 16,
         padding: 48, textAlign: 'center', maxWidth: 420, width: '100%',
         boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
       }}>
@@ -79,8 +81,8 @@ export default function EsewaSuccess() {
         {status === 'verifying' && (
           <>
             <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
-            <h2 style={{ fontSize: 20, fontWeight: 700, color: '#111827' }}>Verifying payment...</h2>
-            <p style={{ fontSize: 14, color: '#6b7280', marginTop: 8 }}>
+            <h2 style={{ fontSize: 20, fontWeight: 700, color: theme.textDark }}>Verifying payment...</h2>
+            <p style={{ fontSize: 14, color: theme.textLight, marginTop: 8 }}>
               Please wait while we confirm your eSewa payment.
             </p>
           </>
@@ -89,24 +91,24 @@ export default function EsewaSuccess() {
         {status === 'success' && (
           <>
             <div style={{ fontSize: 56, marginBottom: 16 }}>✅</div>
-            <h2 style={{ fontSize: 20, fontWeight: 700, color: '#15803d', marginBottom: 8 }}>
+            <h2 style={{ fontSize: 20, fontWeight: 700, color: theme.status.success.text, marginBottom: 8 }}>
               Payment Successful!
             </h2>
-            <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 6 }}>
+            <p style={{ fontSize: 14, color: theme.textLight, marginBottom: 6 }}>
               Your eSewa payment has been confirmed and recorded.
             </p>
             {details && (
               <div style={{
-                background: '#f0fdf4', border: '1px solid #bbf7d0',
+                background: theme.status.success.bg, border: `1px solid ${theme.status.success.border}`,
                 borderRadius: 10, padding: '12px 16px', margin: '16px 0',
                 textAlign: 'left',
               }}>
-                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Amount paid</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: '#15803d', marginBottom: 8 }}>
+                <div style={{ fontSize: 12, color: theme.textLight, marginBottom: 4 }}>Amount paid</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: theme.status.success.text, marginBottom: 8 }}>
                   Rs {Number(details.amount).toLocaleString()}
                 </div>
-                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Transaction ID</div>
-                <div style={{ fontSize: 12, color: '#374151', wordBreak: 'break-all' }}>{details.ref}</div>
+                <div style={{ fontSize: 12, color: theme.textLight, marginBottom: 4 }}>Transaction ID</div>
+                <div style={{ fontSize: 12, color: theme.textMid, wordBreak: 'break-all' }}>{details.ref}</div>
               </div>
             )}
             {/* ✅ Use window.location.href instead of navigate — avoids auth flash redirect */}
@@ -114,8 +116,8 @@ export default function EsewaSuccess() {
               onClick={() => { window.location.href = '/student/payments' }}
               style={{
                 width: '100%', padding: '12px 0', marginTop: 8,
-                background: '#16a34a', border: 'none', borderRadius: 8,
-                fontSize: 14, fontWeight: 700, color: '#fff', cursor: 'pointer',
+                background: theme.status.success.main, border: 'none', borderRadius: 8,
+                fontSize: 14, fontWeight: 700, color: theme.white, cursor: 'pointer',
               }}
             >
               View My Payments →
@@ -126,10 +128,10 @@ export default function EsewaSuccess() {
         {status === 'failed' && (
           <>
             <div style={{ fontSize: 48, marginBottom: 16 }}>❌</div>
-            <h2 style={{ fontSize: 20, fontWeight: 700, color: '#b91c1c', marginBottom: 8 }}>
+            <h2 style={{ fontSize: 20, fontWeight: 700, color: theme.status.danger.text, marginBottom: 8 }}>
               Verification Failed
             </h2>
-            <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 20 }}>
+            <p style={{ fontSize: 14, color: theme.textLight, marginBottom: 20 }}>
               We couldn't confirm your payment. Please contact your counsellor
               with your eSewa transaction ID.
             </p>
@@ -137,8 +139,8 @@ export default function EsewaSuccess() {
               onClick={() => { window.location.href = '/student/payments' }}
               style={{
                 width: '100%', padding: '12px 0',
-                background: '#111827', border: 'none', borderRadius: 8,
-                color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                background: theme.navy, border: 'none', borderRadius: 8,
+                color: theme.white, fontSize: 14, fontWeight: 600, cursor: 'pointer',
               }}
             >
               Go Back to Payments

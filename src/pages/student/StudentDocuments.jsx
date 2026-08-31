@@ -14,6 +14,7 @@
 
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import theme from '../../theme'
 import { supabase } from '../../supabase'
 import {
   FolderOpen,
@@ -32,13 +33,13 @@ import {
 // ─── ALL 12 DOCUMENT TYPES ────────────────────────────────────────────────────
 // MUST match Documents.jsx (admin) exactly — same order, same spelling
 const DOC_TYPES = [
-  'Passport (copy + original scan)',
+  'Passport',
   'National ID / Citizenship Certificate',
   'SLC/SEE Marksheet & Certificate',
   '+2 / A-Level Marksheet & Certificate',
   "Bachelor's Degree Transcripts & Certificate",
   'Character Certificate',
-  'Migration Certificate',
+  'NOC',
   'English Language Test (IELTS, TOEFL, PTE, Duolingo)',
   'Statement of Purpose (SOP)',
   'Letters of Recommendation (LOR)',
@@ -47,14 +48,14 @@ const DOC_TYPES = [
 ]
 
 const STATUS_COLOR = {
-  Verified: { bg: '#dcfce7', color: '#15803d', label: 'Verified ✓' },
-  Received: { bg: '#dbeafe', color: '#1d4ed8', label: 'Uploaded'  },
-  Missing:  { bg: '#fee2e2', color: '#b91c1c', label: 'Missing'   },
+  Verified: { bg: theme.status.success.bg, border: theme.status.success.border, color: theme.status.success.text, dot: theme.status.success.main, label: 'Verified' },
+  Received: { bg: theme.status.info.bg, border: theme.status.info.border, color: theme.primary, dot: theme.primary, label: 'Uploaded'  },
+  Missing:  { bg: theme.status.danger.bg, border: theme.status.danger.border, color: theme.status.danger.text, dot: theme.status.danger.main, label: 'Missing'   },
 }
 
 const card = {
-  background: '#fff',
-  border: '1px solid #e5e7eb',
+  background: theme.white,
+  border: `1px solid ${theme.border}`,
   borderRadius: 14,
   boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
 }
@@ -76,7 +77,7 @@ export default function StudentDocuments() {
   const [uploadSuccess, setUploadSuccess] = useState({})
 
   useEffect(() => {
-    if (!profile.id) { navigate('/login'); return }
+    if (!profile.id) { navigate('/student-login'); return }
     loadByProfile()
   }, [])
 
@@ -200,11 +201,11 @@ export default function StudentDocuments() {
     return (
       <div style={{
         minHeight: '100vh',
-        background: 'linear-gradient(135deg, #f0f4ff 0%, #fafbff 50%, #f0fdf4 100%)',
+        background: `linear-gradient(135deg, ${theme.status.info.bg} 0%, ${theme.status.info.bg} 50%, ${theme.status.success.bg} 100%)`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontFamily: "'Segoe UI', Arial, sans-serif",
       }}>
-        <div style={{ fontSize: 14, color: '#6b7280' }}>Loading your documents…</div>
+        <div style={{ fontSize: 14, color: theme.textLight }}>Loading your documents…</div>
       </div>
     )
   }
@@ -213,16 +214,16 @@ export default function StudentDocuments() {
     return (
       <div style={{
         minHeight: '100vh',
-        background: 'linear-gradient(135deg, #f0f4ff 0%, #fafbff 50%, #f0fdf4 100%)',
+        background: `linear-gradient(135deg, ${theme.status.info.bg} 0%, ${theme.status.info.bg} 50%, ${theme.status.success.bg} 100%)`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontFamily: "'Segoe UI', Arial, sans-serif", padding: 20,
       }}>
         <div style={{ ...card, padding: '36px 32px', maxWidth: 460, textAlign: 'center' }}>
-          <FolderOpen size={40} color="#d1d5db" style={{ marginBottom: 14 }} />
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 8 }}>
+          <FolderOpen size={40} color={theme.inputBorder} style={{ marginBottom: 14 }} />
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: theme.textStrong, marginBottom: 8 }}>
             No document checklist yet
           </h2>
-          <p style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.6 }}>
+          <p style={{ fontSize: 13, color: theme.textLight, lineHeight: 1.6 }}>
             Your counsellor hasn't set up your document list yet. Please contact
             Global Pathway to get registered for document tracking.
           </p>
@@ -234,7 +235,7 @@ export default function StudentDocuments() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #f0f4ff 0%, #fafbff 50%, #f0fdf4 100%)',
+      background: `linear-gradient(135deg, ${theme.status.info.bg} 0%, ${theme.status.info.bg} 50%, ${theme.status.success.bg} 100%)`,
       fontFamily: "'Segoe UI', Arial, sans-serif",
       padding: '40px 16px',
     }}>
@@ -243,17 +244,17 @@ export default function StudentDocuments() {
       <div style={{ textAlign: 'center', marginBottom: 36 }}>
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 10,
-          background: '#fff', border: '1px solid #e5e7eb',
+          background: theme.white, border: `1px solid ${theme.border}`,
           borderRadius: 12, padding: '10px 22px',
           boxShadow: '0 1px 6px rgba(0,0,0,0.06)',
         }}>
-          <GraduationCap size={22} color="#1a56db" />
-          <span style={{ fontSize: 16, fontWeight: 700, color: '#1a56db' }}>
+          <GraduationCap size={22} color={theme.primary} />
+          <span style={{ fontSize: 16, fontWeight: 700, color: theme.primary }}>
             Global Pathway
           </span>
           <span style={{
-            fontSize: 11, color: '#6b7280', fontWeight: 500,
-            borderLeft: '1px solid #e5e7eb', paddingLeft: 10, marginLeft: 4,
+            fontSize: 11, color: theme.textLight, fontWeight: 500,
+            borderLeft: `1px solid ${theme.border}`, paddingLeft: 10, marginLeft: 4,
           }}>
             Student Document Portal
           </span>
@@ -269,40 +270,40 @@ export default function StudentDocuments() {
         }}>
           <div style={{
             width: 48, height: 48, borderRadius: 14,
-            background: '#eff6ff', border: '1px solid #bfdbfe',
+            background: theme.status.info.bg, border: `1px solid ${theme.status.info.border}`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 20, fontWeight: 700, color: '#1a56db', flexShrink: 0,
+            fontSize: 20, fontWeight: 700, color: theme.primary, flexShrink: 0,
           }}>
             {student.name.charAt(0).toUpperCase()}
           </div>
 
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: theme.textStrong }}>
               {student.name}
             </div>
-            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: theme.textLight, marginTop: 2 }}>
               {student.email}
             </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <Chip label={`${verified} Verified`} bg="#dcfce7" color="#15803d" />
-              <Chip label={`${received} Uploaded`} bg="#dbeafe" color="#1d4ed8" />
-              <Chip label={`${missing} Missing`}   bg="#fee2e2" color="#b91c1c" />
+              <Chip {...STATUS_COLOR.Verified} label={`${verified} Verified`} />
+              <Chip {...STATUS_COLOR.Received} label={`${received} Uploaded`} />
+              <Chip {...STATUS_COLOR.Missing}  label={`${missing} Missing`} />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{
                 width: 160, height: 6,
-                background: '#e5e7eb', borderRadius: 99, overflow: 'hidden',
+                background: theme.border, borderRadius: 99, overflow: 'hidden',
               }}>
                 <div style={{
                   width: `${pct}%`, height: '100%',
-                  background: pct === 100 ? '#16a34a' : '#1a56db',
+                  background: pct === 100 ? theme.status.success.main : theme.primary,
                   borderRadius: 99, transition: 'width 0.4s',
                 }} />
               </div>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: theme.textMid }}>
                 {pct}% complete
               </span>
             </div>
@@ -311,12 +312,12 @@ export default function StudentDocuments() {
 
         {/* Instructions */}
         <div style={{
-          background: '#eff6ff', border: '1px solid #bfdbfe',
+          background: theme.status.info.bg, border: `1px solid ${theme.status.info.border}`,
           borderRadius: 10, padding: '12px 18px', marginBottom: 18,
-          fontSize: 13, color: '#1d4ed8', lineHeight: 1.6,
+          fontSize: 13, color: theme.primary, lineHeight: 1.6,
           display: 'flex', gap: 8, alignItems: 'flex-start',
         }}>
-          <ClipboardList size={16} color="#1d4ed8" style={{ flexShrink: 0, marginTop: 2 }} />
+          <ClipboardList size={16} color={theme.primary} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>
             <strong>How to upload:</strong> Click <em>Choose File</em>, select a PDF or image,
             then click <strong>Upload</strong>. To replace a file, delete it first then upload
@@ -332,11 +333,11 @@ export default function StudentDocuments() {
             display: 'grid',
             gridTemplateColumns: '2fr 0.8fr 1fr 2.2fr',
             padding: '10px 22px',
-            background: '#f9fafb', borderBottom: '1px solid #e5e7eb',
+            background: theme.pageBg, borderBottom: `1px solid ${theme.border}`,
           }}>
             {['Document Required', 'Status', 'Current File', 'Actions'].map(h => (
               <span key={h} style={{
-                fontSize: 11, fontWeight: 700, color: '#9ca3af',
+                fontSize: 11, fontWeight: 700, color: theme.textMuted,
                 textTransform: 'uppercase', letterSpacing: '0.06em',
               }}>{h}</span>
             ))}
@@ -351,20 +352,20 @@ export default function StudentDocuments() {
               <div key={type} style={{
                 display: 'grid', gridTemplateColumns: '2fr 0.8fr 1fr 2.2fr',
                 padding: '16px 22px', alignItems: 'center',
-                borderBottom: isLast ? 'none' : '1px solid #f3f4f6',
+                borderBottom: isLast ? 'none' : `1px solid ${theme.surfaceAlt}`,
                 opacity: 0.5,
               }}>
-                <div style={{ fontSize: 13, color: '#374151', display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <FileQuestion size={16} color="#9ca3af" />
+                <div style={{ fontSize: 13, color: theme.textMid, display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <FileQuestion size={16} color={theme.textMuted} />
                   {type}
                 </div>
                 <span style={{
                   padding: '4px 11px', borderRadius: 20, fontSize: 11,
-                  fontWeight: 700, background: '#f3f4f6', color: '#9ca3af',
+                  fontWeight: 700, background: theme.surfaceAlt, color: theme.textMuted,
                   display: 'inline-block',
                 }}>Not set up</span>
                 <div />
-                <div style={{ fontSize: 12, color: '#9ca3af' }}>
+                <div style={{ fontSize: 12, color: theme.textMuted }}>
                   Contact your counsellor.
                 </div>
               </div>
@@ -384,33 +385,33 @@ export default function StudentDocuments() {
                   display: 'grid',
                   gridTemplateColumns: '2fr 0.8fr 1fr 2.2fr',
                   padding: '16px 22px', alignItems: 'center',
-                  borderBottom: isLast ? 'none' : '1px solid #f3f4f6',
-                  background: isVerified ? '#f0fdf4' : 'transparent',
+                  borderBottom: isLast ? 'none' : `1px solid ${theme.surfaceAlt}`,
+                  background: isVerified ? theme.status.success.bg : 'transparent',
                   transition: 'background 0.15s',
                 }}
               >
                 {/* Document name + counsellor note */}
                 <div>
                   <div style={{
-                    fontSize: 13, fontWeight: 600, color: '#111827',
+                    fontSize: 13, fontWeight: 600, color: theme.textStrong,
                     display: 'flex', alignItems: 'center', gap: 7,
                   }}>
                     {isVerified
-                      ? <CheckCircle2 size={16} color="#16a34a" />
+                      ? <CheckCircle2 size={16} color={theme.status.success.main} />
                       : hasFile
-                        ? <FileText size={16} color="#6b7280" />
-                        : <ClipboardList size={16} color="#9ca3af" />
+                        ? <FileText size={16} color={theme.textLight} />
+                        : <ClipboardList size={16} color={theme.textMuted} />
                     }
                     {type}
                   </div>
                   {doc.note && (
                     <div style={{
-                      fontSize: 11, color: '#92400e', marginTop: 5,
-                      background: '#fef9c3', border: '1px solid #fde68a',
+                      fontSize: 11, color: theme.status.warning.text, marginTop: 5,
+                      background: theme.status.warning.bg, border: `1px solid ${theme.status.warning.border}`,
                       padding: '3px 9px', borderRadius: 5, display: 'inline-flex',
                       alignItems: 'center', gap: 5,
                     }}>
-                      <MessageSquare size={12} color="#92400e" />
+                      <MessageSquare size={12} color={theme.status.warning.text} />
                       {doc.note}
                     </div>
                   )}
@@ -418,11 +419,13 @@ export default function StudentDocuments() {
 
                 {/* Status badge */}
                 <span style={{
-                  padding: '4px 11px', borderRadius: 20,
-                  fontSize: 11, fontWeight: 700,
-                  background: sc.bg, color: sc.color,
-                  display: 'inline-block', whiteSpace: 'nowrap',
+                  padding: '2px 9px 2px 7px', borderRadius: 20,
+                  fontSize: 10.5, fontWeight: 700,
+                  background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  gap: 4, minWidth: 72, whiteSpace: 'nowrap',
                 }}>
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: sc.dot, flexShrink: 0 }} />
                   {sc.label}
                 </span>
 
@@ -434,16 +437,16 @@ export default function StudentDocuments() {
                       target="_blank"
                       rel="noreferrer"
                       style={{
-                        fontSize: 12, color: '#1a56db', fontWeight: 600,
+                        fontSize: 12, color: theme.primary, fontWeight: 600,
                         textDecoration: 'none',
                         display: 'inline-flex', alignItems: 'center', gap: 4,
                       }}
                     >
-                      <Paperclip size={13} color="#1a56db" />
+                      <Paperclip size={13} color={theme.primary} />
                       View file
                     </a>
                   ) : (
-                    <span style={{ fontSize: 12, color: '#d1d5db' }}>No file yet</span>
+                    <span style={{ fontSize: 12, color: theme.inputBorder }}>No file yet</span>
                   )}
                 </div>
 
@@ -453,10 +456,10 @@ export default function StudentDocuments() {
                   {/* Verified — no actions allowed */}
                   {isVerified && (
                     <span style={{
-                      fontSize: 12, color: '#16a34a', fontWeight: 600,
+                      fontSize: 12, color: theme.status.success.main, fontWeight: 600,
                       display: 'inline-flex', alignItems: 'center', gap: 5,
                     }}>
-                      <CheckCircle2 size={14} color="#16a34a" />
+                      <CheckCircle2 size={14} color={theme.status.success.main} />
                       Verified — contact counsellor to replace
                     </span>
                   )}
@@ -480,19 +483,19 @@ export default function StudentDocuments() {
                           style={{
                             display: 'inline-flex', alignItems: 'center', gap: 5,
                             padding: '5px 12px', width: 'fit-content',
-                            background: isDeling ? '#f9fafb' : '#fef2f2',
-                            border: '1px solid #fecaca',
+                            background: isDeling ? theme.pageBg : theme.status.danger.bg,
+                            border: `1px solid ${theme.status.danger.border}`,
                             borderRadius: 7, fontSize: 12, fontWeight: 600,
-                            color: isDeling ? '#9ca3af' : '#dc2626',
+                            color: isDeling ? theme.textMuted : theme.status.danger.main,
                             cursor: isDeling ? 'not-allowed' : 'pointer',
                             fontFamily: 'inherit',
                             transition: 'background 0.15s',
                           }}
                           onMouseEnter={e => {
-                            if (!isDeling) e.currentTarget.style.background = '#fee2e2'
+                            if (!isDeling) e.currentTarget.style.background = theme.status.danger.bg
                           }}
                           onMouseLeave={e => {
-                            if (!isDeling) e.currentTarget.style.background = '#fef2f2'
+                            if (!isDeling) e.currentTarget.style.background = theme.status.danger.bg
                           }}
                         >
                           {isDeling
@@ -513,15 +516,15 @@ export default function StudentDocuments() {
         {missing === 0 && (
           <div style={{
             ...card, marginTop: 16, padding: '18px 24px',
-            background: '#f0fdf4', border: '1px solid #bbf7d0',
+            background: theme.status.success.bg, border: `1px solid ${theme.status.success.border}`,
             display: 'flex', alignItems: 'center', gap: 14,
           }}>
-            <PartyPopper size={28} color="#15803d" />
+            <PartyPopper size={28} color={theme.status.success.text} />
             <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#15803d' }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: theme.status.success.text }}>
                 All documents submitted!
               </div>
-              <div style={{ fontSize: 12, color: '#16a34a', marginTop: 2 }}>
+              <div style={{ fontSize: 12, color: theme.status.success.main, marginTop: 2 }}>
                 Your counsellor will review and verify each document.
                 You'll be contacted once the process is complete.
               </div>
@@ -531,7 +534,7 @@ export default function StudentDocuments() {
 
         <div style={{
           textAlign: 'center', marginTop: 20,
-          fontSize: 12, color: '#9ca3af',
+          fontSize: 12, color: theme.textMuted,
         }}>
           Files are securely stored. Only Global Pathway counsellors can access your documents.
         </div>
@@ -543,13 +546,15 @@ export default function StudentDocuments() {
 
 // ─── SUB-COMPONENTS ───────────────────────────────────────────────────────────
 
-function Chip({ label, bg, color }) {
+function Chip({ label, bg, color, border, dot }) {
   return (
     <span style={{
-      padding: '3px 10px', borderRadius: 20,
-      fontSize: 11, fontWeight: 600,
-      background: bg, color,
+      padding: '2px 9px 2px 7px', borderRadius: 20,
+      fontSize: 10.5, fontWeight: 600, display: 'inline-flex',
+      alignItems: 'center', gap: 4,
+      background: bg, color, border: border ? `1px solid ${border}` : 'none',
     }}>
+      {dot && <span style={{ width: 5, height: 5, borderRadius: '50%', background: dot, flexShrink: 0 }} />}
       {label}
     </span>
   )
@@ -567,10 +572,10 @@ function UploadControl({ doc, isUploading, successName, onUpload }) {
   if (successName) {
     return (
       <div style={{
-        fontSize: 12, color: '#16a34a', fontWeight: 600,
+        fontSize: 12, color: theme.status.success.main, fontWeight: 600,
         display: 'inline-flex', alignItems: 'center', gap: 5,
       }}>
-        <CheckCircle2 size={14} color="#16a34a" />
+        <CheckCircle2 size={14} color={theme.status.success.main} />
         Uploaded: {successName}
       </div>
     )
@@ -581,11 +586,11 @@ function UploadControl({ doc, isUploading, successName, onUpload }) {
       <label style={{
         display: 'inline-flex', alignItems: 'center', gap: 5,
         padding: '6px 12px',
-        background: '#f3f4f6', border: '1px solid #d1d5db',
-        borderRadius: 7, fontSize: 12, fontWeight: 600, color: '#374151',
+        background: theme.surfaceAlt, border: `1px solid ${theme.inputBorder}`,
+        borderRadius: 7, fontSize: 12, fontWeight: 600, color: theme.textMid,
         cursor: 'pointer',
       }}>
-        <FolderOpen size={14} color="#374151" />
+        <FolderOpen size={14} color={theme.textMid} />
         {file
           ? (file.name.length > 18 ? file.name.slice(0, 16) + '…' : file.name)
           : 'Choose file'}
@@ -605,9 +610,9 @@ function UploadControl({ doc, isUploading, successName, onUpload }) {
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 5,
             padding: '6px 14px',
-            background: isUploading ? '#9ca3af' : '#1a56db',
+            background: isUploading ? theme.textMuted : theme.primary,
             border: 'none', borderRadius: 7,
-            fontSize: 12, fontWeight: 700, color: '#fff',
+            fontSize: 12, fontWeight: 700, color: theme.white,
             cursor: isUploading ? 'not-allowed' : 'pointer',
             fontFamily: 'inherit',
           }}

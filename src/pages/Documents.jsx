@@ -1,19 +1,21 @@
 import { useState, useEffect } from 'react'
+import { Trash2, User, ClipboardList, FolderOpen, CheckCircle2, FileText, Pencil, Search, Info, Eye } from 'lucide-react'
 import { supabase } from '../supabase'
 import theme from '../theme'
 import { advanceApplicantStage } from '../lib/pipelineStages'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
 
 // ─── ALL 12 DOCUMENT TYPES ────────────────────────────────────────────────────
 // MUST match StudentDocumentUpload.jsx exactly — same order, same spelling
 const DOC_TYPES = [
-  'Passport (copy + original scan)',
+  'Passport',
   'National ID / Citizenship Certificate',
   'SLC/SEE Marksheet & Certificate',
   '+2 / A-Level Marksheet & Certificate',
   "Bachelor's Degree Transcripts & Certificate",
   'Character Certificate',
-  'Migration Certificate',
+  'NOC',
   'English Language Test (IELTS, TOEFL, PTE, Duolingo)',
   'Statement of Purpose (SOP)',
   'Letters of Recommendation (LOR)',
@@ -24,6 +26,10 @@ const DOC_TYPES = [
 const STATUS_OPTIONS  = ['Missing', 'Received', 'Verified']
 const STATUS_PRIORITY = { 'Verified': 2, 'Received': 1, 'Missing': 0 }
 
+// Grid templates — header rows and body rows must use the same one.
+const PS_COLS  = '2.4fr 0.9fr 1.4fr 2.2fr'          // per-student: Document | Status | Note | Actions
+const ALL_COLS = '1.7fr 2fr 0.9fr 1.3fr 2.2fr'      // all docs:    Student | Document | Status | Note | Actions
+
 function bestDoc(rows, type) {
   return rows
     .filter(d => d.doc_type === type)
@@ -31,60 +37,117 @@ function bestDoc(rows, type) {
 }
 
 const statusStyle = (status) => {
-  if (status === 'Verified') return { bg: '#dcfce7', color: '#15803d' }
-  if (status === 'Received') return { bg: '#dbeafe', color: '#1d4ed8' }
-  return                            { bg: '#fee2e2', color: '#b91c1c' }
+  if (status === 'Verified') return { bg: theme.status.success.bg, border: theme.status.success.border, color: theme.status.success.text, dot: theme.status.success.main }
+  if (status === 'Received') return { bg: theme.status.info.bg, border: theme.status.info.border, color: theme.primary, dot: theme.primary }
+  return                            { bg: theme.status.danger.bg, border: theme.status.danger.border, color: theme.status.danger.text, dot: theme.status.danger.main }
+}
+
+function StatusBadge({ status }) {
+  const s = statusStyle(status)
+  return (
+    <span style={{
+      padding: '2px 8px 2px 6px', borderRadius: 20,
+      fontSize: 10.5, fontWeight: 600, display: 'inline-flex',
+      alignItems: 'center', justifyContent: 'center', gap: 4,
+      minWidth: 68, whiteSpace: 'nowrap',
+      background: s.bg, color: s.color, border: `1px solid ${s.border}`,
+    }}>
+      <span style={{ width: 5, height: 5, borderRadius: '50%', background: s.dot, flexShrink: 0 }} />
+      {status}
+    </span>
+  )
+}
+
+function DocStatusIcon({ status, size = 14 }) {
+  if (status === 'Verified') return <CheckCircle2 size={size} color={theme.status.success.main} />
+  if (status === 'Received') return <FileText size={size} color={theme.primary} />
+  return <ClipboardList size={size} color={theme.textMuted} />
 }
 
 const inputStyle = {
   width: '100%', padding: '8px 11px',
-  border: '1px solid #d1d5db', borderRadius: 7,
-  fontSize: 13, color: '#111827', outline: 'none',
-  fontFamily: 'inherit', boxSizing: 'border-box', background: '#fff',
+  border: `1px solid ${theme.inputBorder}`, borderRadius: 7,
+  fontSize: 13, color: theme.textStrong, outline: 'none',
+  fontFamily: 'inherit', boxSizing: 'border-box', background: theme.white,
 }
 
 const labelStyle = {
   display: 'block', fontSize: 11, fontWeight: 600,
-  color: '#6b7280', textTransform: 'uppercase', marginBottom: 5,
+  color: theme.textLight, textTransform: 'uppercase', marginBottom: 5,
 }
 
-// ── Reusable file link + delete button (admin side) ───────────────────────────
-function FileLink({ doc, onDeleted }) {
-  if (!doc.file_url) return null
+// ── Row action buttons (admin side) ──────────────────────────────────────────
+// Proper buttons for View / Edit / Delete. "View" opens the uploaded file in a
+// new tab; "Delete" removes the uploaded file and resets the item to "Missing"
+// (the checklist item itself stays). Edit is hidden when no `onEdit` is given
+// (e.g. inside the edit modal, where you're already editing).
+function DocActions({ doc, onEdit, onChanged, isMobile }) {
+  const [busy, setBusy] = useState(false)
+  const hasFile = !!doc.file_url
 
   async function handleDelete() {
-    if (!window.confirm('Delete this file?')) return
-    const path = doc.file_url.split('/student-docs/')[1]
-    if (path) {
-      await supabase.storage.from('student-docs').remove([decodeURIComponent(path)])
+    if (!window.confirm(`Delete the uploaded file for "${doc.doc_type}"?\nThe item will go back to "Missing".`)) return
+    setBusy(true)
+    try {
+      const path = doc.file_url.split('/student-docs/')[1]
+      if (path) {
+        await supabase.storage.from('student-docs').remove([decodeURIComponent(path)])
+      }
+      const { error } = await supabase
+        .from('student_documents')
+        .update({ file_url: '', status: 'Missing', updated_at: new Date().toISOString() })
+        .eq('id', doc.id)
+      if (error) { alert('Could not delete the file: ' + error.message); return }
+      onChanged?.()
+    } finally {
+      setBusy(false)
     }
-    await supabase
-      .from('student_documents')
-      .update({ file_url: '', status: 'Missing', updated_at: new Date().toISOString() })
-      .eq('id', doc.id)
-    if (onDeleted) onDeleted()
+  }
+
+  const btn = {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+    padding: '6px 12px', borderRadius: 7, fontSize: 12, fontWeight: 600,
+    fontFamily: 'inherit', border: '1px solid', cursor: 'pointer', whiteSpace: 'nowrap',
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
-      <a
-        href={doc.file_url}
-        target="_blank"
-        rel="noreferrer"
-        style={{ fontSize: 11, color: '#1a56db' }}
-      >
-        📎 View file
-      </a>
-      <button
-        onClick={handleDelete}
-        style={{
-          background: 'none', border: 'none',
-          fontSize: 11, color: '#dc2626',
-          cursor: 'pointer', padding: 0,
-        }}
-      >
-        🗑️ Delete
-      </button>
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {hasFile && (
+        <a
+          href={doc.file_url}
+          target="_blank"
+          rel="noreferrer"
+          style={{ ...btn, textDecoration: 'none', background: theme.primaryLight, borderColor: theme.border, color: theme.primary }}
+        >
+          <Eye size={13} /> View
+        </a>
+      )}
+
+      {onEdit && (
+        <button
+          onClick={() => onEdit(doc)}
+          style={{ ...btn, background: theme.cardBg, borderColor: theme.border, color: theme.textMid }}
+        >
+          <Pencil size={13} /> Edit
+        </button>
+      )}
+
+      {hasFile && (
+        <button
+          onClick={handleDelete}
+          disabled={busy}
+          style={{
+            ...btn,
+            background: theme.status.danger.bg,
+            borderColor: theme.status.danger.border,
+            color: theme.status.danger.text,
+            opacity: busy ? 0.6 : 1,
+            cursor: busy ? 'not-allowed' : 'pointer',
+          }}
+        >
+          <Trash2 size={13} /> {busy ? '…' : 'Delete'}
+        </button>
+      )}
     </div>
   )
 }
@@ -116,6 +179,7 @@ export default function Documents() {
   const [saving,     setSaving]     = useState(false)
 
   useEffect(() => { load() }, [])
+  useRefetchOnFocus(load)
 
   async function load() {
     setLoading(true)
@@ -328,19 +392,19 @@ export default function Documents() {
         marginBottom: 20,
       }}>
         <div>
-          <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: theme.textDark || '#111827', margin: 0 }}>
+          <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: theme.textDark || theme.textStrong, margin: 0 }}>
             Student Documents
           </h1>
-          <p style={{ fontSize: 13, color: theme.textLight || '#6b7280', marginTop: 4 }}>
+          <p style={{ fontSize: 13, color: theme.textLight || theme.textLight, marginTop: 4 }}>
             Track and manage visa application documents for each student ({DOC_TYPES.length} types)
           </p>
         </div>
         <button
           onClick={() => setShowAddStudent(true)}
           style={{
-            padding: '9px 18px', background: theme.primary || '#1a56db',
+            padding: '9px 18px', background: theme.primary || theme.primary,
             border: 'none', borderRadius: 8,
-            fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer',
+            fontSize: 13, fontWeight: 600, color: theme.white, cursor: 'pointer',
             width: isMobile ? '100%' : 'auto',
           }}
         >
@@ -351,27 +415,28 @@ export default function Documents() {
       {/* ── VIEW TOGGLE ───────────────────────────────────── */}
       <div style={{
         display: 'flex', marginBottom: 20,
-        background: '#f3f4f6', borderRadius: 10, padding: 4,
+        background: theme.surfaceAlt, borderRadius: 10, padding: 4,
         width: isMobile ? '100%' : 'fit-content',
       }}>
         {[
-          { key: 'student', label: '👤 Per Student' },
-          { key: 'all',     label: '📋 All Documents' },
+          { key: 'student', label: 'Per Student',   Icon: User },
+          { key: 'all',     label: 'All Documents', Icon: ClipboardList },
         ].map(tab => (
           <button key={tab.key} onClick={() => setView(tab.key)} style={{
             padding: '8px 22px', border: 'none', borderRadius: 7,
             fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
             flex: isMobile ? 1 : 'none',
-            background: view === tab.key ? '#fff' : 'transparent',
-            color:      view === tab.key ? (theme.primary || '#1a56db') : '#6b7280',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            background: view === tab.key ? theme.white : 'transparent',
+            color:      view === tab.key ? (theme.primary || theme.primary) : theme.textLight,
             boxShadow:  view === tab.key ? '0 1px 4px rgba(0,0,0,0.10)' : 'none',
           }}>
-            {tab.label}
+            <tab.Icon size={14} /> {tab.label}
           </button>
         ))}
       </div>
 
-      {loading && <p style={{ color: '#6b7280', fontSize: 13 }}>Loading documents...</p>}
+      {loading && <p style={{ color: theme.textLight, fontSize: 13 }}>Loading documents...</p>}
 
       {/* ════════════════════════════════════════════════════
           VIEW 1 — PER STUDENT
@@ -386,13 +451,13 @@ export default function Documents() {
           {/* Student sidebar — full width, capped height on phone instead of a fixed side column */}
           <div style={{
             width: isMobile ? '100%' : 220, flexShrink: 0,
-            background: '#fff', border: '1px solid #e5e7eb',
+            background: theme.white, border: `1px solid ${theme.border}`,
             borderRadius: 12, overflow: 'hidden',
             boxSizing: 'border-box',
           }}>
             <div style={{
-              padding: '12px 14px', borderBottom: '1px solid #e5e7eb',
-              fontSize: 12, fontWeight: 700, color: '#6b7280',
+              padding: '12px 14px', borderBottom: `1px solid ${theme.border}`,
+              fontSize: 12, fontWeight: 700, color: theme.textLight,
               textTransform: 'uppercase', letterSpacing: '0.06em',
             }}>
               Students ({sidebarStudents.length})
@@ -412,7 +477,7 @@ export default function Documents() {
               overflowY: 'auto', padding: '4px 8px 10px',
             }}>
               {filteredStudents.length === 0 && (
-                <div style={{ padding: '20px 8px', fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>
+                <div style={{ padding: '20px 8px', fontSize: 12, color: theme.textMuted, textAlign: 'center' }}>
                   No students found
                 </div>
               )}
@@ -426,25 +491,25 @@ export default function Documents() {
                       width: '100%', textAlign: 'left', padding: '10px 10px',
                       borderRadius: 8, border: 'none', cursor: 'pointer',
                       fontFamily: 'inherit', marginBottom: 2,
-                      background: isSelected ? (theme.primaryLight || '#eff6ff') : 'transparent',
-                      color: isSelected ? (theme.primaryText || '#1a56db') : '#374151',
+                      background: isSelected ? (theme.primaryLight || theme.status.info.bg) : 'transparent',
+                      color: isSelected ? (theme.primaryText || theme.primary) : theme.textMid,
                       fontWeight: isSelected ? 600 : 400,
                     }}
                   >
                     <div style={{ fontSize: 13 }}>{s.name}</div>
                     {/* Email shown so same-name students are distinguishable */}
-                    <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 1 }}>{s.email}</div>
+                    <div style={{ fontSize: 10, color: theme.textMuted, marginTop: 1 }}>{s.email}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
                       <div style={{
-                        flex: 1, height: 4, background: '#e5e7eb',
+                        flex: 1, height: 4, background: theme.border,
                         borderRadius: 99, overflow: 'hidden',
                       }}>
                         <div style={{
                           width: `${s.total ? Math.round((s.verified / s.total) * 100) : 0}%`,
-                          height: '100%', background: '#16a34a', borderRadius: 99,
+                          height: '100%', background: theme.status.success.main, borderRadius: 99,
                         }} />
                       </div>
-                      <span style={{ fontSize: 10, color: '#9ca3af' }}>{s.verified}/{s.total}</span>
+                      <span style={{ fontSize: 10, color: theme.textMuted }}>{s.verified}/{s.total}</span>
                     </div>
                   </button>
                 )
@@ -456,11 +521,13 @@ export default function Documents() {
           <div style={{ flex: 1, width: isMobile ? '100%' : 'auto', minWidth: 0 }}>
             {!selectedApplicantId ? (
               <div style={{
-                background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
-                padding: 60, textAlign: 'center', color: '#9ca3af',
+                background: theme.white, border: `1px solid ${theme.border}`, borderRadius: 12,
+                padding: 60, textAlign: 'center', color: theme.textMuted,
               }}>
-                <div style={{ fontSize: 40, marginBottom: 10 }}>📁</div>
-                <div style={{ fontSize: 14, color: '#6b7280' }}>
+                <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center' }}>
+                  <FolderOpen size={40} color={theme.textMuted} />
+                </div>
+                <div style={{ fontSize: 14, color: theme.textLight }}>
                   Select a student from the list to view their documents
                 </div>
               </div>
@@ -468,16 +535,16 @@ export default function Documents() {
               <>
                 {/* Student summary header */}
                 <div style={{
-                  background: '#fff', border: '1px solid #e5e7eb',
+                  background: theme.white, border: `1px solid ${theme.border}`,
                   borderRadius: 12, padding: isMobile ? '14px 16px' : '16px 20px', marginBottom: 14,
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   flexWrap: 'wrap', gap: 10,
                 }}>
                   <div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: theme.textStrong }}>
                       {selectedApplicant?.name || studentDocs[0]?.student_name || 'Unknown'}
                     </div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+                    <div style={{ fontSize: 12, color: theme.textLight, marginTop: 2 }}>
                       {selectedApplicant?.email || studentDocs[0]?.student_email || '—'}
                     </div>
                   </div>
@@ -488,17 +555,19 @@ export default function Documents() {
                       { label: 'Missing',  count: missingCount,  ...statusStyle('Missing')  },
                     ].map(s => (
                       <span key={s.label} style={{
-                        padding: '4px 12px', borderRadius: 20,
-                        fontSize: 12, fontWeight: 600,
-                        background: s.bg, color: s.color,
+                        padding: '3px 10px 3px 8px', borderRadius: 20,
+                        fontSize: 11.5, fontWeight: 600, display: 'inline-flex',
+                        alignItems: 'center', gap: 5,
+                        background: s.bg, color: s.color, border: `1px solid ${s.border}`,
                       }}>
+                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: s.dot, flexShrink: 0 }} />
                         {s.count} {s.label}
                       </span>
                     ))}
                     <span style={{
-                      padding: '4px 12px', borderRadius: 20,
-                      fontSize: 12, fontWeight: 700,
-                      background: '#f3f4f6', color: '#374151',
+                      padding: '3px 10px', borderRadius: 20,
+                      fontSize: 11.5, fontWeight: 700,
+                      background: theme.surfaceAlt, color: theme.textMid,
                     }}>
                       {completePct}% complete
                     </span>
@@ -507,18 +576,18 @@ export default function Documents() {
 
                 {/* Document checklist — table on desktop, cards on phone */}
                 <div style={{
-                  background: '#fff', border: '1px solid #e5e7eb',
+                  background: theme.white, border: `1px solid ${theme.border}`,
                   borderRadius: 12, overflow: 'hidden',
                 }}>
                   {!isMobile && (
                     <div style={{
-                      display: 'grid', gridTemplateColumns: '3fr 1fr 2fr 1.5fr',
+                      display: 'grid', gridTemplateColumns: PS_COLS,
                       padding: '10px 18px',
-                      background: '#f9fafb', borderBottom: '1px solid #e5e7eb',
+                      background: theme.pageBg, borderBottom: `1px solid ${theme.border}`,
                     }}>
                       {['Document', 'Status', 'Note', 'Actions'].map(h => (
                         <span key={h} style={{
-                          fontSize: 11, fontWeight: 600, color: '#9ca3af',
+                          fontSize: 11, fontWeight: 700, color: theme.textMuted,
                           textTransform: 'uppercase', letterSpacing: '0.05em',
                         }}>{h}</span>
                       ))}
@@ -526,7 +595,7 @@ export default function Documents() {
                   )}
 
                   {deduplicatedDocs.length === 0 && (
-                    <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
+                    <div style={{ padding: 40, textAlign: 'center', color: theme.textMuted, fontSize: 13 }}>
                       No documents found for this student.
                     </div>
                   )}
@@ -539,29 +608,33 @@ export default function Documents() {
                       return isMobile ? (
                         <div key={type} style={{
                           padding: '12px 16px', opacity: 0.45,
-                          borderBottom: i < DOC_TYPES.length - 1 ? '1px solid #f3f4f6' : 'none',
+                          borderBottom: i < DOC_TYPES.length - 1 ? `1px solid ${theme.surfaceAlt}` : 'none',
                         }}>
-                          <div style={{ fontSize: 13, color: '#374151', marginBottom: 4 }}>📋 {type}</div>
+                          <div style={{ fontSize: 13, color: theme.textMid, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <ClipboardList size={14} style={{ flexShrink: 0 }} /> {type}
+                          </div>
                           <span style={{
                             padding: '3px 10px', borderRadius: 20, fontSize: 11,
                             fontWeight: 600, display: 'inline-block',
-                            background: '#f3f4f6', color: '#9ca3af',
+                            background: theme.surfaceAlt, color: theme.textMuted,
                           }}>Not set up</span>
                         </div>
                       ) : (
                         <div key={type} style={{
-                          display: 'grid', gridTemplateColumns: '3fr 1fr 2fr 1.5fr',
+                          display: 'grid', gridTemplateColumns: PS_COLS,
                           padding: '14px 18px', alignItems: 'center',
-                          borderBottom: i < DOC_TYPES.length - 1 ? '1px solid #f3f4f6' : 'none',
+                          borderBottom: i < DOC_TYPES.length - 1 ? `1px solid ${theme.surfaceAlt}` : 'none',
                           opacity: 0.45,
                         }}>
-                          <div style={{ fontSize: 13, color: '#374151' }}>📋 {type}</div>
+                          <div style={{ fontSize: 13, color: theme.textMid, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <ClipboardList size={14} style={{ flexShrink: 0 }} /> {type}
+                          </div>
                           <span style={{
                             padding: '3px 10px', borderRadius: 20, fontSize: 11,
                             fontWeight: 600, display: 'inline-block',
-                            background: '#f3f4f6', color: '#9ca3af',
+                            background: theme.surfaceAlt, color: theme.textMuted,
                           }}>Not set up</span>
-                          <div style={{ fontSize: 12, color: '#9ca3af' }}>Run SQL to add</div>
+                          <div style={{ fontSize: 12, color: theme.textMuted }}>Run SQL to add</div>
                           <div />
                         </div>
                       )
@@ -573,100 +646,61 @@ export default function Documents() {
                         key={type}
                         style={{
                           padding: '14px 16px',
-                          borderBottom: i < DOC_TYPES.length - 1 ? '1px solid #f3f4f6' : 'none',
-                          background: doc.status === 'Verified' ? '#f0fdf4' : 'transparent',
+                          borderBottom: i < DOC_TYPES.length - 1 ? `1px solid ${theme.surfaceAlt}` : 'none',
+                          background: doc.status === 'Verified' ? theme.status.success.bg : 'transparent',
                           display: 'flex', flexDirection: 'column', gap: 6,
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                          <div style={{ fontSize: 13, fontWeight: 500, color: '#111827', display: 'flex', alignItems: 'flex-start', gap: 6, minWidth: 0 }}>
-                            <span>{doc.status === 'Verified' ? '✅' : doc.status === 'Received' ? '📄' : '📋'}</span>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: theme.textStrong, display: 'flex', alignItems: 'flex-start', gap: 6, minWidth: 0 }}>
+                            <DocStatusIcon status={doc.status} />
                             <span>{type}</span>
                           </div>
-                          <span style={{
-                            padding: '3px 10px', borderRadius: 20,
-                            fontSize: 11, fontWeight: 600, flexShrink: 0,
-                            background: statusStyle(doc.status).bg,
-                            color:      statusStyle(doc.status).color,
-                          }}>
-                            {doc.status}
-                          </span>
+                          <div style={{ flexShrink: 0 }}>
+                            <StatusBadge status={doc.status} />
+                          </div>
                         </div>
 
-                        <FileLink doc={doc} onDeleted={load} />
-
                         {doc.note && (
-                          <div style={{ fontSize: 12, color: '#9ca3af' }}>{doc.note}</div>
+                          <div style={{ fontSize: 12, color: theme.textMuted }}>{doc.note}</div>
                         )}
 
-                        <button
-                          onClick={() => openEdit(doc)}
-                          style={{
-                            alignSelf: 'flex-start',
-                            padding: '6px 14px',
-                            background: '#f3f4f6', border: '1px solid #e5e7eb',
-                            borderRadius: 6, fontSize: 12, fontWeight: 600,
-                            color: '#374151', cursor: 'pointer', fontFamily: 'inherit',
-                          }}
-                        >
-                          ✏️ Edit
-                        </button>
+                        <div style={{ marginTop: 2 }}>
+                          <DocActions doc={doc} onEdit={openEdit} onChanged={load} isMobile />
+                        </div>
                       </div>
                     ) : (
                       // ── Desktop row ──
                       <div
                         key={type}
                         style={{
-                          display: 'grid', gridTemplateColumns: '3fr 1fr 2fr 1.5fr',
+                          display: 'grid', gridTemplateColumns: PS_COLS,
                           padding: '14px 18px', alignItems: 'center',
-                          borderBottom: i < DOC_TYPES.length - 1 ? '1px solid #f3f4f6' : 'none',
-                          background: doc.status === 'Verified' ? '#f0fdf4' : 'transparent',
+                          borderBottom: i < DOC_TYPES.length - 1 ? `1px solid ${theme.surfaceAlt}` : 'none',
+                          background: doc.status === 'Verified' ? theme.status.success.bg : 'transparent',
                         }}
                         onMouseEnter={e => {
-                          if (doc.status !== 'Verified') e.currentTarget.style.background = '#f9fafb'
+                          if (doc.status !== 'Verified') e.currentTarget.style.background = theme.pageBg
                         }}
                         onMouseLeave={e => {
-                          e.currentTarget.style.background = doc.status === 'Verified' ? '#f0fdf4' : 'transparent'
+                          e.currentTarget.style.background = doc.status === 'Verified' ? theme.status.success.bg : 'transparent'
                         }}
                       >
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 500, color: '#111827', display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span>
-                              {doc.status === 'Verified' ? '✅'
-                                : doc.status === 'Received' ? '📄' : '📋'}
-                            </span>
-                            {type}
-                          </div>
-                          <FileLink doc={doc} onDeleted={load} />
+                        <div style={{ fontSize: 13, fontWeight: 500, color: theme.textStrong, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                          <DocStatusIcon status={doc.status} />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{type}</span>
                         </div>
 
-                        <span style={{
-                          padding: '3px 10px', borderRadius: 20,
-                          fontSize: 11, fontWeight: 600, display: 'inline-block',
-                          background: statusStyle(doc.status).bg,
-                          color:      statusStyle(doc.status).color,
-                        }}>
-                          {doc.status}
-                        </span>
+                        <StatusBadge status={doc.status} />
 
                         <div style={{
-                          fontSize: 12, color: '#9ca3af',
+                          fontSize: 12, color: theme.textMuted,
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }}>
                           {doc.note || '—'}
                         </div>
 
-                        <button
-                          onClick={() => openEdit(doc)}
-                          style={{
-                            padding: '5px 14px',
-                            background: '#f3f4f6', border: '1px solid #e5e7eb',
-                            borderRadius: 6, fontSize: 12, fontWeight: 600,
-                            color: '#374151', cursor: 'pointer', fontFamily: 'inherit',
-                          }}
-                        >
-                          ✏️ Edit
-                        </button>
+                        <DocActions doc={doc} onEdit={openEdit} onChanged={load} />
                       </div>
                     )
                   })}
@@ -686,17 +720,17 @@ export default function Documents() {
           <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 10, marginBottom: 14 }}>
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8,
-              background: '#fff', border: '1px solid #e5e7eb',
+              background: theme.white, border: `1px solid ${theme.border}`,
               borderRadius: 8, padding: '8px 14px', flex: 1,
             }}>
-              <span style={{ color: '#9ca3af' }}>🔍</span>
+              <Search size={16} style={{ color: theme.textMuted, flexShrink: 0 }} />
               <input
                 placeholder="Search by student name or document type..."
                 value={tableSearch}
                 onChange={e => setTableSearch(e.target.value)}
                 style={{
                   background: 'none', border: 'none', outline: 'none',
-                  fontSize: 13, color: '#374151', width: '100%', fontFamily: 'inherit',
+                  fontSize: 13, color: theme.textMid, width: '100%', fontFamily: 'inherit',
                 }}
               />
             </div>
@@ -704,9 +738,9 @@ export default function Documents() {
               value={tableFilter}
               onChange={e => setTableFilter(e.target.value)}
               style={{
-                background: '#fff', border: '1px solid #e5e7eb',
+                background: theme.white, border: `1px solid ${theme.border}`,
                 borderRadius: 8, padding: '8px 14px',
-                fontSize: 13, color: '#374151', outline: 'none', cursor: 'pointer',
+                fontSize: 13, color: theme.textMid, outline: 'none', cursor: 'pointer',
                 width: isMobile ? '100%' : 'auto',
               }}
             >
@@ -718,18 +752,18 @@ export default function Documents() {
           </div>
 
           <div style={{
-            background: '#fff', border: '1px solid #e5e7eb',
+            background: theme.white, border: `1px solid ${theme.border}`,
             borderRadius: 12, overflow: 'hidden',
           }}>
             {!isMobile && (
               <div style={{
-                display: 'grid', gridTemplateColumns: '2fr 2.5fr 1fr 2fr 1.2fr',
+                display: 'grid', gridTemplateColumns: ALL_COLS,
                 padding: '10px 18px',
-                background: '#f9fafb', borderBottom: '1px solid #e5e7eb',
+                background: theme.pageBg, borderBottom: `1px solid ${theme.border}`,
               }}>
                 {['Student', 'Document', 'Status', 'Note', 'Actions'].map(h => (
                   <span key={h} style={{
-                    fontSize: 11, fontWeight: 600, color: '#9ca3af',
+                    fontSize: 11, fontWeight: 700, color: theme.textMuted,
                     textTransform: 'uppercase', letterSpacing: '0.05em',
                   }}>{h}</span>
                 ))}
@@ -737,9 +771,11 @@ export default function Documents() {
             )}
 
             {deduplicatedAll.length === 0 && (
-              <div style={{ padding: 60, textAlign: 'center', color: '#9ca3af' }}>
-                <div style={{ fontSize: 36, marginBottom: 10 }}>📂</div>
-                <div style={{ fontSize: 14, color: '#6b7280' }}>No documents found</div>
+              <div style={{ padding: 60, textAlign: 'center', color: theme.textMuted }}>
+                <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center' }}>
+                  <FolderOpen size={36} color={theme.textMuted} />
+                </div>
+                <div style={{ fontSize: 14, color: theme.textLight }}>No documents found</div>
               </div>
             )}
 
@@ -748,107 +784,69 @@ export default function Documents() {
                 // ── Mobile card ──
                 <div key={doc.id} style={{
                   padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 6,
-                  borderBottom: i < deduplicatedAll.length - 1 ? '1px solid #f3f4f6' : 'none',
-                  background: doc.status === 'Verified' ? '#f0fdf4' : 'transparent',
+                  borderBottom: i < deduplicatedAll.length - 1 ? `1px solid ${theme.surfaceAlt}` : 'none',
+                  background: doc.status === 'Verified' ? theme.status.success.bg : 'transparent',
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{doc.student_name}</div>
-                      <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>{doc.student_email || ''}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: theme.textStrong }}>{doc.student_name}</div>
+                      <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 1 }}>{doc.student_email || ''}</div>
                     </div>
-                    <span style={{
-                      padding: '3px 10px', borderRadius: 20, flexShrink: 0,
-                      fontSize: 11, fontWeight: 600,
-                      background: statusStyle(doc.status).bg,
-                      color:      statusStyle(doc.status).color,
-                    }}>
-                      {doc.status}
-                    </span>
+                    <div style={{ flexShrink: 0 }}>
+                      <StatusBadge status={doc.status} />
+                    </div>
                   </div>
 
-                  <div style={{ fontSize: 13, color: '#374151', display: 'flex', alignItems: 'flex-start', gap: 5 }}>
-                    <span>{doc.status === 'Verified' ? '✅' : doc.status === 'Received' ? '📄' : '📋'}</span>
+                  <div style={{ fontSize: 13, color: theme.textMid, display: 'flex', alignItems: 'flex-start', gap: 5 }}>
+                    <DocStatusIcon status={doc.status} />
                     <span>{doc.doc_type}</span>
                   </div>
-                  <FileLink doc={doc} onDeleted={load} />
 
-                  {doc.note && <div style={{ fontSize: 12, color: '#9ca3af' }}>{doc.note}</div>}
+                  {doc.note && <div style={{ fontSize: 12, color: theme.textMuted }}>{doc.note}</div>}
 
-                  <button
-                    onClick={() => openEdit(doc)}
-                    style={{
-                      alignSelf: 'flex-start',
-                      padding: '6px 14px',
-                      background: '#f3f4f6', border: '1px solid #e5e7eb',
-                      borderRadius: 6, fontSize: 12, fontWeight: 600,
-                      color: '#374151', cursor: 'pointer', fontFamily: 'inherit',
-                    }}
-                  >
-                    ✏️ Edit
-                  </button>
+                  <div style={{ marginTop: 2 }}>
+                    <DocActions doc={doc} onEdit={openEdit} onChanged={load} isMobile />
+                  </div>
                 </div>
               ) : (
                 // ── Desktop row ──
                 <div key={doc.id} style={{
-                  display: 'grid', gridTemplateColumns: '2fr 2.5fr 1fr 2fr 1.2fr',
+                  display: 'grid', gridTemplateColumns: ALL_COLS,
                   padding: '13px 18px', alignItems: 'center',
-                  borderBottom: i < deduplicatedAll.length - 1 ? '1px solid #f3f4f6' : 'none',
-                  background: doc.status === 'Verified' ? '#f0fdf4' : 'transparent',
+                  borderBottom: i < deduplicatedAll.length - 1 ? `1px solid ${theme.surfaceAlt}` : 'none',
+                  background: doc.status === 'Verified' ? theme.status.success.bg : 'transparent',
                 }}
                   onMouseEnter={e => {
-                    if (doc.status !== 'Verified') e.currentTarget.style.background = '#f9fafb'
+                    if (doc.status !== 'Verified') e.currentTarget.style.background = theme.pageBg
                   }}
                   onMouseLeave={e => {
-                    e.currentTarget.style.background = doc.status === 'Verified' ? '#f0fdf4' : 'transparent'
+                    e.currentTarget.style.background = doc.status === 'Verified' ? theme.status.success.bg : 'transparent'
                   }}
                 >
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: theme.textStrong }}>
                       {doc.student_name}
                     </div>
-                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>
+                    <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 1 }}>
                       {doc.student_email || ''}
                     </div>
                   </div>
 
-                  <div>
-                    <div style={{ fontSize: 13, color: '#374151', display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span>
-                        {doc.status === 'Verified' ? '✅'
-                          : doc.status === 'Received' ? '📄' : '📋'}
-                      </span>
-                      {doc.doc_type}
-                    </div>
-                    <FileLink doc={doc} onDeleted={load} />
+                  <div style={{ fontSize: 13, color: theme.textMid, display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                    <DocStatusIcon status={doc.status} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.doc_type}</span>
                   </div>
 
-                  <span style={{
-                    padding: '3px 10px', borderRadius: 20, display: 'inline-block',
-                    fontSize: 11, fontWeight: 600,
-                    background: statusStyle(doc.status).bg,
-                    color:      statusStyle(doc.status).color,
-                  }}>
-                    {doc.status}
-                  </span>
+                  <StatusBadge status={doc.status} />
 
                   <div style={{
-                    fontSize: 12, color: '#9ca3af',
+                    fontSize: 12, color: theme.textMuted,
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}>
                     {doc.note || '—'}
                   </div>
 
-                  <button
-                    onClick={() => openEdit(doc)}
-                    style={{
-                      padding: '5px 14px',
-                      background: '#f3f4f6', border: '1px solid #e5e7eb',
-                      borderRadius: 6, fontSize: 12, fontWeight: 600,
-                      color: '#374151', cursor: 'pointer', fontFamily: 'inherit',
-                    }}
-                  >
-                    ✏️ Edit
-                  </button>
+                  <DocActions doc={doc} onEdit={openEdit} onChanged={load} />
                 </div>
               )
             ))}
@@ -870,7 +868,7 @@ export default function Documents() {
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              background: '#fff', border: '1px solid #e5e7eb',
+              background: theme.white, border: `1px solid ${theme.border}`,
               borderRadius: isMobile ? '14px 14px 0 0' : 14,
               padding: isMobile ? 20 : 28,
               width: isMobile ? '100%' : 440,
@@ -880,11 +878,11 @@ export default function Documents() {
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: 0 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: theme.textStrong, margin: 0 }}>
                 Add Student Documents
               </h3>
               <button onClick={() => setShowAddStudent(false)} style={{
-                background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#9ca3af',
+                background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textMuted,
               }}>✕</button>
             </div>
 
@@ -902,14 +900,17 @@ export default function Documents() {
                   </option>
                 ))}
               </select>
-              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>
-                ℹ️ Only applicants who don't already have a document list are shown here —
-                that's what prevents duplicate lists, even for two students sharing a name.
+              <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 4, display: 'flex', gap: 4 }}>
+                <Info size={12} style={{ flexShrink: 0, marginTop: 1 }} />
+                <span>
+                  Only applicants who don't already have a document list are shown here —
+                  that's what prevents duplicate lists, even for two students sharing a name.
+                </span>
               </div>
               {applicantsWithoutDocs.length === 0 && (
                 <div style={{
-                  marginTop: 8, padding: '8px 12px', background: '#fef9c3',
-                  border: '1px solid #fde68a', borderRadius: 7, fontSize: 12, color: '#92400e',
+                  marginTop: 8, padding: '8px 12px', background: theme.status.warning.bg,
+                  border: `1px solid ${theme.status.warning.border}`, borderRadius: 7, fontSize: 12, color: theme.status.warning.text,
                 }}>
                   Every applicant already has a document list. Add a new applicant first
                   from the Applications page.
@@ -919,21 +920,21 @@ export default function Documents() {
 
             {/* Preview all 12 doc types */}
             <div style={{
-              background: '#f9fafb', border: '1px solid #e5e7eb',
+              background: theme.pageBg, border: `1px solid ${theme.border}`,
               borderRadius: 8, padding: '10px 14px', marginBottom: 20,
             }}>
               <div style={{
-                fontSize: 11, fontWeight: 700, color: '#6b7280',
+                fontSize: 11, fontWeight: 700, color: theme.textLight,
                 marginBottom: 8, textTransform: 'uppercase',
               }}>
                 Will create tracking for ({DOC_TYPES.length} documents):
               </div>
               {DOC_TYPES.map(t => (
                 <div key={t} style={{
-                  fontSize: 12, color: '#374151', padding: '3px 0',
+                  fontSize: 12, color: theme.textMid, padding: '3px 0',
                   display: 'flex', gap: 6,
                 }}>
-                  <span style={{ color: '#b91c1c' }}>●</span> {t}
+                  <span style={{ color: theme.status.danger.text }}>●</span> {t}
                 </div>
               ))}
             </div>
@@ -944,16 +945,16 @@ export default function Documents() {
               justifyContent: 'flex-end',
             }}>
               <button onClick={() => setShowAddStudent(false)} style={{
-                padding: '9px 18px', background: '#f9fafb',
-                border: '1px solid #e5e7eb', borderRadius: 8,
-                fontSize: 13, color: '#6b7280', cursor: 'pointer', fontFamily: 'inherit',
+                padding: '9px 18px', background: theme.pageBg,
+                border: `1px solid ${theme.border}`, borderRadius: 8,
+                fontSize: 13, color: theme.textLight, cursor: 'pointer', fontFamily: 'inherit',
                 width: isMobile ? '100%' : 'auto',
               }}>Cancel</button>
               <button onClick={addStudentDocs} disabled={adding || !addApplicantId} style={{
                 padding: '9px 18px',
-                background: (adding || !addApplicantId) ? '#9ca3af' : (theme.primary || '#1a56db'),
+                background: (adding || !addApplicantId) ? theme.textMuted : (theme.primary || theme.primary),
                 border: 'none', borderRadius: 8,
-                fontSize: 13, fontWeight: 600, color: '#fff',
+                fontSize: 13, fontWeight: 600, color: theme.white,
                 cursor: (adding || !addApplicantId) ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
                 width: isMobile ? '100%' : 'auto',
               }}>
@@ -978,7 +979,7 @@ export default function Documents() {
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              background: '#fff', border: '1px solid #e5e7eb',
+              background: theme.white, border: `1px solid ${theme.border}`,
               borderRadius: isMobile ? '14px 14px 0 0' : 14,
               padding: isMobile ? 20 : 28,
               width: isMobile ? '100%' : 440,
@@ -988,27 +989,27 @@ export default function Documents() {
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: 0 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: theme.textStrong, margin: 0 }}>
                 Update Document
               </h3>
               <button onClick={() => setEditDoc(null)} style={{
-                background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#9ca3af',
+                background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textMuted,
               }}>✕</button>
             </div>
 
             {/* Document info */}
             <div style={{
-              background: '#f9fafb', borderRadius: 8,
+              background: theme.pageBg, borderRadius: 8,
               padding: '10px 14px', marginBottom: 18,
             }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: theme.textStrong }}>
                 {editDoc.doc_type}
               </div>
-              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+              <div style={{ fontSize: 12, color: theme.textLight, marginTop: 2, marginBottom: editDoc.file_url ? 10 : 0 }}>
                 Student: {editDoc.student_name} {editDoc.student_email ? `(${editDoc.student_email})` : ''}
               </div>
-              {/* File link with delete — admin can always delete regardless of status */}
-              <FileLink doc={editDoc} onDeleted={() => { setEditDoc(null); load() }} />
+              {/* View / delete the current file — admin can delete regardless of status */}
+              <DocActions doc={editDoc} onChanged={() => { setEditDoc(null); load() }} />
             </div>
 
             {/* Status picker */}
@@ -1024,9 +1025,9 @@ export default function Documents() {
                       fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
                       border: editStatus === s
                         ? `2px solid ${statusStyle(s).color}`
-                        : '2px solid #e5e7eb',
-                      background: editStatus === s ? statusStyle(s).bg : '#f9fafb',
-                      color: editStatus === s ? statusStyle(s).color : '#6b7280',
+                        : `2px solid ${theme.border}`,
+                      background: editStatus === s ? statusStyle(s).bg : theme.pageBg,
+                      color: editStatus === s ? statusStyle(s).color : theme.textLight,
                     }}
                   >
                     {s}
@@ -1054,10 +1055,10 @@ export default function Documents() {
                 type="file"
                 accept=".pdf,.jpg,.jpeg,.png,.webp"
                 onChange={e => setEditFile(e.target.files[0] || null)}
-                style={{ fontSize: 13, color: '#374151' }}
+                style={{ fontSize: 13, color: theme.textMid }}
               />
               {editFile && (
-                <div style={{ fontSize: 12, color: '#16a34a', marginTop: 5 }}>
+                <div style={{ fontSize: 12, color: theme.status.success.main, marginTop: 5 }}>
                   ✓ {editFile.name}
                 </div>
               )}
@@ -1069,16 +1070,16 @@ export default function Documents() {
               justifyContent: 'flex-end',
             }}>
               <button onClick={() => setEditDoc(null)} style={{
-                padding: '9px 18px', background: '#f9fafb',
-                border: '1px solid #e5e7eb', borderRadius: 8,
-                fontSize: 13, color: '#6b7280', cursor: 'pointer', fontFamily: 'inherit',
+                padding: '9px 18px', background: theme.pageBg,
+                border: `1px solid ${theme.border}`, borderRadius: 8,
+                fontSize: 13, color: theme.textLight, cursor: 'pointer', fontFamily: 'inherit',
                 width: isMobile ? '100%' : 'auto',
               }}>Cancel</button>
               <button onClick={saveEdit} disabled={saving} style={{
                 padding: '9px 18px',
-                background: saving ? '#9ca3af' : '#16a34a',
+                background: saving ? theme.textMuted : theme.status.success.main,
                 border: 'none', borderRadius: 8,
-                fontSize: 13, fontWeight: 600, color: '#fff',
+                fontSize: 13, fontWeight: 600, color: theme.white,
                 cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
                 width: isMobile ? '100%' : 'auto',
               }}>

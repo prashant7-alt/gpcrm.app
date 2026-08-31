@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import theme from '../../theme'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import StudentLayout from './StudentLayout'
@@ -36,19 +37,19 @@ const SPECIAL_STATUSES = {
     Icon: Clock,
     title: 'Pending Review',
     desc: 'Your application is under review. We will update you as soon as a decision is made.',
-    bg: '#fffbeb', border: '#fde68a', labelColor: '#a16207', textColor: '#92400e', iconColor: '#a16207',
+    bg: theme.status.warning.bg, border: theme.status.warning.border, labelColor: theme.status.warning.text, textColor: theme.status.warning.text, iconColor: theme.status.warning.text,
   },
   Approved: {
     Icon: CheckCircle2,
     title: 'Approved',
     desc: 'Great news — your application has been approved! Our team will reach out with next steps.',
-    bg: '#f0fdf4', border: '#bbf7d0', labelColor: '#15803d', textColor: '#166534', iconColor: '#15803d',
+    bg: theme.status.success.bg, border: theme.status.success.border, labelColor: theme.status.success.text, textColor: theme.status.success.text, iconColor: theme.status.success.text,
   },
   Rejected: {
     Icon: XCircle,
     title: 'Application Rejected',
     desc: 'Unfortunately your application was not approved. Please contact Global Pathway to discuss next steps.',
-    bg: '#fef2f2', border: '#fecaca', labelColor: '#b91c1c', textColor: '#991b1b', iconColor: '#b91c1c',
+    bg: theme.status.danger.bg, border: theme.status.danger.border, labelColor: theme.status.danger.text, textColor: theme.status.danger.text, iconColor: theme.status.danger.text,
   },
 }
 
@@ -65,12 +66,12 @@ export default function StudentVisaStatus() {
   useEffect(() => {
     const stored = localStorage.getItem('profile')
     if (!stored) {
-      navigate('/login')
+      navigate('/student-login')
       return
     }
     const parsed = JSON.parse(stored)
     if (!parsed?.id) {
-      navigate('/login')
+      navigate('/student-login')
       return
     }
     setProfile(parsed)
@@ -164,26 +165,26 @@ export default function StudentVisaStatus() {
       <div style={{ maxWidth: 700 }}>
 
         <div style={{ marginBottom: isMobile ? 20 : 28 }}>
-          <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>
+          <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: theme.textStrong, margin: '0 0 4px' }}>
             Visa Pipeline
           </h1>
-          <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
+          <p style={{ fontSize: 13, color: theme.textLight, margin: 0 }}>
             Track your application progress in real time
           </p>
         </div>
 
         {loading && (
-          <p style={{ color: '#6b7280', fontSize: 13 }}>Loading your status...</p>
+          <p style={{ color: theme.textLight, fontSize: 13 }}>Loading your status...</p>
         )}
 
         {!loading && loadError && (
           <div style={{
-            background: '#fef2f2', border: '1px solid #fecaca',
+            background: theme.status.danger.bg, border: `1px solid ${theme.status.danger.border}`,
             borderRadius: 12, padding: isMobile ? 16 : 24, marginBottom: 16,
-            fontSize: 13, color: '#991b1b',
+            fontSize: 13, color: theme.status.danger.text,
           }}>
             <strong>Couldn't load your application:</strong> {loadError}
-            <div style={{ marginTop: 6, color: '#b91c1c' }}>
+            <div style={{ marginTop: 6, color: theme.status.danger.text }}>
               This is usually a database permissions (RLS) issue, not a bug in the page itself.
               Check the browser console for details.
             </div>
@@ -192,14 +193,14 @@ export default function StudentVisaStatus() {
 
         {!loading && !applicant && !loadError && (
           <div style={{
-            background: '#fff', border: '1px solid #e5e7eb',
+            background: theme.white, border: `1px solid ${theme.border}`,
             borderRadius: 12, padding: isMobile ? '48px 20px' : 60, textAlign: 'center',
           }}>
-            <ClipboardList size={44} color="#d1d5db" style={{ marginBottom: 14 }} />
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 6 }}>
+            <ClipboardList size={44} color={theme.inputBorder} style={{ marginBottom: 14 }} />
+            <div style={{ fontSize: 16, fontWeight: 700, color: theme.textStrong, marginBottom: 6 }}>
               No application found
             </div>
-            <div style={{ fontSize: 13, color: '#6b7280' }}>
+            <div style={{ fontSize: 13, color: theme.textLight }}>
               Your account is not linked to any application yet.
               Please contact Global Pathway to get started.
             </div>
@@ -227,7 +228,7 @@ export default function StudentVisaStatus() {
               }}>
                 Current Status
               </div>
-              <div style={{ fontSize: isMobile ? 16 : 18, fontWeight: 700, color: '#111827' }}>
+              <div style={{ fontSize: isMobile ? 16 : 18, fontWeight: 700, color: theme.textStrong }}>
                 {specialInfo.title}
               </div>
               <div style={{ fontSize: 13, color: specialInfo.textColor, marginTop: 4 }}>
@@ -242,8 +243,8 @@ export default function StudentVisaStatus() {
             {/* Pipeline banner — only for statuses that are actual pipeline stages */}
             {!isSpecial && (
               <div style={{
-                background: activeIndex === STAGES.length - 1 ? '#f0fdf4' : '#eff6ff',
-                border: `1px solid ${activeIndex === STAGES.length - 1 ? '#bbf7d0' : '#bfdbfe'}`,
+                background: activeIndex === STAGES.length - 1 ? theme.status.success.bg : theme.status.info.bg,
+                border: `1px solid ${activeIndex === STAGES.length - 1 ? theme.status.success.border : theme.status.info.border}`,
                 borderRadius: 12,
                 padding: isMobile ? '14px 16px' : '16px 20px',
                 marginBottom: isMobile ? 20 : 28,
@@ -257,7 +258,7 @@ export default function StudentVisaStatus() {
                   return (
                     <ActiveIcon
                       size={isMobile ? 28 : 34}
-                      color={activeIndex === STAGES.length - 1 ? '#15803d' : '#1d4ed8'}
+                      color={activeIndex === STAGES.length - 1 ? theme.status.success.text : theme.primary}
                       strokeWidth={1.75}
                     />
                   )
@@ -265,15 +266,15 @@ export default function StudentVisaStatus() {
                 <div>
                   <div style={{
                     fontSize: 11, fontWeight: 600,
-                    color: activeIndex === STAGES.length - 1 ? '#15803d' : '#1d4ed8',
+                    color: activeIndex === STAGES.length - 1 ? theme.status.success.text : theme.primary,
                     textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4,
                   }}>
                     Current Status
                   </div>
-                  <div style={{ fontSize: isMobile ? 16 : 18, fontWeight: 700, color: '#111827' }}>
+                  <div style={{ fontSize: isMobile ? 16 : 18, fontWeight: 700, color: theme.textStrong }}>
                     {STAGES[activeIndex]?.label}
                   </div>
-                  <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
+                  <div style={{ fontSize: 13, color: theme.textLight, marginTop: 4 }}>
                     {STAGES[activeIndex]?.desc}
                   </div>
                 </div>
@@ -283,12 +284,12 @@ export default function StudentVisaStatus() {
             {/* Vertical pipeline steps — always shown so students can see the full journey,
                 even while in a special (Pending/Approved/Rejected) state */}
             <div style={{
-              background: '#fff', border: '1px solid #e5e7eb',
+              background: theme.white, border: `1px solid ${theme.border}`,
               borderRadius: 12, padding: isMobile ? '18px 16px' : '24px 28px',
               opacity: isSpecial ? 0.6 : 1,
             }}>
               {isSpecial && (
-                <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 16 }}>
+                <div style={{ fontSize: 12, color: theme.textMuted, marginBottom: 16 }}>
                   Pipeline progress will resume once your application moves past the {applicant.status.toLowerCase()} stage.
                 </div>
               )}
@@ -304,14 +305,14 @@ export default function StudentVisaStatus() {
                         width: isMobile ? 34 : 40, height: isMobile ? 34 : 40, borderRadius: '50%',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         flexShrink: 0, zIndex: 1,
-                        background: isDone ? '#dcfce7' : isActive ? '#dbeafe' : '#f3f4f6',
-                        border: `2px solid ${isDone ? '#16a34a' : isActive ? '#2563eb' : '#e5e7eb'}`,
+                        background: isDone ? theme.status.success.bg : isActive ? theme.status.info.bg : theme.surfaceAlt,
+                        border: `2px solid ${isDone ? theme.status.success.main : isActive ? theme.primary : theme.border}`,
                       }}>
                         {isDone
-                          ? <Check size={isMobile ? 17 : 20} color="#16a34a" strokeWidth={2.5} />
+                          ? <Check size={isMobile ? 17 : 20} color={theme.status.success.main} strokeWidth={2.5} />
                           : <StageIcon
                               size={isMobile ? 17 : 20}
-                              color={isActive ? '#2563eb' : '#9ca3af'}
+                              color={isActive ? theme.primary : theme.textMuted}
                               strokeWidth={1.75}
                             />
                         }
@@ -319,7 +320,7 @@ export default function StudentVisaStatus() {
                       {i < STAGES.length - 1 && (
                         <div style={{
                           width: 2, flex: 1, minHeight: 24,
-                          background: isDone ? '#16a34a' : '#e5e7eb',
+                          background: isDone ? theme.status.success.main : theme.border,
                           margin: '4px 0',
                         }} />
                       )}
@@ -331,14 +332,14 @@ export default function StudentVisaStatus() {
                       <div style={{
                         fontSize: 14,
                         fontWeight: isActive ? 700 : 500,
-                        color: isDone ? '#15803d' : isActive ? '#1d4ed8' : '#9ca3af',
+                        color: isDone ? theme.status.success.text : isActive ? theme.primary : theme.textMuted,
                         marginBottom: 3,
                       }}>
                         {stage.label}
                         {isDone && (
                           <span style={{
                             marginLeft: 8, fontSize: 11,
-                            background: '#dcfce7', color: '#15803d',
+                            background: theme.status.success.bg, color: theme.status.success.text,
                             padding: '2px 8px', borderRadius: 20, fontWeight: 600,
                             display: 'inline-block', marginTop: isMobile ? 4 : 0,
                           }}>Completed</span>
@@ -346,13 +347,13 @@ export default function StudentVisaStatus() {
                         {isActive && (
                           <span style={{
                             marginLeft: 8, fontSize: 11,
-                            background: '#dbeafe', color: '#1d4ed8',
+                            background: theme.status.info.bg, color: theme.primary,
                             padding: '2px 8px', borderRadius: 20, fontWeight: 600,
                             display: 'inline-block', marginTop: isMobile ? 4 : 0,
                           }}>Current</span>
                         )}
                       </div>
-                      <div style={{ fontSize: 12, color: isPending ? '#d1d5db' : '#6b7280' }}>
+                      <div style={{ fontSize: 12, color: isPending ? theme.inputBorder : theme.textLight }}>
                         {stage.desc}
                       </div>
                     </div>
@@ -363,11 +364,11 @@ export default function StudentVisaStatus() {
 
             {/* Applicant details */}
             <div style={{
-              background: '#fff', border: '1px solid #e5e7eb',
+              background: theme.white, border: `1px solid ${theme.border}`,
               borderRadius: 12, padding: isMobile ? '14px 16px' : '16px 20px', marginTop: 16,
             }}>
               <div style={{
-                fontSize: 12, fontWeight: 600, color: '#9ca3af',
+                fontSize: 12, fontWeight: 600, color: theme.textMuted,
                 textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12,
               }}>
                 Your Application Details
@@ -380,10 +381,10 @@ export default function StudentVisaStatus() {
                   { label: 'Email',   value: applicant.email   },
                 ].map(row => (
                   <div key={row.label} style={{ display: 'flex', gap: 12, fontSize: 13 }}>
-                    <span style={{ width: 70, color: '#6b7280', fontWeight: 600, flexShrink: 0 }}>
+                    <span style={{ width: 70, color: theme.textLight, fontWeight: 600, flexShrink: 0 }}>
                       {row.label}
                     </span>
-                    <span style={{ color: '#111827', wordBreak: 'break-word', minWidth: 0 }}>
+                    <span style={{ color: theme.textStrong, wordBreak: 'break-word', minWidth: 0 }}>
                       {row.value || '—'}
                     </span>
                   </div>
@@ -393,11 +394,11 @@ export default function StudentVisaStatus() {
 
             <div style={{
               marginTop: 14, padding: '10px 14px',
-              background: '#fffbeb', border: '1px solid #fde68a',
-              borderRadius: 8, fontSize: 12, color: '#92400e',
+              background: theme.status.warning.bg, border: `1px solid ${theme.status.warning.border}`,
+              borderRadius: 8, fontSize: 12, color: theme.status.warning.text,
               display: 'flex', alignItems: 'center', gap: 8,
             }}>
-              <Clock size={14} color="#92400e" strokeWidth={2} />
+              <Clock size={14} color={theme.status.warning.text} strokeWidth={2} />
               This page updates automatically when your advisor changes your status.
             </div>
           </>

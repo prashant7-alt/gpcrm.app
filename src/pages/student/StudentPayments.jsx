@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../supabase'
+import { supabase, functionHeaders } from '../../supabase'
 import StudentLayout from './StudentLayout'
+import theme from '../../theme'
+import { statusChip } from '../../lib/statusColors'
+import { openReceipt } from '../../lib/receipt'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import {
   Receipt,
@@ -16,9 +20,11 @@ import {
   Check,
   ArrowRight,
   ArrowLeft,
+  Printer,
 } from 'lucide-react'
 
-const QR_SRC = '/qr.png'
+const QR_SRC = '/qr.png'            // generic / Khalti
+const QR_SRC_ESEWA = '/qr-esewa.png' // eSewa merchant QR
 
 const SUPABASE_URL  = 'https://txwpmjtixdbebnbqorju.supabase.co'
 const MERCHANT_CODE = 'EPAYTEST'
@@ -33,27 +39,23 @@ const DIGITAL_METHODS = ['eSewa', 'Khalti']
 
 // Icon + color per payment method, used both in the picker and the pay-now buttons
 const METHOD_META = {
-  Cash:   { Icon: Banknote, color: '#374151' },
+  Cash:   { Icon: Banknote, color: theme.textMid },
   eSewa:  { Icon: Circle,   color: '#60BB46' },
   Khalti: { Icon: Circle,   color: '#5C2D91' },
 }
 
-const statusStyle = (s) => {
-  if (s === 'paid')     return { bg: '#dcfce7', color: '#15803d' }
-  if (s === 'pending')  return { bg: '#fef9c3', color: '#a16207' }
-  if (s === 'rejected') return { bg: '#fee2e2', color: '#b91c1c' }
-  return                       { bg: '#f3f4f6', color: '#6b7280' }
-}
+// Same shared status colours as the staff Payments page.
+const statusStyle = (s) => statusChip(s || 'pending')
 
 const inputStyle = {
   width: '100%', padding: '9px 12px',
-  border: '1px solid #d1d5db', borderRadius: 8,
-  fontSize: 13, color: '#111827', outline: 'none',
-  fontFamily: 'inherit', boxSizing: 'border-box', background: '#fff',
+  border: `1px solid ${theme.inputBorder}`, borderRadius: 8,
+  fontSize: 13, color: theme.textStrong, outline: 'none',
+  fontFamily: 'inherit', boxSizing: 'border-box', background: theme.white,
 }
 const labelStyle = {
   display: 'block', fontSize: 11, fontWeight: 600,
-  color: '#6b7280', textTransform: 'uppercase', marginBottom: 5,
+  color: theme.textLight, textTransform: 'uppercase', marginBottom: 5,
 }
 
 export default function StudentPayments() {
@@ -74,9 +76,23 @@ export default function StudentPayments() {
   const [qrLoadError, setQrLoadError] = useState(false)
 
   useEffect(() => {
-    if (!profile.id) { navigate('/login'); return }
+    if (!profile.id) { navigate('/student-login'); return }
     load()
   }, [])
+
+  // Realtime — when a counsellor confirms a payment, the badge here flips to
+  // "Paid" on its own. No refresh needed.
+  useEffect(() => {
+    if (!profile.email) return
+    const channel = supabase
+      .channel('student-payments-' + profile.email)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'payments',
+        filter: `student_email=eq.${profile.email}`,
+      }, () => load())
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [profile.email])
 
   async function load() {
     setLoading(true)
@@ -141,7 +157,7 @@ export default function StudentPayments() {
 
       const sigRes = await fetch(`${SUPABASE_URL}/functions/v1/esewa-sign`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await functionHeaders(),
         body: JSON.stringify({
           total_amount:     amount,
           transaction_uuid: transactionUuid,
@@ -203,7 +219,7 @@ export default function StudentPayments() {
 
       const res = await fetch(`${SUPABASE_URL}/functions/v1/khalti-initiate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await functionHeaders(),
         body: JSON.stringify({
           payment_id:   createdId,
           amount:       amountPaisa,
@@ -232,14 +248,16 @@ export default function StudentPayments() {
   async function submitReference() {
     if (!form.reference.trim()) return alert('Enter your transaction reference number')
     setSaving(true)
-    await supabase
+    const ref = form.reference.trim()
+    const { error } = await supabase
       .from('payments')
-      .update({ reference: form.reference.trim() })
+      .update({ reference: ref })
       .eq('id', createdId)
     setSaving(false)
+    if (error) { alert('Could not submit reference: ' + error.message); return }
+    setPayments(prev => prev.map(p => (p.id === createdId ? { ...p, reference: ref } : p)))
     alert('Reference submitted! Admin will verify and confirm your payment.')
     resetModal()
-    load()
   }
 
   function resetModal() {
@@ -254,7 +272,7 @@ export default function StudentPayments() {
     .reduce((s, p) => s + (p.amount || 0), 0)
   const totalPending = payments.filter(p => p.status === 'pending').length
 
-  const tableCols = '1.5fr 1fr 1.5fr 1fr 1fr 1.5fr'
+  const tableCols = '1.4fr 0.9fr 1.05fr 0.95fr 0.95fr 1.15fr 96px'
 
   return (
     <StudentLayout>
@@ -270,19 +288,19 @@ export default function StudentPayments() {
           marginBottom: 24,
         }}>
           <div>
-            <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>
+            <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: theme.textStrong, margin: '0 0 4px' }}>
               My Payments
             </h1>
-            <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
+            <p style={{ fontSize: 13, color: theme.textLight, margin: 0 }}>
               View your payment history and request a new payment
             </p>
           </div>
           <button
             onClick={() => setShowModal(true)}
             style={{
-              padding: '9px 18px', background: '#16a34a',
+              padding: '9px 18px', background: theme.primary,
               border: 'none', borderRadius: 8,
-              fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer',
+              fontSize: 13, fontWeight: 600, color: theme.white, cursor: 'pointer',
               fontFamily: 'inherit',
               width: isMobile ? '100%' : 'auto',
             }}
@@ -298,12 +316,12 @@ export default function StudentPayments() {
           gap: isMobile ? 10 : 14, marginBottom: 24,
         }}>
           {[
-            { label: 'Total Payments', value: payments.length,                    bg: '#eff6ff', Icon: Receipt,      iconColor: '#1d4ed8' },
-            { label: 'Amount Paid',    value: `Rs ${totalPaid.toLocaleString()}`,  bg: '#f0fdf4', Icon: CheckCircle2, iconColor: '#16a34a' },
-            { label: 'Pending',        value: totalPending,                        bg: '#fefce8', Icon: Hourglass,    iconColor: '#a16207' },
+            { label: 'Total Payments', value: payments.length,                    bg: theme.status.info.bg,    Icon: Receipt,      iconColor: theme.status.info.text },
+            { label: 'Amount Paid',    value: `Rs ${totalPaid.toLocaleString()}`,  bg: theme.status.success.bg, Icon: CheckCircle2, iconColor: theme.status.success.main },
+            { label: 'Pending',        value: totalPending,                        bg: theme.status.warning.bg, Icon: Hourglass,    iconColor: theme.status.warning.text },
           ].map(c => (
             <div key={c.label} style={{
-              background: '#fff', border: '1px solid #e5e7eb',
+              background: theme.white, border: `1px solid ${theme.border}`,
               borderRadius: 10, padding: '16px 18px',
               display: 'flex', alignItems: 'center', gap: 14,
             }}>
@@ -316,8 +334,8 @@ export default function StudentPayments() {
                 <c.Icon size={20} color={c.iconColor} strokeWidth={1.75} />
               </div>
               <div>
-                <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 3 }}>{c.label}</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: '#111827', lineHeight: 1 }}>
+                <div style={{ fontSize: 11, color: theme.textLight, marginBottom: 3 }}>{c.label}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: theme.textStrong, lineHeight: 1 }}>
                   {c.value}
                 </div>
               </div>
@@ -327,7 +345,7 @@ export default function StudentPayments() {
 
         {/* ── PAYMENTS TABLE / CARDS ── */}
         <div style={{
-          background: '#fff', border: '1px solid #e5e7eb',
+          background: theme.white, border: `1px solid ${theme.border}`,
           borderRadius: 12, overflow: 'hidden',
         }}>
           {!isMobile && (
@@ -335,11 +353,11 @@ export default function StudentPayments() {
               display: 'grid',
               gridTemplateColumns: tableCols,
               padding: '10px 18px',
-              background: '#f9fafb', borderBottom: '1px solid #e5e7eb',
+              background: theme.pageBg, borderBottom: `1px solid ${theme.border}`,
             }}>
-              {['Type', 'Amount', 'Method', 'Status', 'Date', 'Reference'].map(h => (
-                <span key={h} style={{
-                  fontSize: 11, fontWeight: 600, color: '#9ca3af',
+              {['Type', 'Amount', 'Method', 'Status', 'Date', 'Reference', 'Receipt'].map((h, hi) => (
+                <span key={h || hi} style={{
+                  fontSize: 11, fontWeight: 700, color: theme.textMuted,
                   textTransform: 'uppercase', letterSpacing: '0.05em',
                 }}>{h}</span>
               ))}
@@ -347,13 +365,13 @@ export default function StudentPayments() {
           )}
 
           {loading && (
-            <p style={{ padding: 24, fontSize: 13, color: '#6b7280' }}>Loading...</p>
+            <p style={{ padding: 24, fontSize: 13, color: theme.textLight }}>Loading...</p>
           )}
 
           {!loading && payments.length === 0 && (
-            <div style={{ padding: 60, textAlign: 'center', color: '#9ca3af' }}>
-              <CreditCard size={40} color="#d1d5db" style={{ marginBottom: 10 }} />
-              <div style={{ fontSize: 14, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>
+            <div style={{ padding: 60, textAlign: 'center', color: theme.textMuted }}>
+              <CreditCard size={40} color={theme.inputBorder} style={{ marginBottom: 10 }} />
+              <div style={{ fontSize: 14, fontWeight: 600, color: theme.textLight, marginBottom: 6 }}>
                 No payments yet
               </div>
               <div style={{ fontSize: 13 }}>
@@ -367,11 +385,11 @@ export default function StudentPayments() {
               // ── Mobile card ──
               <div key={p.id} style={{
                 padding: '14px 18px',
-                borderBottom: i < payments.length - 1 ? '1px solid #f3f4f6' : 'none',
+                borderBottom: i < payments.length - 1 ? `1px solid ${theme.surfaceAlt}` : 'none',
                 display: 'flex', flexDirection: 'column', gap: 6,
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: theme.textStrong }}>
                     {p.type || p.note || '—'}
                   </div>
                   <span style={{
@@ -380,25 +398,41 @@ export default function StudentPayments() {
                     background: statusStyle(p.status).bg,
                     color:      statusStyle(p.status).color,
                   }}>
-                    {p.status || 'pending'}
+                    {statusStyle(p.status).label}
                   </span>
                 </div>
 
-                <div style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>
+                <div style={{ fontSize: 18, fontWeight: 700, color: theme.textStrong }}>
                   Rs {(p.amount || 0).toLocaleString()}
                 </div>
 
-                <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#374151', flexWrap: 'wrap' }}>
-                  <span><b style={{ color: '#9ca3af', fontWeight: 600 }}>Method: </b>{p.method || '—'}</span>
-                  <span style={{ color: '#6b7280' }}>
+                <div style={{ display: 'flex', gap: 16, fontSize: 12, color: theme.textMid, flexWrap: 'wrap' }}>
+                  <span><b style={{ color: theme.textMuted, fontWeight: 600 }}>Method: </b>{p.method || '—'}</span>
+                  <span style={{ color: theme.textLight }}>
                     {p.date || (p.created_at ? new Date(p.created_at).toLocaleDateString() : '—')}
                   </span>
                 </div>
 
                 {(p.reference || p.pidx) && (
-                  <div style={{ fontSize: 12, color: '#9ca3af' }}>
+                  <div style={{ fontSize: 12, color: theme.textMuted }}>
                     Ref: {p.reference || p.pidx}
                   </div>
+                )}
+
+                {p.status === 'paid' && (
+                  <button
+                    onClick={() => openReceipt(p)}
+                    style={{
+                      alignSelf: 'flex-start', marginTop: 2,
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '7px 14px', background: theme.primaryLight,
+                      border: `1px solid ${theme.border}`, borderRadius: 8,
+                      fontSize: 12, fontWeight: 600, color: theme.primary,
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >
+                    <Printer size={13} /> Print receipt
+                  </button>
                 )}
               </div>
             ) : (
@@ -407,34 +441,51 @@ export default function StudentPayments() {
                 display: 'grid',
                 gridTemplateColumns: tableCols,
                 padding: '14px 18px', alignItems: 'center',
-                borderBottom: i < payments.length - 1 ? '1px solid #f3f4f6' : 'none',
+                borderBottom: i < payments.length - 1 ? `1px solid ${theme.surfaceAlt}` : 'none',
               }}
-                onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                onMouseEnter={e => e.currentTarget.style.background = theme.pageBg}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
               >
-                <div style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: theme.textStrong }}>
                   {p.type || p.note || '—'}
                 </div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: theme.textStrong }}>
                   Rs {(p.amount || 0).toLocaleString()}
                 </div>
-                <div style={{ fontSize: 13, color: '#374151' }}>{p.method || '—'}</div>
+                <div style={{ fontSize: 13, color: theme.textMid }}>{p.method || '—'}</div>
                 <span style={{
                   padding: '3px 10px', borderRadius: 20,
                   fontSize: 11, fontWeight: 600, display: 'inline-block',
                   background: statusStyle(p.status).bg,
                   color:      statusStyle(p.status).color,
                 }}>
-                  {p.status || 'pending'}
+                  {statusStyle(p.status).label}
                 </span>
-                <div style={{ fontSize: 12, color: '#6b7280' }}>
+                <div style={{ fontSize: 12, color: theme.textLight }}>
                   {p.date || (p.created_at ? new Date(p.created_at).toLocaleDateString() : '—')}
                 </div>
                 <div style={{
-                  fontSize: 12, color: '#9ca3af',
+                  fontSize: 12, color: theme.textMuted,
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
                   {p.reference || p.pidx || '—'}
+                </div>
+                <div>
+                  {p.status === 'paid' && (
+                    <button
+                      onClick={() => openReceipt(p)}
+                      title="Print receipt"
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                        padding: '5px 10px', background: theme.primaryLight,
+                        border: `1px solid ${theme.border}`, borderRadius: 7,
+                        fontSize: 12, fontWeight: 600, color: theme.primary,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                      }}
+                    >
+                      <Printer size={13} /> Print
+                    </button>
+                  )}
                 </div>
               </div>
             )
@@ -444,18 +495,18 @@ export default function StudentPayments() {
         {/* ════════════════════════════════════════
             REQUEST PAYMENT MODAL
             ════════════════════════════════════════ */}
-        {showModal && (
+        {showModal && createPortal(
           <div
             onClick={resetModal}
             style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-              display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 300,
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+              display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 2000,
             }}
           >
             <div
               onClick={e => e.stopPropagation()}
               style={{
-                background: '#fff', border: '1px solid #e5e7eb',
+                background: theme.white, border: `1px solid ${theme.border}`,
                 borderRadius: isMobile ? '14px 14px 0 0' : 14,
                 padding: isMobile ? 20 : 28,
                 width: isMobile ? '100%' : 440,
@@ -470,15 +521,15 @@ export default function StudentPayments() {
               {step === 1 && (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
-                    <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: 0 }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 700, color: theme.textStrong, margin: 0 }}>
                       Request a Payment
                     </h3>
                     <button onClick={resetModal} style={{
                       background: 'none', border: 'none',
-                      cursor: 'pointer', color: '#9ca3af',
+                      cursor: 'pointer', color: theme.textMuted,
                       display: 'flex', alignItems: 'center', padding: 0,
                     }}>
-                      <X size={20} color="#9ca3af" />
+                      <X size={20} color={theme.textMuted} />
                     </button>
                   </div>
 
@@ -513,9 +564,9 @@ export default function StudentPayments() {
                             style={{
                               display: 'inline-flex', alignItems: 'center', gap: 7,
                               padding: '8px 16px', borderRadius: 8,
-                              border: active ? '2px solid #16a34a' : '2px solid #e5e7eb',
-                              background: active ? '#f0fdf4' : '#f9fafb',
-                              color: active ? '#15803d' : '#374151',
+                              border: active ? `2px solid ${theme.primary}` : `2px solid ${theme.border}`,
+                              background: active ? theme.primaryLight : theme.pageBg,
+                              color: active ? theme.primary : theme.textMid,
                               fontWeight: active ? 700 : 400,
                               fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
                             }}
@@ -545,17 +596,17 @@ export default function StudentPayments() {
                     justifyContent: 'flex-end',
                   }}>
                     <button onClick={resetModal} style={{
-                      padding: '9px 18px', background: '#f9fafb',
-                      border: '1px solid #e5e7eb', borderRadius: 8,
-                      fontSize: 13, color: '#6b7280', cursor: 'pointer', fontFamily: 'inherit',
+                      padding: '9px 18px', background: theme.pageBg,
+                      border: `1px solid ${theme.border}`, borderRadius: 8,
+                      fontSize: 13, color: theme.textLight, cursor: 'pointer', fontFamily: 'inherit',
                       width: isMobile ? '100%' : 'auto',
                     }}>Cancel</button>
                     <button onClick={submitRequest} disabled={saving} style={{
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                       padding: '9px 20px',
-                      background: saving ? '#9ca3af' : '#16a34a',
+                      background: saving ? theme.textMuted : theme.primary,
                       border: 'none', borderRadius: 8,
-                      fontSize: 13, fontWeight: 600, color: '#fff',
+                      fontSize: 13, fontWeight: 600, color: theme.white,
                       cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
                       width: isMobile ? '100%' : 'auto',
                     }}>
@@ -573,11 +624,11 @@ export default function StudentPayments() {
               {step === 2 && (
                 <>
                   <div style={{ textAlign: 'center', marginBottom: 20 }}>
-                    <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '0 0 6px' }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 700, color: theme.textStrong, margin: '0 0 6px' }}>
                       Pay via {form.method}
                     </h3>
-                    <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
-                      Send <strong style={{ color: '#111827' }}>Rs {Number(form.amount).toLocaleString()}</strong> to Global Pathway
+                    <p style={{ fontSize: 13, color: theme.textLight, margin: 0 }}>
+                      Send <strong style={{ color: theme.textStrong }}>Rs {Number(form.amount).toLocaleString()}</strong> to Global Pathway
                     </p>
                   </div>
 
@@ -587,13 +638,13 @@ export default function StudentPayments() {
                       <button onClick={payWithEsewaNow} style={{
                         width: '100%', padding: '12px 16px',
                         background: '#60BB46', border: 'none', borderRadius: 10,
-                        fontSize: 14, fontWeight: 700, color: '#fff',
+                        fontSize: 14, fontWeight: 700, color: theme.white,
                         cursor: 'pointer', fontFamily: 'inherit', marginBottom: 16,
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                       }}>
-                        <Zap size={16} fill="#fff" /> Pay instantly with eSewa
+                        <Zap size={16} fill={theme.white} /> Pay instantly with eSewa
                       </button>
-                      <div style={{ textAlign: 'center', fontSize: 11, color: '#9ca3af', marginBottom: 16, marginTop: -8 }}>
+                      <div style={{ textAlign: 'center', fontSize: 11, color: theme.textMuted, marginBottom: 16, marginTop: -8 }}>
                         — or scan the QR code and enter your reference below —
                       </div>
                     </>
@@ -605,13 +656,13 @@ export default function StudentPayments() {
                       <button onClick={payWithKhaltiNow} style={{
                         width: '100%', padding: '12px 16px',
                         background: '#5C2D91', border: 'none', borderRadius: 10,
-                        fontSize: 14, fontWeight: 700, color: '#fff',
+                        fontSize: 14, fontWeight: 700, color: theme.white,
                         cursor: 'pointer', fontFamily: 'inherit', marginBottom: 16,
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                       }}>
-                        <Zap size={16} fill="#fff" /> Pay instantly with Khalti
+                        <Zap size={16} fill={theme.white} /> Pay instantly with Khalti
                       </button>
-                      <div style={{ textAlign: 'center', fontSize: 11, color: '#9ca3af', marginBottom: 16, marginTop: -8 }}>
+                      <div style={{ textAlign: 'center', fontSize: 11, color: theme.textMuted, marginBottom: 16, marginTop: -8 }}>
                         — or scan the QR code and enter your reference below —
                       </div>
                     </>
@@ -620,24 +671,24 @@ export default function StudentPayments() {
                   {/* QR Code */}
                   <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 18 }}>
                     <div style={{
-                      border: '3px solid #e5e7eb', borderRadius: 12, padding: 12,
-                      background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+                      border: `3px solid ${theme.border}`, borderRadius: 12, padding: 12,
+                      background: theme.white, boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
                     }}>
                       {qrLoadError ? (
                         <div style={{
-                          width: isMobile ? 150 : 180, height: isMobile ? 150 : 180, background: '#f3f4f6', borderRadius: 8,
+                          width: isMobile ? 150 : 180, height: isMobile ? 150 : 180, background: theme.surfaceAlt, borderRadius: 8,
                           display: 'flex', flexDirection: 'column',
                           alignItems: 'center', justifyContent: 'center', gap: 8,
                         }}>
-                          <Camera size={32} color="#9ca3af" />
-                          <span style={{ fontSize: 11, color: '#6b7280', textAlign: 'center', padding: '0 12px' }}>
+                          <Camera size={32} color={theme.textMuted} />
+                          <span style={{ fontSize: 11, color: theme.textLight, textAlign: 'center', padding: '0 12px' }}>
                             Add qr.png to your /public folder
                           </span>
                         </div>
                       ) : (
                         <img
-                          src={QR_SRC}
-                          alt="Payment QR Code"
+                          src={form.method === 'eSewa' ? QR_SRC_ESEWA : QR_SRC}
+                          alt={`${form.method} Payment QR Code`}
                           onError={() => setQrLoadError(true)}
                           style={{ width: isMobile ? 150 : 180, height: isMobile ? 150 : 180, objectFit: 'contain', display: 'block' }}
                         />
@@ -647,9 +698,9 @@ export default function StudentPayments() {
 
                   {/* Instructions */}
                   <div style={{
-                    background: '#f9fafb', border: '1px solid #e5e7eb',
+                    background: theme.pageBg, border: `1px solid ${theme.border}`,
                     borderRadius: 8, padding: '10px 14px', marginBottom: 18,
-                    fontSize: 12, color: '#374151',
+                    fontSize: 12, color: theme.textMid,
                   }}>
                     {form.method === 'eSewa' && <>Open eSewa app → Scan QR → Pay → Copy the <em>transaction ID</em> below</>}
                     {form.method === 'Khalti' && <>Open Khalti app → Scan QR → Pay → Copy the <em>transaction ID</em> below</>}
@@ -664,7 +715,7 @@ export default function StudentPayments() {
                       onChange={e => set('reference', e.target.value)}
                       style={inputStyle}
                     />
-                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 5 }}>
+                    <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 5 }}>
                       Find this in your {form.method} app after payment
                     </div>
                   </div>
@@ -676,17 +727,17 @@ export default function StudentPayments() {
                   }}>
                     <button onClick={() => setStep(1)} style={{
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                      padding: '9px 18px', background: '#f9fafb',
-                      border: '1px solid #e5e7eb', borderRadius: 8,
-                      fontSize: 13, color: '#6b7280', cursor: 'pointer', fontFamily: 'inherit',
+                      padding: '9px 18px', background: theme.pageBg,
+                      border: `1px solid ${theme.border}`, borderRadius: 8,
+                      fontSize: 13, color: theme.textLight, cursor: 'pointer', fontFamily: 'inherit',
                       width: isMobile ? '100%' : 'auto',
                     }}><ArrowLeft size={14} /> Back</button>
                     <button onClick={submitReference} disabled={saving} style={{
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                       padding: '9px 20px',
-                      background: saving ? '#9ca3af' : '#16a34a',
+                      background: saving ? theme.textMuted : theme.primary,
                       border: 'none', borderRadius: 8,
-                      fontSize: 13, fontWeight: 600, color: '#fff',
+                      fontSize: 13, fontWeight: 600, color: theme.white,
                       cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
                       width: isMobile ? '100%' : 'auto',
                     }}>
@@ -697,7 +748,8 @@ export default function StudentPayments() {
               )}
 
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
       </div>

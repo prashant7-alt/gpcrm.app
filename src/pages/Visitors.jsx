@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import theme from '../theme'
 import BottomButtons from '../components/BottomButtons'
+import { exportRows, asDate } from '../lib/exportCsv'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
 
 const statusStyle = (status) => {
-  if (status === 'Converted') return { bg: '#dcfce7', color: '#15803d' }
-  if (status === 'Follow-up') return { bg: '#fef9c3', color: '#a16207' }
-  if (status === 'Cold')      return { bg: '#f3f4f6', color: '#6b7280' }
-  return { bg: '#dbeafe', color: '#1d4ed8' }
+  if (status === 'Converted') return { bg: theme.status.success.bg, color: theme.status.success.text }
+  if (status === 'Follow-up') return { bg: theme.status.warning.bg, color: theme.status.warning.text }
+  if (status === 'Cold')      return { bg: theme.surfaceAlt, color: theme.textLight }
+  return { bg: theme.status.info.bg, color: theme.primary }
 }
 
 export default function Visitors() {
@@ -20,6 +22,7 @@ export default function Visitors() {
   const [interest,  setInterest]  = useState('All Interest')
   const [loading,   setLoading]   = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [viewVisitor, setViewVisitor] = useState(null) // visitor shown in the "View" modal
 
   // form fields for new visitor
   const [form, setForm] = useState({
@@ -32,6 +35,7 @@ export default function Visitors() {
   })
 
   useEffect(() => { load() }, [])
+  useRefetchOnFocus(load)
 
   async function load() {
     const { data } = await supabase
@@ -49,7 +53,7 @@ export default function Visitors() {
   async function saveVisitor() {
     if (!form.name) return alert('Please enter visitor name')
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('visitors')
       .insert({
         name:     form.name,
@@ -59,11 +63,16 @@ export default function Visitors() {
         country:  form.country,
         status:   form.status,
       })
+      .select()
+      .single()
 
     if (error) {
       alert('Error: ' + error.message)
       return
     }
+
+    // show the new visitor in the list right away — no refresh needed
+    if (data) setVisitors(prev => [data, ...prev])
 
     // reset form and close modal
     setForm({
@@ -71,7 +80,6 @@ export default function Visitors() {
       interest: '', country: '', status: 'New',
     })
     setShowModal(false)
-    load() // refresh list
   }
 
   const todayStr = new Date().toDateString()
@@ -98,10 +106,10 @@ export default function Visitors() {
   ).length
 
   const stats = [
-    { label: 'Today',      value: todayCount, icon: '', iconBg: '#dcfce709', color: 'black', },
-    { label: 'This Week',  value: thisWeek,   icon: '', iconBg: '#dbeafe00', color: 'black', },
-    { label: 'This Month', value: thisMonth,  icon: '', iconBg: '#fef9c300', color: 'black',},
-    { label: 'Follow-ups', value: followUps,  icon: '', iconBg: '#fee2e200', color: 'black',},
+    { label: 'Today',      value: todayCount, icon: '', iconBg: 'transparent', color: 'black', },
+    { label: 'This Week',  value: thisWeek,   icon: '', iconBg: 'transparent', color: 'black', },
+    { label: 'This Month', value: thisMonth,  icon: '', iconBg: 'transparent', color: 'black',},
+    { label: 'Follow-ups', value: followUps,  icon: '', iconBg: 'transparent', color: 'black',},
   ]
 
   const filtered = visitors.filter(v => {
@@ -138,14 +146,25 @@ export default function Visitors() {
         </div>
 
         <div style={{ display: 'flex', gap: 10, flexDirection: isMobile ? 'column' : 'row' }}>
-          <button style={{
-            padding: '8px 16px',
-            background: theme.cardBg,
-            border: `1px solid ${theme.border}`,
-            borderRadius: 8, fontSize: 13,
-            color: theme.textMid, cursor: 'pointer',
-            width: isMobile ? '100%' : 'auto',
-          }}>
+          <button
+            onClick={() => exportRows('visitors', filtered, [
+              { header: 'Name',     value: v => v.name },
+              { header: 'Phone',    value: v => v.phone },
+              { header: 'Purpose',  value: v => v.purpose },
+              { header: 'Interest', value: v => v.interest },
+              { header: 'Country',  value: v => v.country },
+              { header: 'Status',   value: v => v.status },
+              { header: 'Date',     value: v => asDate(v.created_at) },
+            ])}
+            style={{
+              padding: '8px 16px',
+              background: theme.cardBg,
+              border: `1px solid ${theme.border}`,
+              borderRadius: 8, fontSize: 13,
+              color: theme.textMid, cursor: 'pointer',
+              width: isMobile ? '100%' : 'auto',
+            }}
+          >
              Export
           </button>
 
@@ -157,7 +176,7 @@ export default function Visitors() {
               background: theme.primary,
               border: 'none', borderRadius: 8,
               fontSize: 13, fontWeight: 600,
-              color: '#fff', cursor: 'pointer',
+              color: theme.white, cursor: 'pointer',
               width: isMobile ? '100%' : 'auto',
             }}
           >
@@ -288,7 +307,7 @@ export default function Visitors() {
             {['Visitor','Phone','Purpose','Interest',
               'Country','Date','Status','Actions'].map(h => (
               <span key={h} style={{
-                fontSize: 11, fontWeight: 600,
+                fontSize: 11, fontWeight: 700,
                 color: theme.textMuted,
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em',
@@ -369,22 +388,15 @@ export default function Visitors() {
               </div>
 
               <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                <button style={{
+                <button
+                  onClick={() => setViewVisitor(v)}
+                  style={{
                   flex: 1, padding: '7px 10px',
                   background: theme.primaryLight,
                   border: 'none', borderRadius: 6,
                   fontSize: 12, fontWeight: 600,
                   color: theme.primary, cursor: 'pointer',}}>
                   View
-                </button>
-                <button style={{
-                  flex: 1, padding: '7px 10px',
-                  background: theme.pageBg,
-                  border: `1px solid ${theme.border}`,
-                  borderRadius: 6, fontSize: 12,
-                  color: theme.textDark, cursor: 'pointer',
-                }}>
-                  Edit
                 </button>
               </div>
             </div>
@@ -437,7 +449,9 @@ export default function Visitors() {
                 </span>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
-                <button style={{
+                <button
+                  onClick={() => setViewVisitor(v)}
+                  style={{
                   padding: '5px 10px',
                   background: theme.primaryLight,
                   border: 'none', borderRadius: 6,
@@ -445,20 +459,121 @@ export default function Visitors() {
                   color: theme.primary, cursor: 'pointer',}}>
                   View
                 </button>
-                <button style={{
-                  padding: '5px 10px',
-                  background: theme.pageBg,
-                  border: `1px solid ${theme.border}`,
-                  borderRadius: 6, fontSize: 12,
-                  color: theme.textDark, cursor: 'pointer',
-                }}>
-                  edit
-                </button>
               </div>
             </div>
           )
         ))}
       </div>
+
+      {/* view visitor modal */}
+      {viewVisitor && (
+        <div
+          onClick={() => setViewVisitor(null)}
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(0,0,0,0.4)',
+            display: 'flex', alignItems: isMobile ? 'flex-end' : 'center',
+            justifyContent: 'center', zIndex: 200,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: theme.white,
+              border: `1px solid ${theme.border}`,
+              borderRadius: isMobile ? '14px 14px 0 0' : 14,
+              padding: isMobile ? 20 : 28,
+              width: isMobile ? '100%' : 440,
+              maxHeight: '90vh', overflowY: 'auto',
+              boxSizing: 'border-box',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+            }}
+          >
+            {/* modal header */}
+            <div style={{
+              display: 'flex', justifyContent: 'space-between',
+              alignItems: 'center', marginBottom: 20,
+            }}>
+              <h3 style={{
+                fontSize: 16, fontWeight: 700,
+                color: theme.textDark, margin: 0,
+              }}>
+                Visitor Details
+              </h3>
+              <button
+                onClick={() => setViewVisitor(null)}
+                style={{
+                  background: 'none', border: 'none',
+                  fontSize: 18, cursor: 'pointer',
+                  color: theme.textLight,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* name + status */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: theme.textDark }}>
+                {viewVisitor.name || '—'}
+              </div>
+              <span style={{
+                padding: '3px 10px', borderRadius: 20,
+                fontSize: 11, fontWeight: 600,
+                background: statusStyle(viewVisitor.status).bg,
+                color: statusStyle(viewVisitor.status).color,
+              }}>
+                {viewVisitor.status || 'New'}
+              </span>
+            </div>
+
+            {/* detail rows */}
+            {[
+              { label: 'Phone',       value: viewVisitor.phone },
+              { label: 'Purpose',     value: viewVisitor.purpose },
+              { label: 'Interested In', value: viewVisitor.interest },
+              { label: 'Country',     value: viewVisitor.country },
+              { label: 'Status',      value: viewVisitor.status },
+              { label: 'Date Logged', value: viewVisitor.created_at
+                  ? new Date(viewVisitor.created_at).toLocaleString()
+                  : null },
+            ].map(row => (
+              <div key={row.label} style={{
+                display: 'flex', justifyContent: 'space-between', gap: 16,
+                padding: '10px 0',
+                borderBottom: `1px solid ${theme.border}`,
+              }}>
+                <span style={{
+                  fontSize: 11, fontWeight: 600, color: theme.textLight,
+                  textTransform: 'uppercase', letterSpacing: '0.05em',
+                }}>
+                  {row.label}
+                </span>
+                <span style={{ fontSize: 13, color: theme.textDark, textAlign: 'right' }}>
+                  {row.value || '—'}
+                </span>
+              </div>
+            ))}
+
+            {/* close button */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
+              <button
+                onClick={() => setViewVisitor(null)}
+                style={{
+                  padding: '9px 18px',
+                  background: theme.primary,
+                  border: 'none', borderRadius: 8,
+                  fontSize: 13, fontWeight: 600,
+                  color: theme.white, cursor: 'pointer',
+                  width: isMobile ? '100%' : 'auto',
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* log visitor modal */}
       {showModal && (
@@ -474,7 +589,7 @@ export default function Visitors() {
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              background: '#fff',
+              background: theme.white,
               border: `1px solid ${theme.border}`,
               borderRadius: isMobile ? '14px 14px 0 0' : 14,
               padding: isMobile ? 20 : 28,
@@ -652,7 +767,7 @@ export default function Visitors() {
                   background: theme.primary,
                   border: 'none', borderRadius: 8,
                   fontSize: 13, fontWeight: 600,
-                  color: '#fff', cursor: 'pointer',
+                  color: theme.white, cursor: 'pointer',
                   width: isMobile ? '100%' : 'auto',
                 }}
               >

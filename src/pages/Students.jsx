@@ -1,40 +1,16 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import theme from '../theme'
+import { statusChip } from '../lib/statusColors'
+import { exportRows, asDate } from '../lib/exportCsv'
+import StudentDetailModal from '../components/StudentDetailModal'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
+import { COUNTRIES, COUNTRY_CODES, DEFAULT_VISA_RATES, fetchVisaRates } from '../lib/visaRates'
+import { Eye } from 'lucide-react'
 
-const COUNTRIES = ['Korea', 'Australia', 'Japan', 'UK', 'USA', 'Canada', 'Finland']
-
-// ISO 3166-1 alpha-2 codes for flagcdn.com — used to render actual flag
-// images instead of emoji. Flag emoji don't render as flags on Windows/
-// Chrome (shows plain two-letter text instead), so real images are used
-// here for a flag that looks the same on every OS and browser.
-const COUNTRY_CODES = {
-  Korea: 'kr',
-  Australia: 'au',
-  Japan: 'jp',
-  UK: 'gb',
-  USA: 'us',
-  Canada: 'ca',
-  Finland: 'fi',
-}
-
-const stageStyle = (stage) => {
-  const map = {
-    'New':            { bg: '#dbeafe', color: '#1d4ed8' },
-    'Lead':           { bg: '#f3f4f6', color: '#6b7280' },
-    'Inquiring':      { bg: '#ede9fe', color: '#7c3aed' },
-    'Counseling':     { bg: '#fef9c3', color: '#a16207' },
-    'Documentation':  { bg: '#ffedd5', color: '#ea580c' },
-    'Applied':        { bg: '#dbeafe', color: '#2563eb' },
-    'Visa Process':   { bg: '#cffafe', color: '#0891b2' },
-    'Class/Enrolled': { bg: '#ede9fe', color: '#7c3aed' },
-    'Abroad':         { bg: '#dcfce7', color: '#15803d' },
-    'Approved':       { bg: '#dcfce7', color: '#15803d' },
-    'Rejected':       { bg: '#fee2e2', color: '#b91c1c' },
-  }
-  return map[stage] || { bg: '#f3f4f6', color: '#6b7280' }
-}
+// Same shared status colours as the rest of the app (src/lib/statusColors.js).
+const stageStyle = (stage) => statusChip(stage || 'New')
 
 export default function Students() {
   const isMobile = useIsMobile()
@@ -44,16 +20,41 @@ export default function Students() {
   const [selectedCountry, setSelectedCountry] = useState(null)
   const [countryFilter,   setCountryFilter]   = useState('All Countries')
   const [search,          setSearch]          = useState('')
+  const [viewStudent,     setViewStudent]     = useState(null)
+  const [visaRates,       setVisaRates]       = useState(DEFAULT_VISA_RATES)
 
   useEffect(() => { load() }, [])
+  useEffect(() => { fetchVisaRates().then(setVisaRates) }, [])
+  useRefetchOnFocus(load)
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase
-      .from('applicants')
-      .select('*')
-      .order('created_at', { ascending: false })
-    setStudents(data || [])
+
+    const [{ data: apps }, { data: profs }] = await Promise.all([
+      supabase.from('applicants').select('*').order('created_at', { ascending: false }),
+      // Students edit their own name / phone in the student portal — that
+      // saves to `profiles` (phone_new), NOT `applicants`. Pull those rows so
+      // staff see the up-to-date values instead of the stale applicant record.
+      supabase.from('profiles').select('email, name, phone_new, phone').eq('role', 'student'),
+    ])
+
+    const profByEmail = {}
+    ;(profs || []).forEach(p => {
+      const k = (p.email || '').trim().toLowerCase()
+      if (k) profByEmail[k] = p
+    })
+
+    const merged = (apps || []).map(a => {
+      const p = profByEmail[(a.email || '').trim().toLowerCase()]
+      if (!p) return a
+      return {
+        ...a,
+        name:  p.name || a.name,
+        phone: p.phone_new || p.phone || a.phone,
+      }
+    })
+
+    setStudents(merged)
     setLoading(false)
   }
 
@@ -97,7 +98,7 @@ export default function Students() {
     }
   }
 
-  const tableCols = '2fr 1.2fr 1.2fr 1.5fr 1.2fr 1fr'
+  const tableCols = '1.8fr 1.1fr 1fr 1.3fr 1.1fr 0.9fr 88px'
 
   return (
     <div>
@@ -127,7 +128,7 @@ export default function Students() {
               setSelectedCountry(e.target.value === 'All Countries' ? null : e.target.value)
             }}
             style={{
-              background: '#fff', border: `1px solid ${theme.border}`,
+              background: theme.white, border: `1px solid ${theme.border}`,
               borderRadius: 8, padding: '8px 14px',
               fontSize: 13, color: theme.textMid, outline: 'none', cursor: 'pointer',
               width: isMobile ? '100%' : 'auto',
@@ -135,12 +136,23 @@ export default function Students() {
           >
             {uniqueCountries.map(c => <option key={c}>{c}</option>)}
           </select>
-          <button style={{
-            padding: '8px 16px', background: theme.cardBg,
-            border: `1px solid ${theme.border}`,
-            borderRadius: 8, fontSize: 13, color: theme.textMid, cursor: 'pointer',
-            width: isMobile ? '100%' : 'auto',
-          }}>
+          <button
+            onClick={() => exportRows('students', filtered, [
+              { header: 'Name',    value: s => s.name },
+              { header: 'Email',   value: s => s.email },
+              { header: 'Phone',   value: s => s.phone },
+              { header: 'Country', value: s => s.country },
+              { header: 'Course',  value: s => s.course },
+              { header: 'Stage',   value: s => stageStyle(s.status).label },
+              { header: 'Added',   value: s => asDate(s.created_at) },
+            ])}
+            style={{
+              padding: '8px 16px', background: theme.cardBg,
+              border: `1px solid ${theme.border}`,
+              borderRadius: 8, fontSize: 13, color: theme.textMid, cursor: 'pointer',
+              width: isMobile ? '100%' : 'auto',
+            }}
+          >
             Export
           </button>
         </div>
@@ -162,8 +174,8 @@ export default function Students() {
               style={{
                 minWidth: isMobile ? 96 : 120,
                 padding: isMobile ? '12px 14px' : '16px 20px',
-                background: isActive ? '#dbeafe' : '#fff',
-                border: `1px solid ${isActive ? '#2563eb' : theme.border}`,
+                background: isActive ? theme.status.info.bg : theme.white,
+                border: `1px solid ${isActive ? theme.primary : theme.border}`,
                 borderRadius: 12, textAlign: 'center',
                 cursor: 'pointer', flexShrink: 0,
               }}
@@ -188,17 +200,28 @@ export default function Students() {
               </div>
               <div style={{
                 fontSize: isMobile ? 13 : 15, fontWeight: 700,
-                color: isActive ? '#2563eb' : theme.textDark,
+                color: isActive ? theme.primary : theme.textDark,
                 marginBottom: 6, whiteSpace: 'nowrap',
               }}>
                 {country}
               </div>
               <div style={{
                 fontSize: isMobile ? 22 : 28, fontWeight: 800,
-                color: isActive ? '#2563eb' : '#b91c1c',
+                color: isActive ? theme.primary : theme.status.danger.text,
               }}>
                 {count}
               </div>
+              {visaRates[country] != null && (
+                <div style={{
+                  marginTop: 5, fontSize: isMobile ? 10 : 11, fontWeight: 600,
+                  color: theme.textMuted, whiteSpace: 'nowrap',
+                }}>
+                  Visa rate{' '}
+                  <span style={{ color: theme.status.success.text, fontWeight: 700 }}>
+                    {visaRates[country]}%
+                  </span>
+                </div>
+              )}
             </div>
           )
         })}
@@ -211,7 +234,7 @@ export default function Students() {
       }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
-          background: '#fff', border: `1px solid ${theme.border}`,
+          background: theme.white, border: `1px solid ${theme.border}`,
           borderRadius: 8, padding: '8px 14px', flex: 1,
         }}>
           <span style={{ color: theme.textMuted }}>&#128269;</span>
@@ -230,8 +253,8 @@ export default function Students() {
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8, justifyContent: isMobile ? 'space-between' : 'flex-start',
             padding: '6px 14px',
-            background: '#dbeafe', border: '1px solid #2563eb',
-            borderRadius: 20, fontSize: 12, fontWeight: 600, color: '#2563eb',
+            background: theme.status.info.bg, border: `1px solid ${theme.primary}`,
+            borderRadius: 20, fontSize: 12, fontWeight: 600, color: theme.primary,
           }}>
             {selectedCountry}
             <span
@@ -253,7 +276,7 @@ export default function Students() {
 
       {/* table / cards */}
       <div style={{
-        background: '#fff', border: `1px solid ${theme.border}`,
+        background: theme.white, border: `1px solid ${theme.border}`,
         borderRadius: 10, overflow: 'hidden',
       }}>
 
@@ -263,12 +286,12 @@ export default function Students() {
             display: 'grid',
             gridTemplateColumns: tableCols,
             padding: '10px 18px',
-            background: theme.pageBg || '#f9fafb',
+            background: theme.pageBg || theme.pageBg,
             borderBottom: `1px solid ${theme.border}`,
           }}>
-            {['Name', 'Phone', 'Country', 'Course', 'Stage', 'Added'].map(h => (
-              <span key={h} style={{
-                fontSize: 11, fontWeight: 600, color: theme.textMuted,
+            {['Name', 'Phone', 'Country', 'Course', 'Stage', 'Added', ''].map((h, hi) => (
+              <span key={h || hi} style={{
+                fontSize: 11, fontWeight: 700, color: theme.textMuted,
                 textTransform: 'uppercase', letterSpacing: '0.05em',
               }}>
                 {h}
@@ -296,10 +319,11 @@ export default function Students() {
             // ── Mobile card ──
             <div
               key={s.id}
+              onClick={() => setViewStudent(s)}
               style={{
                 padding: '14px 18px',
                 borderBottom: i < filtered.length - 1 ? `1px solid ${theme.border}` : 'none',
-                display: 'flex', flexDirection: 'column', gap: 8,
+                display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer',
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
@@ -317,7 +341,7 @@ export default function Students() {
                   background: stageStyle(s.status).bg,
                   color:      stageStyle(s.status).color,
                 }}>
-                  {s.status || 'New'}
+                  {stageStyle(s.status).label}
                 </span>
               </div>
 
@@ -331,19 +355,33 @@ export default function Students() {
                   {s.created_at ? new Date(s.created_at).toLocaleDateString() : '—'}
                 </span>
               </div>
+
+              <button
+                onClick={e => { e.stopPropagation(); setViewStudent(s) }}
+                style={{
+                  marginTop: 2, alignSelf: 'flex-start',
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '7px 14px', background: theme.primaryLight,
+                  border: `1px solid ${theme.border}`, borderRadius: 8,
+                  fontSize: 12, fontWeight: 600, color: theme.primary, cursor: 'pointer',
+                }}
+              >
+                <Eye size={13} /> View full details
+              </button>
             </div>
           ) : (
             // ── Desktop row ──
             <div
               key={s.id}
+              onClick={() => setViewStudent(s)}
               style={{
                 display: 'grid',
                 gridTemplateColumns: tableCols,
                 padding: '13px 18px',
                 borderBottom: i < filtered.length - 1 ? `1px solid ${theme.border}` : 'none',
-                alignItems: 'center',
+                alignItems: 'center', cursor: 'pointer',
               }}
-              onMouseEnter={e => e.currentTarget.style.background = theme.pageBg || '#f9fafb'}
+              onMouseEnter={e => e.currentTarget.style.background = theme.pageBg || theme.pageBg}
               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
             >
               <div>
@@ -366,7 +404,7 @@ export default function Students() {
                   background: stageStyle(s.status).bg,
                   color:      stageStyle(s.status).color,
                 }}>
-                  {s.status || 'New'}
+                  {stageStyle(s.status).label}
                 </span>
               </div>
 
@@ -375,10 +413,29 @@ export default function Students() {
                   ? new Date(s.created_at).toLocaleDateString()
                   : '—'}
               </div>
+
+              <button
+                onClick={e => { e.stopPropagation(); setViewStudent(s) }}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  padding: '5px 10px', background: theme.primaryLight,
+                  border: `1px solid ${theme.border}`, borderRadius: 7,
+                  fontSize: 12, fontWeight: 600, color: theme.primary, cursor: 'pointer',
+                }}
+              >
+                <Eye size={13} /> View
+              </button>
             </div>
           )
         ))}
       </div>
+
+      {viewStudent && (
+        <StudentDetailModal
+          student={viewStudent}
+          onClose={() => setViewStudent(null)}
+        />
+      )}
 
     </div>
   )

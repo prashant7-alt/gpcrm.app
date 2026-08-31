@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
+import theme from '../../theme'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import StudentLayout from './StudentLayout'
 import { useIsMobile } from '../../hooks/useIsMobile'
 
 const avatarColor = (name) => {
-  const colors = ['#16a34a','#2563eb','#7c3aed','#db2777','#ea580c','#0891b2']
+  const colors = [theme.status.success.main,theme.primary,theme.purple,theme.pink,theme.status.warning.main,theme.accent]
   return colors[(name?.charCodeAt(0) || 0) % colors.length]
 }
 
@@ -14,17 +15,45 @@ const getInitials = (name) => {
   return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
 }
 
+// Case/whitespace-tolerant compare for names & emails.
+const norm = (v) => (v || '').trim().toLowerCase()
+const same = (a, b) => norm(a) !== '' && norm(a) === norm(b)
+
+// Shows the staff member's uploaded profile photo when we have one,
+// otherwise falls back to coloured initials.
+function StaffAvatar({ name, url, size = 36, fontSize = 13 }) {
+  const base = {
+    width: size, height: size, borderRadius: '50%', flexShrink: 0,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  }
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt={name || 'Staff'}
+        style={{ ...base, objectFit: 'cover', border: `1px solid ${theme.border}` }}
+        onError={e => { e.currentTarget.style.display = 'none' }}
+      />
+    )
+  }
+  return (
+    <div style={{ ...base, background: avatarColor(name), color: theme.white, fontSize, fontWeight: 700 }}>
+      {getInitials(name)}
+    </div>
+  )
+}
+
 // Color-coded role badges so students can identify who they're talking to
 const roleColor = (role) => {
-  if (!role) return { bg: '#f3f4f6', color: '#6b7280' }
+  if (!role) return { bg: theme.surfaceAlt, color: theme.textLight }
   const r = role.toLowerCase()
-  if (r.includes('document'))  return { bg: '#dbeafe', color: '#1d4ed8' }
-  if (r.includes('visa'))      return { bg: '#ede9fe', color: '#6d28d9' }
-  if (r.includes('finance'))   return { bg: '#dcfce7', color: '#15803d' }
-  if (r.includes('marketing')) return { bg: '#fef9c3', color: '#a16207' }
-  if (r.includes('counsel'))   return { bg: '#ffedd5', color: '#c2410c' }
-  if (r.includes('admin'))     return { bg: '#fee2e2', color: '#b91c1c' }
-  return                              { bg: '#f3f4f6', color: '#6b7280' }
+  if (r.includes('document'))  return { bg: theme.status.info.bg, color: theme.primary }
+  if (r.includes('visa'))      return { bg: theme.purpleLight, color: theme.purple }
+  if (r.includes('finance'))   return { bg: theme.status.success.bg, color: theme.status.success.text }
+  if (r.includes('marketing')) return { bg: theme.status.warning.bg, color: theme.status.warning.text }
+  if (r.includes('counsel'))   return { bg: theme.status.warning.bg, color: theme.status.warning.main }
+  if (r.includes('admin'))     return { bg: theme.status.danger.bg, color: theme.status.danger.text }
+  return                              { bg: theme.surfaceAlt, color: theme.textLight }
 }
 
 export default function StudentChat() {
@@ -33,6 +62,7 @@ export default function StudentChat() {
   const navigate     = useNavigate()
   const profile      = JSON.parse(localStorage.getItem('profile') || '{}')
   const bottomRef    = useRef(null)
+  const selectedRef  = useRef(null)
 
   const [staff,       setStaff]       = useState([])
   const [selected,    setSelected]    = useState(null)
@@ -42,9 +72,11 @@ export default function StudentChat() {
   const [sending,     setSending]     = useState(false)
 
   useEffect(() => {
-    if (!profile.id) { navigate('/login'); return }
+    if (!profile.id) { navigate('/student-login'); return }
     loadStaff()
   }, [])
+
+  useEffect(() => { selectedRef.current = selected }, [selected])
 
   useEffect(() => {
     if (!selected) return
@@ -57,11 +89,11 @@ export default function StudentChat() {
         event: 'INSERT', schema: 'public', table: 'messages',
       }, (payload) => {
         const msg = payload.new
-        // match by email (reliable) OR name (fallback)
-        const fromMe    = msg.sender_email   === profile.email  || msg.sender_name   === profile.name
-        const fromThem  = msg.sender_email   === selected.email || msg.sender_name   === selected.name
-        const toMe      = msg.receiver_email === profile.email  || msg.receiver_name === profile.name
-        const toThem    = msg.receiver_email === selected.email || msg.receiver_name === selected.name
+        // match by email (reliable) OR name (fallback) — case/space tolerant
+        const fromMe    = same(msg.sender_email, profile.email)  || same(msg.sender_name, profile.name)
+        const fromThem  = same(msg.sender_email, selected.email) || same(msg.sender_name, selected.name)
+        const toMe      = same(msg.receiver_email, profile.email)  || same(msg.receiver_name, profile.name)
+        const toThem    = same(msg.receiver_email, selected.email) || same(msg.receiver_name, selected.name)
 
         if ((fromMe && toThem) || (fromThem && toMe)) {
           setMessages(prev => {
@@ -83,18 +115,71 @@ export default function StudentChat() {
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
   }, [messages])
 
-  // Fetch from staff table so we get real roles (Document Handler, Visa Officer etc.)
+  // Fallback polling — realtime may not be enabled on the messages table, so
+  // also refetch the open conversation every few seconds. This is what makes
+  // a staff reply appear without the student refreshing the page.
+  useEffect(() => {
+    if (!selected) return
+    const id = setInterval(() => {
+      if (selectedRef.current) loadMessages(selectedRef.current, { silent: true })
+    }, 8000)
+    return () => clearInterval(id)
+  }, [selected])
+
+  // Build the staff list from `profiles` (the login-tied table) so the name +
+  // email we address a message to EXACTLY match what that staff member's app
+  // stores as their identity — otherwise their inbox never matches the
+  // message and no notification shows. The `staff` table is only used to
+  // enrich each person with a nicer role label / phone / photo.
   async function loadStaff() {
-    const { data } = await supabase
-      .from('staff')
-      .select('id, name, role, email')
-      .order('name')
-    setStaff(data || [])
+    const [{ data: profs }, { data: staffRows }] = await Promise.all([
+      supabase.from('profiles').select('id, name, email, role, avatar_url').neq('role', 'student'),
+      supabase.from('staff').select('name, email, role, phone, avatar_url'),
+    ])
+
+    const staffByEmail = {}
+    ;(staffRows || []).forEach(s => {
+      const k = (s.email || '').trim().toLowerCase()
+      if (k) staffByEmail[k] = s
+    })
+
+    const prettyRole = (r) => (r || 'Staff').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+
+    // Only surface people still on the admin-managed `staff` roster. A former
+    // staff member whose `staff` row was removed must not remain messageable
+    // here just because their `profiles` row lingers. Admins are kept even
+    // without a `staff` row since they can be seeded directly.
+    const isActiveStaff = (p) =>
+      !!staffByEmail[(p.email || '').trim().toLowerCase()] ||
+      ['admin', 'superadmin'].includes((p.role || '').toLowerCase())
+
+    const list = (profs || []).filter(isActiveStaff).map(p => {
+      const s = staffByEmail[(p.email || '').trim().toLowerCase()] || {}
+      return {
+        id:         p.id,
+        name:       p.name  || s.name  || '—',   // ← canonical login identity
+        email:      p.email || s.email || '',    // ← canonical login identity
+        role:       s.role || prettyRole(p.role),
+        phone:      s.phone || null,
+        avatar_url: p.avatar_url || s.avatar_url || null,
+      }
+    })
+
+    // Include any staff-table people who never got a profiles row (rare).
+    ;(staffRows || []).forEach(s => {
+      const k = (s.email || '').trim().toLowerCase()
+      if (k && !list.some(x => (x.email || '').trim().toLowerCase() === k)) {
+        list.push({ id: 'staff-' + k, name: s.name, email: s.email, role: s.role, phone: s.phone, avatar_url: s.avatar_url })
+      }
+    })
+
+    list.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    setStaff(list)
   }
 
-  async function loadMessages() {
-    if (!selected) return
-    setLoading(true)
+  async function loadMessages(who = selected, { silent = false } = {}) {
+    if (!who) return
+    if (!silent) setLoading(true)
 
     // Query by BOTH email AND name to catch all message combinations.
     // Old messages may only have name; new messages should have both.
@@ -102,10 +187,10 @@ export default function StudentChat() {
       .from('messages')
       .select('*')
       .or(
-        `and(sender_email.eq.${profile.email},receiver_email.eq.${selected.email}),` +
-        `and(sender_email.eq.${selected.email},receiver_email.eq.${profile.email}),` +
-        `and(sender_name.eq.${profile.name},receiver_name.eq.${selected.name}),` +
-        `and(sender_name.eq.${selected.name},receiver_name.eq.${profile.name})`
+        `and(sender_email.eq.${profile.email},receiver_email.eq.${who.email}),` +
+        `and(sender_email.eq.${who.email},receiver_email.eq.${profile.email}),` +
+        `and(sender_name.eq.${profile.name},receiver_name.eq.${who.name}),` +
+        `and(sender_name.eq.${who.name},receiver_name.eq.${profile.name})`
       )
       .order('created_at', { ascending: true })
 
@@ -117,8 +202,14 @@ export default function StudentChat() {
       return true
     })
 
-    setMessages(deduped)
-    setLoading(false)
+    // Skip the state update when nothing changed, so a background poll
+    // doesn't re-render / jump the scroll while the student is reading.
+    setMessages(prev => {
+      const changed = prev.length !== deduped.length ||
+        prev[prev.length - 1]?.id !== deduped[deduped.length - 1]?.id
+      return changed ? deduped : prev
+    })
+    if (!silent) setLoading(false)
   }
 
   async function sendMessage() {
@@ -176,22 +267,22 @@ export default function StudentChat() {
 
   // True if message was sent by the student (me)
   const isFromMe = (msg) =>
-    msg.sender_email === profile.email ||
-    msg.sender_name  === profile.name
+    same(msg.sender_email, profile.email) ||
+    same(msg.sender_name,  profile.name)
 
   // ── Shared sub-renders (used by both desktop pane and mobile full-screen) ──
 
   const staffList = (
     <div style={{
       width: isMobile ? '100%' : 240, flexShrink: 0,
-      background: '#fff', border: `1px solid #e5e7eb`,
+      background: theme.white, border: `1px solid ${theme.border}`,
       borderRadius: isMobile ? 0 : 12, overflow: 'hidden',
       display: 'flex', flexDirection: 'column',
       height: isMobile ? '100%' : 'auto',
     }}>
       <div style={{
-        padding: '12px 14px', borderBottom: '1px solid #e5e7eb',
-        fontSize: 11, fontWeight: 700, color: '#6b7280',
+        padding: '12px 14px', borderBottom: `1px solid ${theme.border}`,
+        fontSize: 11, fontWeight: 700, color: theme.textLight,
         textTransform: 'uppercase', letterSpacing: '0.06em',
         flexShrink: 0,
       }}>
@@ -200,7 +291,7 @@ export default function StudentChat() {
 
       <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '8px' }}>
         {staff.length === 0 && (
-          <p style={{ fontSize: 12, color: '#9ca3af', padding: '12px 8px', textAlign: 'center' }}>
+          <p style={{ fontSize: 12, color: theme.textMuted, padding: '12px 8px', textAlign: 'center' }}>
             No staff available
           </p>
         )}
@@ -215,27 +306,20 @@ export default function StudentChat() {
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: '10px 10px', borderRadius: 8, cursor: 'pointer',
                 marginBottom: 2,
-                background: isSelected && !isMobile ? '#ede9fe' : 'transparent',
-                borderLeft: isSelected && !isMobile ? '3px solid #7c3aed' : '3px solid transparent',
+                background: isSelected && !isMobile ? theme.purpleLight : 'transparent',
+                borderLeft: isSelected && !isMobile ? `3px solid ${theme.purple}` : '3px solid transparent',
                 transition: 'all 0.12s',
               }}
-              onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#f9fafb' }}
+              onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = theme.pageBg }}
               onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
             >
               {/* Avatar */}
-              <div style={{
-                width: 36, height: 36, borderRadius: '50%',
-                background: avatarColor(s.name),
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 13, fontWeight: 700, color: '#fff', flexShrink: 0,
-              }}>
-                {getInitials(s.name)}
-              </div>
+              <StaffAvatar name={s.name} url={s.avatar_url} size={36} fontSize={13} />
 
               <div style={{ minWidth: 0 }}>
                 <div style={{
                   fontSize: 13, fontWeight: isSelected && !isMobile ? 600 : 500,
-                  color: isSelected && !isMobile ? '#7c3aed' : '#111827',
+                  color: isSelected && !isMobile ? theme.purple : theme.textStrong,
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
                   {s.name}
@@ -259,7 +343,7 @@ export default function StudentChat() {
 
   const chatPane = (
     <div style={{
-      flex: 1, background: '#fff', border: isMobile ? 'none' : '1px solid #e5e7eb',
+      flex: 1, background: theme.white, border: isMobile ? 'none' : `1px solid ${theme.border}`,
       borderRadius: isMobile ? 0 : 12, display: 'flex', flexDirection: 'column',
       overflow: 'hidden', minHeight: 0, height: isMobile ? '100%' : 'auto',
     }}>
@@ -268,10 +352,10 @@ export default function StudentChat() {
       {!selected && !isMobile && (
         <div style={{
           flex: 1, display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', color: '#9ca3af',
+          alignItems: 'center', justifyContent: 'center', color: theme.textMuted,
         }}>
           <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.4 }}>💬</div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#6b7280' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: theme.textLight }}>
             Select a staff member to start chatting
           </div>
         </div>
@@ -281,33 +365,26 @@ export default function StudentChat() {
         <>
           {/* Chat header — back button on mobile returns to the staff list */}
           <div style={{
-            padding: '14px 18px', borderBottom: '1px solid #e5e7eb',
+            padding: '14px 18px', borderBottom: `1px solid ${theme.border}`,
             display: 'flex', alignItems: 'center', gap: 12,
-            background: '#fafafa', flexShrink: 0,
+            background: theme.pageBg, flexShrink: 0,
           }}>
             {isMobile && (
               <button
                 onClick={() => setSelected(null)}
                 style={{
                   background: 'none', border: 'none', fontSize: 20,
-                  cursor: 'pointer', color: '#6b7280', padding: 0,
+                  cursor: 'pointer', color: theme.textLight, padding: 0,
                   display: 'flex', alignItems: 'center', flexShrink: 0,
                 }}
               >
                 ←
               </button>
             )}
-            <div style={{
-              width: 38, height: 38, borderRadius: '50%',
-              background: avatarColor(selected.name),
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 14, fontWeight: 700, color: '#fff', flexShrink: 0,
-            }}>
-              {getInitials(selected.name)}
-            </div>
+            <StaffAvatar name={selected.name} url={selected.avatar_url} size={38} fontSize={14} />
             <div style={{ minWidth: 0 }}>
               <div style={{
-                fontSize: 14, fontWeight: 700, color: '#111827',
+                fontSize: 14, fontWeight: 700, color: theme.textStrong,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>
                 {selected.name}
@@ -329,10 +406,10 @@ export default function StudentChat() {
             flex: 1, overflowY: 'auto', minHeight: 0,
             padding: isMobile ? '14px 12px' : '16px 18px',
             display: 'flex', flexDirection: 'column', gap: 4,
-            background: '#f9fafb',
+            background: theme.pageBg,
           }}>
             {loading && (
-              <p style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', marginTop: 40 }}>
+              <p style={{ fontSize: 13, color: theme.textMuted, textAlign: 'center', marginTop: 40 }}>
                 Loading messages...
               </p>
             )}
@@ -341,7 +418,7 @@ export default function StudentChat() {
               <div style={{
                 display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center',
-                color: '#9ca3af', paddingTop: 60,
+                color: theme.textMuted, paddingTop: 60,
               }}>
                 <div style={{ fontSize: 36, marginBottom: 10, opacity: 0.4 }}>✉️</div>
                 <div style={{ fontSize: 13 }}>
@@ -357,16 +434,16 @@ export default function StudentChat() {
                   display: 'flex', alignItems: 'center', gap: 10,
                   margin: '12px 0 8px',
                 }}>
-                  <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
+                  <div style={{ flex: 1, height: 1, background: theme.border }} />
                   <span style={{
-                    fontSize: 11, color: '#9ca3af', fontWeight: 600,
-                    padding: '2px 10px', background: '#fff',
-                    borderRadius: 20, border: '1px solid #e5e7eb',
+                    fontSize: 11, color: theme.textMuted, fontWeight: 600,
+                    padding: '2px 10px', background: theme.white,
+                    borderRadius: 20, border: `1px solid ${theme.border}`,
                     whiteSpace: 'nowrap',
                   }}>
                     {date}
                   </span>
-                  <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
+                  <div style={{ flex: 1, height: 1, background: theme.border }} />
                 </div>
 
                 {msgs.map((msg, i) => {
@@ -380,9 +457,9 @@ export default function StudentChat() {
                       <div style={{
                         maxWidth: isMobile ? '82%' : '70%',
                         // Student (me) = purple bubble, staff = light gray bubble
-                        background: mine ? '#7c3aed' : '#ffffff',
-                        color:      mine ? '#ffffff' : '#111827',
-                        border:     mine ? 'none'   : '1px solid #e5e7eb',
+                        background: mine ? theme.purple : theme.white,
+                        color:      mine ? theme.white : theme.textStrong,
+                        border:     mine ? 'none'   : `1px solid ${theme.border}`,
                         padding: '9px 14px',
                         borderRadius: mine
                           ? '18px 18px 4px 18px'
@@ -403,7 +480,7 @@ export default function StudentChat() {
                         )}
                         {/* Message text — explicit color so it's always visible */}
                         <div style={{
-                          color: mine ? '#ffffff' : '#111827',
+                          color: mine ? theme.white : theme.textStrong,
                           wordBreak: 'break-word',
                         }}>
                           {msg.message || msg.content || ''}
@@ -411,7 +488,7 @@ export default function StudentChat() {
                         {/* Timestamp */}
                         <div style={{
                           fontSize: 10, marginTop: 4,
-                          color: mine ? 'rgba(255,255,255,0.7)' : '#9ca3af',
+                          color: mine ? 'rgba(255,255,255,0.7)' : theme.textMuted,
                           textAlign: 'right',
                         }}>
                           {formatTime(msg.created_at)}
@@ -430,9 +507,9 @@ export default function StudentChat() {
 
           {/* Input bar */}
           <div style={{
-            padding: isMobile ? '10px 12px' : '12px 16px', borderTop: '1px solid #e5e7eb',
+            padding: isMobile ? '10px 12px' : '12px 16px', borderTop: `1px solid ${theme.border}`,
             display: 'flex', gap: 10, alignItems: 'flex-end',
-            background: '#fff', flexShrink: 0,
+            background: theme.white, flexShrink: 0,
           }}>
             <textarea
               placeholder={`Message ${selected.name}...`}
@@ -442,10 +519,10 @@ export default function StudentChat() {
               rows={1}
               style={{
                 flex: 1, padding: '10px 14px',
-                border: '1px solid #e5e7eb', borderRadius: 10,
-                fontSize: 13, color: '#111827', outline: 'none',
+                border: `1px solid ${theme.border}`, borderRadius: 10,
+                fontSize: 13, color: theme.textStrong, outline: 'none',
                 fontFamily: 'inherit', resize: 'none', lineHeight: 1.5,
-                background: '#fff', maxHeight: 120, overflowY: 'auto',
+                background: theme.white, maxHeight: 120, overflowY: 'auto',
               }}
               onInput={e => {
                 // auto-grow textarea up to 120px
@@ -458,10 +535,10 @@ export default function StudentChat() {
               disabled={sending || !newMessage.trim()}
               style={{
                 padding: isMobile ? '10px 14px' : '10px 18px',
-                background: sending || !newMessage.trim() ? '#e5e7eb' : '#7c3aed',
+                background: sending || !newMessage.trim() ? theme.border : theme.purple,
                 border: 'none', borderRadius: 10,
                 fontSize: 13, fontWeight: 600,
-                color: sending || !newMessage.trim() ? '#9ca3af' : '#fff',
+                color: sending || !newMessage.trim() ? theme.textMuted : theme.white,
                 cursor: sending || !newMessage.trim() ? 'not-allowed' : 'pointer',
                 fontFamily: 'inherit', flexShrink: 0,
                 transition: 'background 0.15s',
@@ -488,10 +565,10 @@ export default function StudentChat() {
           {!selected ? (
             <>
               <div style={{ padding: '14px 16px 10px' }}>
-                <h1 style={{ fontSize: 18, fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>
+                <h1 style={{ fontSize: 18, fontWeight: 700, color: theme.textStrong, margin: '0 0 4px' }}>
                   Chat with Staff
                 </h1>
-                <p style={{ fontSize: 12, color: '#6b7280', margin: 0 }}>
+                <p style={{ fontSize: 12, color: theme.textLight, margin: 0 }}>
                   Send messages directly to your counselor or document handler
                 </p>
               </div>
@@ -517,10 +594,10 @@ export default function StudentChat() {
 
         {/* Page header */}
         <div style={{ marginBottom: 16, flexShrink: 0 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: theme.textStrong, margin: '0 0 4px' }}>
             Chat with Staff
           </h1>
-          <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
+          <p style={{ fontSize: 13, color: theme.textLight, margin: 0 }}>
             Send messages directly to your counselor or document handler
           </p>
         </div>

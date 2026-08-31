@@ -1,11 +1,57 @@
-* {
-  margin: 5;
+/* Global reset + base typography.
+   Colours come from src/theme.js — keep these values in sync with it:
+   surface #F6F8FA, text #243447, border #E2E7EC. */
+
+*,
+*::before,
+*::after {
+  margin: 0;
   padding: 0;
   box-sizing: border-box;
-  color: #793434;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
 }
 
 body {
   font-family: 'Segoe UI', Arial, sans-serif;
-  color: #793434;
+  background: #F6F8FA;
+  color: #243447;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+  /* Nudge the whole UI up a notch — the app sizes text in inline px, so a
+     root zoom is the one lever that enlarges everything uniformly. */
+  zoom: 1.08;
+}
+
+a {
+  color: #1E5AA8;
+}
+
+::selection {
+  background: rgba(30, 90, 168, 0.16);
+}
+
+/* Sidebar nav scroll area (dark navy background). Thin, always-visible track
+   so it's obvious there's more below when the list is taller than the sidebar. */
+.sidebar-nav-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+.sidebar-nav-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.sidebar-nav-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-nav-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.28);
+  border-radius: 4px;
+}
+.sidebar-nav-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.45);
 }

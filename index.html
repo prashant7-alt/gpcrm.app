@@ -3,6 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!--
+      Safe-for-dev client hints only. The real Content-Security-Policy, HSTS and
+      X-Frame-Options are shipped as HTTP headers in production via
+      `public/_headers` (Netlify) and `vercel.json` (Vercel). See SECURITY.md.
+    -->
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+
+    <link rel="icon" type="image/png" sizes="256x256" href="/favicon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+
     <title>Global Pathway CRM</title>
   </head>
   <body>

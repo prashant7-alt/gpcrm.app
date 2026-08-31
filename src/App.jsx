@@ -1,11 +1,13 @@
-import { useState } from 'react'
+import { useState, createContext, useContext } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 
 import Navbar         from './components/Navbar/Navbar'
 import ProtectedRoute from './components/ProtectedRoute'
+import theme          from './theme'
 import { useIsMobile } from './hooks/useIsMobile'
 
 import Login          from './pages/auth/login'
+import StudentLogin   from './pages/auth/StudentLogin'
 import ResetPassword  from './pages/auth/ResetPassword'
 import Dashboard      from './pages/Dashboard'
 import Applications   from './pages/Applications'
@@ -35,15 +37,33 @@ import KhaltiSuccess from './pages/payment/KhaltiSuccess'
 const SIDEBAR_WIDTH = 230
 
 // All non-student roles
-const ALL_STAFF = ['admin', 'staff', 'finance_officer', 'document_handler', 'receptionist']
+const ALL_STAFF = ['admin', 'staff', 'finance_officer', 'document_handler', 'receptionist', 'counselor', 'visa_officer']
+
+// Every staff role EXCEPT admin — Tasks/Appointments/Visitors moved off the
+// admin side and now belong to Reception (and Tasks to every staff panel).
+const STAFF_NO_ADMIN = ['staff', 'finance_officer', 'document_handler', 'receptionist', 'counselor', 'visa_officer']
+
+// Sidebar open/closed state lives ABOVE <Routes> so it survives navigation.
+// (Each route renders its own <Layout>, so keeping the state inside Layout
+//  made the sidebar reset to closed on every page change.)
+const MenuContext = createContext(null)
+
+function MenuProvider({ children }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  return (
+    <MenuContext.Provider value={{ menuOpen, setMenuOpen }}>
+      {children}
+    </MenuContext.Provider>
+  )
+}
 
 // Staff layout — passes menuOpen state down to Navbar
 function Layout({ children }) {
-  const [menuOpen, setMenuOpen] = useState(false)
+  const { menuOpen, setMenuOpen } = useContext(MenuContext)
   const isMobile = useIsMobile()
 
   return (
-    <div style={{ background: '#f9fafb', minHeight: '100vh' }}>
+    <div style={{ background: theme.pageBg, minHeight: '100vh' }}>
       <Navbar menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
       <main style={{
         marginTop: 64,
@@ -80,11 +100,18 @@ function StudentRoute({ children }) {
 export default function App() {
   return (
     <BrowserRouter>
+      <MenuProvider>
       <Routes>
 
         {/* ── Public ── */}
-        <Route path="/"      element={<Navigate to="/login" replace />} />
-        <Route path="/login" element={<Login />} />
+        {/* Root + unknown paths land on the student login (the only one that's
+            linked/advertised). The staff login lives at a deliberately
+            unguessable path below and is never linked from the UI — staff
+            reach it by bookmark. Change the path here + in ProtectedRoute.jsx
+            + Navbar.jsx handleLogout if it ever needs rotating. */}
+        <Route path="/"      element={<Navigate to="/student-login" replace />} />
+        <Route path="/student-login" element={<StudentLogin />} />
+        <Route path="/team-portal-x7k2f9" element={<Login />} />
         <Route path="/reset-password" element={<ResetPassword />} />
 
         {/* ── Payment callbacks — NO auth wrapper ── */}
@@ -104,21 +131,21 @@ export default function App() {
 
         {/* ── Pipeline — admin, staff, receptionist ── */}
         <Route path="/applications" element={
-          <StaffRoute roles={['admin', 'staff', 'receptionist']}><Applications /></StaffRoute>
+          <StaffRoute roles={['admin', 'staff', 'receptionist', 'visa_officer']}><Applications /></StaffRoute>
         } />
         <Route path="/students" element={
-          <StaffRoute roles={['admin', 'staff', 'receptionist', 'finance_officer']}><Students /></StaffRoute>
+          <StaffRoute roles={['admin', 'staff', 'receptionist', 'finance_officer', 'counselor', 'visa_officer']}><Students /></StaffRoute>
         } />
         <Route path="/visitors" element={
-          <StaffRoute roles={['admin', 'staff', 'receptionist']}><Visitors /></StaffRoute>
+          <StaffRoute roles={['staff', 'receptionist']}><Visitors /></StaffRoute>
         } />
 
-        {/* ── Operations ── */}
+        {/* ── Operations — Reception + staff panels, not admin ── */}
         <Route path="/appointments" element={
-          <StaffRoute roles={ALL_STAFF}><Appointments /></StaffRoute>
+          <StaffRoute roles={STAFF_NO_ADMIN}><Appointments /></StaffRoute>
         } />
         <Route path="/tasks" element={
-          <StaffRoute roles={['admin', 'staff', 'finance_officer']}><Tasks /></StaffRoute>
+          <StaffRoute roles={STAFF_NO_ADMIN}><Tasks /></StaffRoute>
         } />
 
         {/* ── Finance ── */}
@@ -131,12 +158,12 @@ export default function App() {
 
         {/* ── Documents ── */}
         <Route path="/documents" element={
-          <StaffRoute roles={['admin', 'staff', 'document_handler']}><Documents /></StaffRoute>
+          <StaffRoute roles={['admin', 'staff', 'document_handler', 'visa_officer']}><Documents /></StaffRoute>
         } />
 
         {/* ── Chat ── */}
         <Route path="/chat" element={
-          <StaffRoute roles={['admin', 'staff', 'document_handler', 'finance_officer', 'receptionist']}><StaffChat /></StaffRoute>
+          <StaffRoute roles={['admin', 'staff', 'document_handler', 'finance_officer', 'receptionist', 'counselor', 'visa_officer']}><StaffChat /></StaffRoute>
         } />
 
         {/* ── Admin only ── */}
@@ -157,9 +184,10 @@ export default function App() {
         <Route path="/student/chat"         element={<StudentRoute><StudentChat         /></StudentRoute>} />
 
         {/* ── 404 ── */}
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to="/student-login" replace />} />
 
       </Routes>
+      </MenuProvider>
     </BrowserRouter>
   )
 }

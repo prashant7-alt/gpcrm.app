@@ -1,16 +1,15 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import theme from '../theme'
+import { statusChip } from '../lib/statusColors'
 import BottomButtons from '../components/BottomButtons'
 import { advanceApplicantStage } from '../lib/pipelineStages' // adjust path if needed
 import { useIsMobile } from '../hooks/useIsMobile'
+import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
 
-const statusStyle = (status) => {
-  if (status === 'confirmed') return { bg: '#dcfce7', color: '#15803d' }
-  if (status === 'rejected')  return { bg: '#fee2e2', color: '#b91c1c' }
-  if (status === 'completed') return { bg: '#dbeafe', color: '#1d4ed8' }
-  return { bg: '#fef9c3', color: '#a16207' } // pending
-}
+// Colours from the shared status system (src/lib/statusColors.js):
+// confirmed/completed = green, pending = amber, rejected = red.
+const statusStyle = (status) => statusChip(status || 'pending')
 
 export default function Appointments() {
   const isMobile = useIsMobile()
@@ -32,6 +31,7 @@ export default function Appointments() {
   const [rescheduleForm, setRescheduleForm] = useState({ date: '', time: '' })
 
   useEffect(() => { load() }, [])
+  useRefetchOnFocus(load)
 
   // ── Realtime — auto-refresh whenever any appointment is inserted,
   // updated, or deleted (e.g. a student books a new one, or another
@@ -60,33 +60,42 @@ export default function Appointments() {
 
   const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }))
 
-  // ── ACCEPT appointment ──
-  async function acceptAppointment(id) {
-    await supabase
+  // Patch one appointment in local state right away, so the badge/actions
+  // update on click without waiting for a refetch (or a manual refresh).
+  const patchLocal = (id, fields) =>
+    setAppointments(prev => prev.map(a => (a.id === id ? { ...a, ...fields } : a)))
+
+  // Change an appointment's status: update the UI optimistically, write to
+  // the DB, and roll back + report if the write fails.
+  async function setStatus(appt, newStatus, { confirm } = {}) {
+    if (confirm && !window.confirm(confirm)) return
+    const prevStatus = appt.status
+    patchLocal(appt.id, { status: newStatus })
+
+    const { error } = await supabase
       .from('appointments')
-      .update({ status: 'confirmed' })
-      .eq('id', id)
-    load()
+      .update({ status: newStatus })
+      .eq('id', appt.id)
+
+    if (error) {
+      patchLocal(appt.id, { status: prevStatus })
+      alert('Could not update the appointment: ' + error.message)
+      return false
+    }
+    return true
   }
+
+  // ── ACCEPT appointment ──
+  const acceptAppointment = (appt) => setStatus(appt, 'confirmed')
 
   // ── REJECT appointment ──
-  async function rejectAppointment(id) {
-    if (!window.confirm('Reject this appointment?')) return
-    await supabase
-      .from('appointments')
-      .update({ status: 'rejected' })
-      .eq('id', id)
-    load()
-  }
+  const rejectAppointment = (appt) =>
+    setStatus(appt, 'rejected', { confirm: 'Reject this appointment?' })
 
   // ── MARK as completed ──
-  // NEW: takes the full appointment object (not just id) so we know its
-  // type/student_email/student_name for the pipeline auto-advance below.
   async function completeAppointment(appt) {
-    await supabase
-      .from('appointments')
-      .update({ status: 'completed' })
-      .eq('id', appt.id)
+    const ok = await setStatus(appt, 'completed')
+    if (!ok) return
 
     // Auto-advance the applicant to "Counseling" once their counseling
     // session is marked complete. Only fires for that specific
@@ -99,8 +108,6 @@ export default function Appointments() {
         'Counseling'
       )
     }
-
-    load()
   }
 
   // ── OPEN reschedule modal ──
@@ -115,17 +122,21 @@ export default function Appointments() {
       alert('Please pick date and time')
       return
     }
-    await supabase
-      .from('appointments')
-      .update({
-        date:   rescheduleForm.date,
-        time:   rescheduleForm.time,
-        status: 'confirmed', // auto-confirm after reschedule
-      })
-      .eq('id', rescheduleId)
-
+    const id = rescheduleId
+    const patch = {
+      date:   rescheduleForm.date,
+      time:   rescheduleForm.time,
+      status: 'confirmed', // auto-confirm after reschedule
+    }
+    const before = appointments.find(a => a.id === id)
+    patchLocal(id, patch)          // reflect it in the list right away
     setRescheduleId(null)
-    load()
+
+    const { error } = await supabase.from('appointments').update(patch).eq('id', id)
+    if (error) {
+      if (before) patchLocal(id, { date: before.date, time: before.time, status: before.status })
+      alert('Could not reschedule: ' + error.message)
+    }
   }
 
   // ── ADMIN — schedule a brand new appointment for a student ──
@@ -134,7 +145,7 @@ export default function Appointments() {
       alert('Please fill required fields')
       return
     }
-    await supabase.from('appointments').insert({
+    const { data, error } = await supabase.from('appointments').insert({
       student_name:  form.student_name,
       student_email: form.student_email,
       type:          form.type,
@@ -142,11 +153,14 @@ export default function Appointments() {
       time:          form.time,
       note:          form.note,
       status:        'confirmed', // admin-created = auto confirmed
-    })
+    }).select().single()
 
+    if (error) { alert('Could not schedule: ' + error.message); return }
+
+    // Drop the new row straight into the list — no refetch needed.
+    if (data) setAppointments(prev => [data, ...prev])
     setForm({ student_name: '', student_email: '', type: '', date: '', time: '', note: '' })
     setShowModal(false)
-    load()
   }
 
   // filters
@@ -201,7 +215,7 @@ export default function Appointments() {
             background: theme.primary,
             border: 'none', borderRadius: 8,
             fontSize: 13, fontWeight: 600,
-            color: '#fff', cursor: 'pointer',
+            color: theme.white, cursor: 'pointer',
             width: isMobile ? '100%' : 'auto',
           }}
         >
@@ -286,7 +300,7 @@ export default function Appointments() {
           }}>
             {['Student','Type','Date & Time','Status','Note','Actions'].map(h => (
               <span key={h} style={{
-                fontSize: 11, fontWeight: 600,
+                fontSize: 11, fontWeight: 700,
                 color: theme.textMuted,
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em',
@@ -357,27 +371,27 @@ export default function Appointments() {
                 {a.status === 'pending' && (
                   <>
                     <button
-                      onClick={() => acceptAppointment(a.id)}
+                      onClick={() => acceptAppointment(a)}
                       style={{
                         flex: 1, minWidth: 90,
                         padding: '7px 10px',
-                        background: '#dcfce7',
+                        background: theme.status.success.bg,
                         border: 'none', borderRadius: 6,
                         fontSize: 12, fontWeight: 600,
-                        color: '#15803d', cursor: 'pointer',
+                        color: theme.status.success.text, cursor: 'pointer',
                       }}
                     >
                        Accept
                     </button>
                     <button
-                      onClick={() => rejectAppointment(a.id)}
+                      onClick={() => rejectAppointment(a)}
                       style={{
                         flex: 1, minWidth: 90,
                         padding: '7px 10px',
-                        background: '#fee2e2',
+                        background: theme.status.danger.bg,
                         border: 'none', borderRadius: 6,
                         fontSize: 12, fontWeight: 600,
-                        color: '#b91c1c', cursor: 'pointer',
+                        color: theme.status.danger.text, cursor: 'pointer',
                       }}
                     >
                        Reject
@@ -391,10 +405,10 @@ export default function Appointments() {
                     style={{
                       flex: 1, minWidth: 90,
                       padding: '7px 10px',
-                      background: '#dbeafe',
+                      background: theme.status.info.bg,
                       border: 'none', borderRadius: 6,
                       fontSize: 12, fontWeight: 600,
-                      color: '#1d4ed8', cursor: 'pointer',
+                      color: theme.primary, cursor: 'pointer',
                     }}
                   >
                      Complete
@@ -495,25 +509,25 @@ export default function Appointments() {
                 {a.status === 'pending' && (
                   <>
                     <button
-                      onClick={() => acceptAppointment(a.id)}
+                      onClick={() => acceptAppointment(a)}
                       style={{
                         padding: '5px 10px',
-                        background: '#dcfce7',
+                        background: theme.status.success.bg,
                         border: 'none', borderRadius: 6,
                         fontSize: 12, fontWeight: 600,
-                        color: '#15803d', cursor: 'pointer',
+                        color: theme.status.success.text, cursor: 'pointer',
                       }}
                     >
                        Accept
                     </button>
                     <button
-                      onClick={() => rejectAppointment(a.id)}
+                      onClick={() => rejectAppointment(a)}
                       style={{
                         padding: '5px 10px',
-                        background: '#fee2e2',
+                        background: theme.status.danger.bg,
                         border: 'none', borderRadius: 6,
                         fontSize: 12, fontWeight: 600,
-                        color: '#b91c1c', cursor: 'pointer',
+                        color: theme.status.danger.text, cursor: 'pointer',
                       }}
                     >
                        Reject
@@ -527,10 +541,10 @@ export default function Appointments() {
                     onClick={() => completeAppointment(a)}
                     style={{
                       padding: '5px 10px',
-                      background: '#dbeafe',
+                      background: theme.status.info.bg,
                       border: 'none', borderRadius: 6,
                       fontSize: 12, fontWeight: 600,
-                      color: '#1d4ed8', cursor: 'pointer',
+                      color: theme.primary, cursor: 'pointer',
                     }}
                   >
                      Complete
@@ -574,7 +588,7 @@ export default function Appointments() {
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              background: '#fff',
+              background: theme.white,
               border: `1px solid ${theme.border}`,
               borderRadius: isMobile ? '14px 14px 0 0' : 14,
               padding: isMobile ? 20 : 28,
@@ -674,7 +688,7 @@ export default function Appointments() {
                   background: theme.primary,
                   border: 'none', borderRadius: 8,
                   fontSize: 13, fontWeight: 600,
-                  color: '#fff', cursor: 'pointer',
+                  color: theme.white, cursor: 'pointer',
                   width: isMobile ? '100%' : 'auto',
                 }}
               >
@@ -699,7 +713,7 @@ export default function Appointments() {
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              background: '#fff',
+              background: theme.white,
               border: `1px solid ${theme.border}`,
               borderRadius: isMobile ? '14px 14px 0 0' : 14,
               padding: isMobile ? 20 : 28,
@@ -902,7 +916,7 @@ export default function Appointments() {
                   background: theme.primary,
                   border: 'none', borderRadius: 8,
                   fontSize: 13, fontWeight: 600,
-                  color: '#fff', cursor: 'pointer',
+                  color: theme.white, cursor: 'pointer',
                   width: isMobile ? '100%' : 'auto',
                 }}
               >
