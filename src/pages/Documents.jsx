@@ -5,6 +5,7 @@ import theme from '../theme'
 import { advanceApplicantStage } from '../lib/pipelineStages'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useRefetchOnFocus, useRefreshHold } from '../hooks/useRefetchOnFocus'
+import DocViewerModal from '../components/DocViewerModal'
 
 // ─── ALL 12 DOCUMENT TYPES ────────────────────────────────────────────────────
 // MUST match StudentDocumentUpload.jsx exactly — same order, same spelling
@@ -83,7 +84,32 @@ const labelStyle = {
 // (e.g. inside the edit modal, where you're already editing).
 function DocActions({ doc, onEdit, onChanged, isMobile }) {
   const [busy, setBusy] = useState(false)
+  const [viewing, setViewing] = useState(false)
   const hasFile = !!doc.file_url
+
+  useRefreshHold(viewing)
+
+  // Replace the file straight from the viewer (admin can replace at any status).
+  async function handleReplace(file) {
+    const ext  = file.name.split('.').pop()
+    const path = `${doc.applicant_id}/${doc.doc_type}-${Date.now()}.${ext}`.replace(/\s+/g, '_')
+
+    const { error: upErr } = await supabase.storage
+      .from('student-docs').upload(path, file, { upsert: true })
+    if (upErr) throw new Error(upErr.message)
+
+    const { data: urlData } = supabase.storage.from('student-docs').getPublicUrl(path)
+    const { error } = await supabase
+      .from('student_documents')
+      .update({
+        file_url:   urlData.publicUrl,
+        status:     doc.status === 'Missing' ? 'Received' : doc.status,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', doc.id)
+    if (error) throw new Error(error.message)
+    onChanged?.()
+  }
 
   async function handleDelete() {
     if (!window.confirm(`Delete the uploaded file for "${doc.doc_type}"?\nThe item will go back to "Missing".`)) return
@@ -113,14 +139,21 @@ function DocActions({ doc, onEdit, onChanged, isMobile }) {
   return (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
       {hasFile && (
-        <a
-          href={doc.file_url}
-          target="_blank"
-          rel="noreferrer"
-          style={{ ...btn, textDecoration: 'none', background: theme.primaryLight, borderColor: theme.border, color: theme.primary }}
+        <button
+          onClick={() => setViewing(true)}
+          style={{ ...btn, background: theme.primaryLight, borderColor: theme.border, color: theme.primary }}
         >
           <Eye size={13} /> View
-        </a>
+        </button>
+      )}
+
+      {viewing && (
+        <DocViewerModal
+          fileUrl={doc.file_url}
+          title={`${doc.student_name || ''} — ${doc.doc_type}`}
+          onClose={() => setViewing(false)}
+          onReplace={handleReplace}
+        />
       )}
 
       {onEdit && (

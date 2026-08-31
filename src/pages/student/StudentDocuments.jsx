@@ -16,7 +16,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import theme from '../../theme'
 import { supabase } from '../../supabase'
-import { useRefetchOnFocus } from '../../hooks/useRefetchOnFocus'
+import { useRefetchOnFocus, useRefreshHold } from '../../hooks/useRefetchOnFocus'
+import DocViewerModal from '../../components/DocViewerModal'
 import {
   FolderOpen,
   GraduationCap,
@@ -76,12 +77,26 @@ export default function StudentDocuments() {
   const [uploading,  setUploading]  = useState({})  // { [doc.id]: true } while uploading
   const [deleting,   setDeleting]   = useState({})  // { [doc.id]: true } while deleting
   const [uploadSuccess, setUploadSuccess] = useState({})
+  const [viewerDoc,  setViewerDoc]  = useState(null) // doc shown in the popup viewer
 
   useEffect(() => {
     if (!profile.id) { navigate('/student-login'); return }
     loadByProfile()
   }, [])
   useRefetchOnFocus(loadByProfile)
+  useRefreshHold(!!viewerDoc)
+
+  // Replace the file straight from the viewer, then refresh the viewer's copy.
+  async function replaceFromViewer(file) {
+    if (!viewerDoc) return
+    await handleUpload(viewerDoc, file)
+    const { data } = await supabase
+      .from('student_documents')
+      .select('*')
+      .eq('id', viewerDoc.id)
+      .maybeSingle()
+    if (data) setViewerDoc(data)
+  }
 
   // ── Look up this logged-in student's documents by their profile email ──
   async function loadByProfile() {
@@ -434,19 +449,18 @@ export default function StudentDocuments() {
                 {/* Current file link */}
                 <div>
                   {hasFile ? (
-                    <a
-                      href={doc.file_url}
-                      target="_blank"
-                      rel="noreferrer"
+                    <button
+                      onClick={() => setViewerDoc(doc)}
                       style={{
                         fontSize: 12, color: theme.primary, fontWeight: 600,
-                        textDecoration: 'none',
+                        background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                        fontFamily: 'inherit',
                         display: 'inline-flex', alignItems: 'center', gap: 4,
                       }}
                     >
                       <Paperclip size={13} color={theme.primary} />
                       View file
-                    </a>
+                    </button>
                   ) : (
                     <span style={{ fontSize: 12, color: theme.inputBorder }}>No file yet</span>
                   )}
@@ -542,6 +556,18 @@ export default function StudentDocuments() {
         </div>
 
       </div>
+
+      {viewerDoc && (
+        <DocViewerModal
+          fileUrl={viewerDoc.file_url}
+          title={viewerDoc.doc_type}
+          onClose={() => setViewerDoc(null)}
+          onReplace={viewerDoc.status === 'Verified' ? undefined : replaceFromViewer}
+          replaceNote={viewerDoc.status === 'Verified'
+            ? 'Verified by your counsellor — contact Global Pathway to replace this file.'
+            : undefined}
+        />
+      )}
     </div>
   )
 }
