@@ -228,11 +228,17 @@ export default function Payments() {
     { label:'Overdue',         value:`Rs ${totalOverdue.toLocaleString()}`,   color: theme.status.danger.text,  top: theme.status.danger.main,  Icon: AlertTriangle },
   ]
 
+  // A plain 'pending' row is only a request/claim — the student hasn't
+  // successfully paid yet (cash not handed over, or a manual reference not
+  // verified). Keep those out of the default view so this page shows real,
+  // received money only. Staff can still reach them by picking the "Pending"
+  // status filter to verify a cash / bank-transfer payment.
   const filtered = payments.filter(p => {
     const matchSearch = p.student_name?.toLowerCase().includes(search.toLowerCase())
     const matchType   = typeFilter==='All Types' || p.type===typeFilter
     const matchStatus = statusFilter==='All'     || p.status===statusFilter
-    return matchSearch && matchType && matchStatus
+    const hidePending = statusFilter !== 'pending' && p.status === 'pending'
+    return matchSearch && matchType && matchStatus && !hidePending
   })
 
   async function handleAddPayment(e) {
@@ -243,6 +249,9 @@ export default function Payments() {
     }).select().single()
     if (error) { alert('Error saving payment: '+error.message); return }
     if (data) setPayments(prev => [data, ...prev])   // show it in the list now
+    // It goes in as 'pending', which the default view hides — jump to the
+    // Pending filter so the row the staff member just added stays visible.
+    setStatusFilter('pending')
     setForm({ student_name:'', amount:'', type:'Consultation Fee', method:'Cash', note:'' })
     setShowModal(false)
   }
