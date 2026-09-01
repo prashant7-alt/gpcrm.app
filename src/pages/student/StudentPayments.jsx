@@ -322,15 +322,16 @@ export default function StudentPayments() {
     setSaving(true)
     const ref = form.reference.trim()
 
-    // The student is manually claiming they paid — this needs staff verification,
-    // so the row goes in as 'pending'. Create it now if the gateway buttons
-    // didn't already (or promote an 'awaiting_payment' row that was).
-    const id = await ensurePaymentRow('pending')
+    // The student scanned the QR, paid in their eSewa/Khalti app, and is now
+    // giving us the transaction reference. Land it as 'pending_verification'
+    // so it shows up in the staff Payments list with a "Verify & Confirm"
+    // action — a plain 'pending' row would be hidden from their default view.
+    const id = await ensurePaymentRow('pending_verification')
     if (!id) { setSaving(false); return }
 
     const { error } = await supabase
       .from('payments')
-      .update({ reference: ref, status: 'pending' })
+      .update({ reference: ref, status: 'pending_verification' })
       .eq('id', id)
     setSaving(false)
     if (error) { alert('Could not submit reference: ' + error.message); return }

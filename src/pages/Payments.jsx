@@ -113,12 +113,21 @@ function ViewModal({ payment, onClose, onMarkPaid, marking, isMobile }) {
           {payment.note && row('Note', payment.note)}
         </div>
 
-        {/* Khalti/eSewa verification info */}
+        {/* Verification info — the message depends on whether the gateway
+            confirmed it (has our txn_ref / pidx) or the student just typed a
+            QR transaction reference that still needs checking. */}
         {payment.status === 'pending_verification' && (
-          <div style={{ margin:'16px 24px 0', padding:'12px 16px', background:theme.status.info.bg, border:`1px solid ${theme.status.info.border}`, borderRadius:10, fontSize:12, color:theme.primary }}>
-            <strong>Payment received via {payment.method}</strong><br/>
-            The gateway has confirmed this payment. Click <strong>"Confirm & Send Email"</strong> to mark as paid and notify the student.
-          </div>
+          (payment.txn_ref || payment.pidx) ? (
+            <div style={{ margin:'16px 24px 0', padding:'12px 16px', background:theme.status.info.bg, border:`1px solid ${theme.status.info.border}`, borderRadius:10, fontSize:12, color:theme.primary }}>
+              <strong>Payment received via {payment.method}</strong><br/>
+              The gateway has confirmed this payment. Click <strong>"Confirm &amp; Send Email"</strong> to mark as paid and notify the student.
+            </div>
+          ) : (
+            <div style={{ margin:'16px 24px 0', padding:'12px 16px', background:theme.status.warning.bg, border:`1px solid ${theme.status.warning.border}`, borderRadius:10, fontSize:12, color:theme.status.warning.text }}>
+              <strong>Student-submitted {payment.method} reference</strong><br/>
+              The student paid by QR and entered reference <strong>{payment.reference || '—'}</strong>. Check it against your {payment.method} merchant statement, then click <strong>"Confirm &amp; Send Email"</strong>.
+            </div>
+          )
         )}
 
         {/* Actions */}
