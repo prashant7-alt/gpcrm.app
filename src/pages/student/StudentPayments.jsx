@@ -82,6 +82,8 @@ export default function StudentPayments() {
   // submit — mobile browsers block a JS form.submit() that runs after `await`.
   const [esewaFields, setEsewaFields] = useState(null)
   const [esewaErr,    setEsewaErr]    = useState('')
+  const [khaltiBusy,  setKhaltiBusy]  = useState(false)
+  const [khaltiErr,   setKhaltiErr]   = useState('')
 
   useEffect(() => {
     if (!profile.id) { navigate('/student-login'); return }
@@ -163,7 +165,12 @@ export default function StudentPayments() {
       })
       .select()
       .single()
-    if (error) { alert('Error: ' + error.message); return null }
+    if (error) {
+      console.error('[payment] ensurePaymentRow insert failed:', error)
+      setEsewaErr('Could not create the payment: ' + error.message)
+      setKhaltiErr('Could not create the payment: ' + error.message)
+      return null
+    }
     setCreatedId(data.id)
     return data.id
   }
@@ -186,7 +193,7 @@ export default function StudentPayments() {
     setSaving(true)
     const id = await ensurePaymentRow('pending')
     setSaving(false)
-    if (!id) return
+    if (!id) { alert('Could not submit the request. Please try again.'); return }
 
     alert('Payment request submitted!')
     resetModal()
@@ -244,18 +251,21 @@ export default function StudentPayments() {
   }
 
   // ── Khalti instant pay ────────────────────────────────────────────────────
+  // Every failure path shows an on-screen message (mobile browsers swallow
+  // alert() fast, and a silent return just looks like a dead button).
   async function payWithKhaltiNow() {
+    setKhaltiErr('')
+    setKhaltiBusy(true)
     try {
-      // Create the row only now that the student is actually paying.
       const paymentId = await ensurePaymentRow('awaiting_payment')
-      if (!paymentId) return
+      if (!paymentId) {
+        setKhaltiErr('Could not start the payment. Please try again.')
+        setKhaltiBusy(false)
+        return
+      }
 
       const amountRupees = Number(form.amount)
-      // ✅ FIXED: Khalti's API works in paisa (1 Rs = 100 paisa). The edge
-      // function was rejecting small rupee amounts as "too small" because
-      // it was receiving raw rupees and validating them as if they were
-      // already paisa (e.g. Rs 600 arrived as "600 paisa" = Rs 6, which
-      // failed Khalti's Rs 10 minimum). Convert before sending.
+      // Khalti's API works in paisa (1 Rs = 100 paisa).
       const amountPaisa = Math.round(amountRupees * 100)
       const return_url  = `${window.location.origin}/payment/khalti-success`
 
@@ -270,20 +280,19 @@ export default function StudentPayments() {
         }),
       })
 
-      const result = await res.json()
+      const result = await res.json().catch(() => ({}))
 
-      if (!result.success || !result.payment_url) {
-        // Surface the real reason when the edge function provides one,
-        // instead of only the generic fallback message.
-        const detail = result.error || result.message || result.detail
-        alert(detail ? `Khalti initiation failed: ${detail}` : 'Khalti initiation failed. Please try again.')
+      if (!res.ok || !result.success || !result.payment_url) {
+        const detail = result.error || result.message || result.detail || `HTTP ${res.status}`
+        setKhaltiErr(`Khalti couldn't start: ${detail}`)
+        setKhaltiBusy(false)
         return
       }
 
-      window.location.href = result.payment_url
-
+      window.location.assign(result.payment_url)
     } catch (err) {
-      alert('Khalti error: ' + err.message)
+      setKhaltiErr('Khalti error: ' + (err?.message || String(err)))
+      setKhaltiBusy(false)
     }
   }
 
@@ -316,6 +325,8 @@ export default function StudentPayments() {
     setQrLoadError(false)
     setEsewaFields(null)
     setEsewaErr('')
+    setKhaltiBusy(false)
+    setKhaltiErr('')
     setForm({ amount: '', type: TYPE_OPTIONS[0], method: 'Cash', note: '', reference: '' })
   }
 
@@ -597,7 +608,7 @@ export default function StudentPayments() {
                       type="number" min="1"
                       placeholder="e.g. 5000"
                       value={form.amount}
-                      onChange={e => { set('amount', e.target.value); setEsewaFields(null); setEsewaErr('') }}
+                      onChange={e => { set('amount', e.target.value); setEsewaFields(null); setEsewaErr(''); setKhaltiErr('') }}
                       style={inputStyle}
                     />
                   </div>
@@ -732,15 +743,36 @@ export default function StudentPayments() {
                   {/* Khalti button */}
                   {form.method === 'Khalti' && (
                     <>
-                      <button onClick={payWithKhaltiNow} style={{
-                        width: '100%', padding: '12px 16px',
-                        background: '#5C2D91', border: 'none', borderRadius: 10,
-                        fontSize: 14, fontWeight: 700, color: theme.white,
-                        cursor: 'pointer', fontFamily: 'inherit', marginBottom: 16,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                      }}>
-                        <Zap size={16} fill={theme.white} /> Pay instantly with Khalti
+                      <button
+                        onClick={payWithKhaltiNow}
+                        disabled={khaltiBusy}
+                        style={{
+                          width: '100%', padding: '12px 16px',
+                          background: khaltiBusy ? theme.textMuted : '#5C2D91',
+                          border: 'none', borderRadius: 10,
+                          fontSize: 14, fontWeight: 700, color: theme.white,
+                          cursor: khaltiBusy ? 'not-allowed' : 'pointer',
+                          fontFamily: 'inherit', marginBottom: 16,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        }}
+                      >
+                        <Zap size={16} fill={theme.white} />
+                        {khaltiBusy ? 'Opening Khalti…' : 'Pay instantly with Khalti'}
                       </button>
+                      {khaltiErr && (
+                        <div style={{
+                          background: theme.status.danger.bg, border: `1px solid ${theme.status.danger.border}`,
+                          borderRadius: 8, padding: '8px 12px', marginBottom: 16, marginTop: -6,
+                          fontSize: 12, color: theme.status.danger.text,
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                        }}>
+                          <span>{khaltiErr}</span>
+                          <button onClick={payWithKhaltiNow} style={{
+                            background: 'none', border: 'none', color: theme.status.danger.text,
+                            fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline',
+                          }}>Retry</button>
+                        </div>
+                      )}
                       <div style={{ textAlign: 'center', fontSize: 11, color: theme.textMuted, marginBottom: 16, marginTop: -8 }}>
                         — or scan the QR code and enter your reference below —
                       </div>
@@ -804,7 +836,7 @@ export default function StudentPayments() {
                     flexDirection: isMobile ? 'column-reverse' : 'row',
                     justifyContent: 'flex-end',
                   }}>
-                    <button onClick={() => { setStep(1); setEsewaFields(null); setEsewaErr('') }} style={{
+                    <button onClick={() => { setStep(1); setEsewaFields(null); setEsewaErr(''); setKhaltiErr(''); setKhaltiBusy(false) }} style={{
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                       padding: '9px 18px', background: theme.pageBg,
                       border: `1px solid ${theme.border}`, borderRadius: 8,
