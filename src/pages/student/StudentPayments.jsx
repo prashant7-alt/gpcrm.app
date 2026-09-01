@@ -703,21 +703,26 @@ export default function StudentPayments() {
                         {esewaFields && Object.entries(esewaFields).map(([k, v]) => (
                           <input key={k} type="hidden" name={k} value={v} readOnly />
                         ))}
+                        {/* Ready → real submit button (native POST = mobile-safe).
+                            Not ready → a plain button that (re)runs preparation,
+                            so the flow never dead-ends on a disabled control. */}
                         <button
-                          type="submit"
-                          disabled={!esewaFields}
+                          type={esewaFields ? 'submit' : 'button'}
+                          onClick={esewaFields ? undefined : prepareEsewa}
                           style={{
                             width: '100%', padding: '12px 16px',
-                            background: esewaFields ? '#60BB46' : theme.textMuted,
+                            background: esewaFields ? '#60BB46' : (esewaErr ? theme.status.danger.main : theme.textMuted),
                             border: 'none', borderRadius: 10,
                             fontSize: 14, fontWeight: 700, color: theme.white,
-                            cursor: esewaFields ? 'pointer' : 'not-allowed',
+                            cursor: 'pointer',
                             fontFamily: 'inherit', marginBottom: 16,
                             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                           }}
                         >
                           <Zap size={16} fill={theme.white} />
-                          {esewaFields ? 'Pay instantly with eSewa' : 'Preparing eSewa…'}
+                          {esewaFields ? 'Pay instantly with eSewa'
+                            : esewaErr ? 'Try eSewa again'
+                            : 'Preparing eSewa…'}
                         </button>
                       </form>
                       {esewaErr && (
