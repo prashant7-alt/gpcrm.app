@@ -18,7 +18,7 @@ export default function EsewaFailure() {
     }}>
       <div style={{
         background: theme.cardBg, border: `1px solid ${theme.border}`, borderRadius: 16,
-        padding: 48, textAlign: 'center', maxWidth: 420, width: '100%',
+        padding: 'clamp(24px, 7vw, 48px)', textAlign: 'center', maxWidth: 420, width: '100%',
       }}>
         <Clock size={44} style={{ color: theme.status.warning.main, marginBottom: 16 }} />
         <h2 style={{ fontSize: 20, fontWeight: 700, color: theme.status.warning.text }}>

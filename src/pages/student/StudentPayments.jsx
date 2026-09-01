@@ -201,9 +201,30 @@ export default function StudentPayments() {
   }
 
   // ── eSewa instant pay ─────────────────────────────────────────────────────
-  // Prepares (row + signed field set) so the step-2 <form> can be submitted
-  // natively. Runs when the student lands on the eSewa pay screen; the actual
-  // navigation is a plain form submit, which mobile browsers don't block.
+  // Two steps, on purpose:
+  //  1. prepareEsewa() — async: makes the row + fetches the signed field set
+  //     into state. Runs automatically when the pay screen opens.
+  //  2. submitEsewaNow() — SYNCHRONOUS: builds a detached <form> and submits
+  //     it in the same tick as the tap. No `await` between the user gesture
+  //     and form.submit(), and the form lives on document.body (outside the
+  //     modal/React tree), so nothing mobile browsers do can swallow it.
+  function submitEsewaNow() {
+    if (!esewaFields) { prepareEsewa(); return }
+    const f = document.createElement('form')
+    f.method = 'POST'
+    f.action = ESEWA_FORM_URL
+    f.style.display = 'none'
+    Object.entries(esewaFields).forEach(([k, v]) => {
+      const i = document.createElement('input')
+      i.type = 'hidden'
+      i.name = k
+      i.value = String(v)
+      f.appendChild(i)
+    })
+    document.body.appendChild(f)
+    f.submit()
+  }
+
   async function prepareEsewa() {
     setEsewaErr('')
     setEsewaFields(null)
@@ -694,37 +715,30 @@ export default function StudentPayments() {
                     </p>
                   </div>
 
-                  {/* eSewa button — a real <form> POST so mobile browsers don't
-                      block the redirect (a JS form.submit() after `await` gets
-                      swallowed on iOS/Android). */}
+                  {/* eSewa button — synchronous detached-form submit (see
+                      submitEsewaNow). A form.submit() that runs in the same tick
+                      as the tap, on a node outside the modal, is the one thing
+                      mobile browsers reliably let navigate. */}
                   {form.method === 'eSewa' && (
                     <>
-                      <form method="POST" action={ESEWA_FORM_URL} style={{ margin: 0 }}>
-                        {esewaFields && Object.entries(esewaFields).map(([k, v]) => (
-                          <input key={k} type="hidden" name={k} value={v} readOnly />
-                        ))}
-                        {/* Ready → real submit button (native POST = mobile-safe).
-                            Not ready → a plain button that (re)runs preparation,
-                            so the flow never dead-ends on a disabled control. */}
-                        <button
-                          type={esewaFields ? 'submit' : 'button'}
-                          onClick={esewaFields ? undefined : prepareEsewa}
-                          style={{
-                            width: '100%', padding: '12px 16px',
-                            background: esewaFields ? '#60BB46' : (esewaErr ? theme.status.danger.main : theme.textMuted),
-                            border: 'none', borderRadius: 10,
-                            fontSize: 14, fontWeight: 700, color: theme.white,
-                            cursor: 'pointer',
-                            fontFamily: 'inherit', marginBottom: 16,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                          }}
-                        >
-                          <Zap size={16} fill={theme.white} />
-                          {esewaFields ? 'Pay instantly with eSewa'
-                            : esewaErr ? 'Try eSewa again'
-                            : 'Preparing eSewa…'}
-                        </button>
-                      </form>
+                      <button
+                        type="button"
+                        onClick={submitEsewaNow}
+                        style={{
+                          width: '100%', padding: '12px 16px',
+                          background: esewaFields ? '#60BB46' : (esewaErr ? theme.status.danger.main : theme.textMuted),
+                          border: 'none', borderRadius: 10,
+                          fontSize: 14, fontWeight: 700, color: theme.white,
+                          cursor: 'pointer',
+                          fontFamily: 'inherit', marginBottom: 16,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        }}
+                      >
+                        <Zap size={16} fill={theme.white} />
+                        {esewaFields ? 'Pay instantly with eSewa'
+                          : esewaErr ? 'Try eSewa again'
+                          : 'Preparing eSewa…'}
+                      </button>
                       {esewaErr && (
                         <div style={{
                           background: theme.status.danger.bg, border: `1px solid ${theme.status.danger.border}`,

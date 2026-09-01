@@ -76,7 +76,7 @@ export default function EsewaSuccess() {
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       <div style={{
         background: theme.cardBg, border: `1px solid ${theme.border}`, borderRadius: 16,
-        padding: 48, textAlign: 'center', maxWidth: 420, width: '100%',
+        padding: 'clamp(24px, 7vw, 48px)', textAlign: 'center', maxWidth: 420, width: '100%',
         boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
       }}>
 

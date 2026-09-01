@@ -89,7 +89,7 @@ export default function KhaltiSuccess() {
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       <div style={{
         background: theme.cardBg, border: `1px solid ${theme.border}`,
-        borderRadius: 16, padding: 48, textAlign: 'center',
+        borderRadius: 16, padding: 'clamp(24px, 7vw, 48px)', textAlign: 'center',
         maxWidth: 440, width: '100%',
         boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
       }}>

@@ -21,6 +21,17 @@ function LoadingScreen() {
   )
 }
 
+// Last-known profile from localStorage — used only as an offline fallback so a
+// flaky network on return from a payment redirect doesn't kick the user out.
+function safeCachedProfile() {
+  try {
+    const raw = localStorage.getItem('profile')
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
 // ── checks LIVE session + profile with Supabase, not just localStorage ──
 function useAuth() {
   const [authState, setAuthState] = useState('loading') // loading | authed | unauthed
@@ -29,10 +40,18 @@ function useAuth() {
   useEffect(() => {
     let cancelled = false
 
+    // Only ever drop the app's own cached profile. NEVER localStorage.clear() —
+    // that also wipes Supabase's own sb-*-auth-token, so a transient null
+    // session (mobile tab suspend, a slow rehydrate after returning from an
+    // eSewa/Khalti redirect) turned into a permanent logout with lost progress.
+    function forgetProfile() {
+      try { localStorage.removeItem('profile') } catch { /* private mode */ }
+    }
+
     async function checkSession() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
-        localStorage.clear()
+        forgetProfile()
         if (!cancelled) { setProfile(null); setAuthState('unauthed') }
         return
       }
@@ -48,40 +67,55 @@ function useAuth() {
 
       if (cancelled) return
 
-      if (error || !data) {
-        // Profile row is gone (user was deleted) or unreadable — force logout.
+      if (error) {
+        // Network hiccup / offline — keep whatever we already had rather than
+        // bouncing the user to login. A real "profile deleted" case is handled
+        // by the `!data` branch below.
+        if (!profile) {
+          const cached = safeCachedProfile()
+          if (cached) { setProfile(cached); setAuthState('authed'); return }
+        }
+        return
+      }
+
+      if (!data) {
+        // Profile row genuinely gone (user was deleted) — force logout.
         await supabase.auth.signOut()
-        localStorage.clear()
+        forgetProfile()
         setProfile(null)
         setAuthState('unauthed')
         return
       }
 
-      localStorage.setItem('profile', JSON.stringify(data))
+      try { localStorage.setItem('profile', JSON.stringify(data)) } catch { /* ignore */ }
       setProfile(data)
       setAuthState('authed')
     }
 
     checkSession()
 
-    // Listen for auth changes (logout, token refresh, etc.)
+    // Listen for auth changes. Act ONLY on an explicit sign-out — a bare
+    // `!session` also arrives on INITIAL_SESSION and after tab resume, and
+    // must not be treated as a logout.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (cancelled) return
-        if (event === 'SIGNED_OUT' || !session) {
-          localStorage.clear()
+        if (event === 'SIGNED_OUT') {
+          forgetProfile()
           setProfile(null)
           setAuthState('unauthed')
-        } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        } else if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session) {
           await loadProfile(session.user.id)
         }
       }
     )
 
-    // Re-verify the profile still exists whenever the tab regains focus —
-    // catches the case where an admin deletes the user in another tab/session
-    // while this tab is sitting open with an unexpired token.
-    function onFocus() { checkSession() }
+    // Re-verify on focus, but gently: only downgrade if Supabase itself reports
+    // no session (token already gone), and never wipe storage here.
+    async function onFocus() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!cancelled && !session) { setProfile(null); setAuthState('unauthed') }
+    }
     window.addEventListener('focus', onFocus)
 
     return () => {
