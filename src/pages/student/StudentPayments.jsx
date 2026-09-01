@@ -27,8 +27,9 @@ import {
 const QR_SRC = '/qr.png'            // generic / Khalti
 const QR_SRC_ESEWA = '/qr-esewa.png' // eSewa merchant QR
 
-const SUPABASE_URL  = 'https://txwpmjtixdbebnbqorju.supabase.co'
-const MERCHANT_CODE = 'EPAYTEST'
+const SUPABASE_URL   = 'https://txwpmjtixdbebnbqorju.supabase.co'
+const MERCHANT_CODE  = 'EPAYTEST'
+const ESEWA_FORM_URL = 'https://rc-epay.esewa.com.np/api/epay/main/v2/form'
 
 // Bank Transfer removed — Cash, eSewa, Khalti only
 const METHOD_OPTIONS  = ['Cash', 'eSewa', 'Khalti']
@@ -76,12 +77,26 @@ export default function StudentPayments() {
   const [createdId,   setCreatedId]   = useState(null)
   const [qrLoadError, setQrLoadError] = useState(false)
 
+  // eSewa "pay instantly" is a native <form> POST (see step 2). We pre-fetch the
+  // signed field set here so tapping the button is a plain, synchronous form
+  // submit — mobile browsers block a JS form.submit() that runs after `await`.
+  const [esewaFields, setEsewaFields] = useState(null)
+  const [esewaErr,    setEsewaErr]    = useState('')
+
   useEffect(() => {
     if (!profile.id) { navigate('/student-login'); return }
     load()
   }, [])
   useRefetchOnFocus(load)
   useRefreshHold(showModal)
+
+  // Pre-arm the eSewa native form as soon as the student reaches its pay screen.
+  useEffect(() => {
+    if (showModal && step === 2 && form.method === 'eSewa' && Number(form.amount) > 0) {
+      prepareEsewa()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showModal, step, form.method])
 
   // Realtime — when a counsellor confirms a payment, the badge here flips to
   // "Paid" on its own. No refresh needed.
@@ -112,11 +127,27 @@ export default function StudentPayments() {
 
   const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }))
 
-  async function submitRequest() {
-    if (!form.amount || Number(form.amount) <= 0)
-      return alert('Enter a valid amount')
-    setSaving(true)
-
+  // Creates the payments row on demand and remembers its id, so we never write
+  // an unpaid row to the DB just because the student typed an amount. Digital
+  // payments only get a row once the student actually starts paying (gateway
+  // redirect or reference submit). Re-uses the row if one already exists for
+  // this modal session.
+  async function ensurePaymentRow(status) {
+    if (createdId) {
+      // Keep the row in sync with anything the student changed before paying,
+      // so the gateway signature / amount checks still line up.
+      await supabase
+        .from('payments')
+        .update({
+          amount: parseFloat(form.amount),
+          type:   form.type,
+          method: form.method,
+          note:   form.note || '',
+        })
+        .eq('id', createdId)
+        .neq('status', 'paid')
+      return createdId
+    }
     const { data, error } = await supabase
       .from('payments')
       .insert({
@@ -127,35 +158,55 @@ export default function StudentPayments() {
         method:        form.method,
         note:          form.note || '',
         reference:     '',
-        status:        'pending',
+        status,
         date:          new Date().toISOString().split('T')[0],
       })
       .select()
       .single()
-
-    setSaving(false)
-    if (error) return alert('Error: ' + error.message)
-
+    if (error) { alert('Error: ' + error.message); return null }
     setCreatedId(data.id)
+    return data.id
+  }
 
+  async function submitRequest() {
+    if (!form.amount || Number(form.amount) <= 0)
+      return alert('Enter a valid amount')
+
+    // Digital methods: don't touch the DB yet — move to the pay screen. The row
+    // is only created when the student actually pays (see payWith*Now /
+    // submitReference), so nothing shows up for staff before a real payment.
     if (DIGITAL_METHODS.includes(form.method)) {
+      setCreatedId(null)
       setQrLoadError(false)
       setStep(2)
-    } else {
-      alert('Payment request submitted!')
-      resetModal()
-      load()
+      return
     }
+
+    // Cash: a legitimate in-person request — record it as pending now.
+    setSaving(true)
+    const id = await ensurePaymentRow('pending')
+    setSaving(false)
+    if (!id) return
+
+    alert('Payment request submitted!')
+    resetModal()
+    load()
   }
 
   // ── eSewa instant pay ─────────────────────────────────────────────────────
-  async function payWithEsewaNow() {
+  // Prepares (row + signed field set) so the step-2 <form> can be submitted
+  // natively. Runs when the student lands on the eSewa pay screen; the actual
+  // navigation is a plain form submit, which mobile browsers don't block.
+  async function prepareEsewa() {
+    setEsewaErr('')
+    setEsewaFields(null)
     try {
-      if (!createdId) { alert('Payment record not found.'); return }
+      const paymentId = await ensurePaymentRow('awaiting_payment')
+      if (!paymentId) { setEsewaErr('Could not start the payment. Please try again.'); return }
 
       // Random suffix (no hyphen) guarantees a unique transaction_uuid every
       // time, even on rapid repeat clicks.
-      const transactionUuid = `GP-${createdId}-${Date.now()}${Math.floor(Math.random() * 100000)}`
+      const transactionUuid = `GP-${paymentId}-${Date.now()}${Math.floor(Math.random() * 100000)}`
       const amount = Number(form.amount) // eSewa's form fields use plain rupees, not paisa
 
       const sigRes = await fetch(`${SUPABASE_URL}/functions/v1/esewa-sign`, {
@@ -169,47 +220,35 @@ export default function StudentPayments() {
       })
 
       const result = await sigRes.json()
-      const { signature } = result
-      if (!signature) { alert('Failed to generate payment signature.'); return }
+      if (!result.signature) {
+        setEsewaErr(result.error || 'Could not prepare the eSewa payment. Please try again.')
+        return
+      }
 
-      const esewaForm = document.createElement('form')
-      esewaForm.method = 'POST'
-      esewaForm.action = 'https://rc-epay.esewa.com.np/api/epay/main/v2/form'
-
-      const fields = {
-        amount,
-        tax_amount:              0,
-        total_amount:            amount,
+      setEsewaFields({
+        amount:                  String(amount),
+        tax_amount:              '0',
+        total_amount:            String(amount),
         transaction_uuid:        transactionUuid,
         product_code:            MERCHANT_CODE,
-        product_service_charge:  0,
-        product_delivery_charge: 0,
+        product_service_charge:  '0',
+        product_delivery_charge: '0',
         success_url: `${window.location.origin}/payment/success`,
         failure_url: `${window.location.origin}/payment/failure`,
         signed_field_names: 'total_amount,transaction_uuid,product_code',
-        signature,
-      }
-
-      Object.entries(fields).forEach(([key, value]) => {
-        const input = document.createElement('input')
-        input.type  = 'hidden'
-        input.name  = key
-        input.value = String(value)
-        esewaForm.appendChild(input)
+        signature: result.signature,
       })
-
-      document.body.appendChild(esewaForm)
-      esewaForm.submit()
-
     } catch (err) {
-      alert('eSewa error: ' + err.message)
+      setEsewaErr('eSewa error: ' + (err?.message || String(err)))
     }
   }
 
   // ── Khalti instant pay ────────────────────────────────────────────────────
   async function payWithKhaltiNow() {
     try {
-      if (!createdId) { alert('Payment record not found.'); return }
+      // Create the row only now that the student is actually paying.
+      const paymentId = await ensurePaymentRow('awaiting_payment')
+      if (!paymentId) return
 
       const amountRupees = Number(form.amount)
       // ✅ FIXED: Khalti's API works in paisa (1 Rs = 100 paisa). The edge
@@ -224,7 +263,7 @@ export default function StudentPayments() {
         method: 'POST',
         headers: await functionHeaders(),
         body: JSON.stringify({
-          payment_id:   createdId,
+          payment_id:   paymentId,
           amount:       amountPaisa,
           student_name: profile.name,
           return_url,
@@ -252,15 +291,22 @@ export default function StudentPayments() {
     if (!form.reference.trim()) return alert('Enter your transaction reference number')
     setSaving(true)
     const ref = form.reference.trim()
+
+    // The student is manually claiming they paid — this needs staff verification,
+    // so the row goes in as 'pending'. Create it now if the gateway buttons
+    // didn't already (or promote an 'awaiting_payment' row that was).
+    const id = await ensurePaymentRow('pending')
+    if (!id) { setSaving(false); return }
+
     const { error } = await supabase
       .from('payments')
-      .update({ reference: ref })
-      .eq('id', createdId)
+      .update({ reference: ref, status: 'pending' })
+      .eq('id', id)
     setSaving(false)
     if (error) { alert('Could not submit reference: ' + error.message); return }
-    setPayments(prev => prev.map(p => (p.id === createdId ? { ...p, reference: ref } : p)))
     alert('Reference submitted! Admin will verify and confirm your payment.')
     resetModal()
+    load()
   }
 
   function resetModal() {
@@ -268,6 +314,8 @@ export default function StudentPayments() {
     setStep(1)
     setCreatedId(null)
     setQrLoadError(false)
+    setEsewaFields(null)
+    setEsewaErr('')
     setForm({ amount: '', type: TYPE_OPTIONS[0], method: 'Cash', note: '', reference: '' })
   }
 
@@ -549,7 +597,7 @@ export default function StudentPayments() {
                       type="number" min="1"
                       placeholder="e.g. 5000"
                       value={form.amount}
-                      onChange={e => set('amount', e.target.value)}
+                      onChange={e => { set('amount', e.target.value); setEsewaFields(null); setEsewaErr('') }}
                       style={inputStyle}
                     />
                   </div>
@@ -635,18 +683,46 @@ export default function StudentPayments() {
                     </p>
                   </div>
 
-                  {/* eSewa button */}
+                  {/* eSewa button — a real <form> POST so mobile browsers don't
+                      block the redirect (a JS form.submit() after `await` gets
+                      swallowed on iOS/Android). */}
                   {form.method === 'eSewa' && (
                     <>
-                      <button onClick={payWithEsewaNow} style={{
-                        width: '100%', padding: '12px 16px',
-                        background: '#60BB46', border: 'none', borderRadius: 10,
-                        fontSize: 14, fontWeight: 700, color: theme.white,
-                        cursor: 'pointer', fontFamily: 'inherit', marginBottom: 16,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                      }}>
-                        <Zap size={16} fill={theme.white} /> Pay instantly with eSewa
-                      </button>
+                      <form method="POST" action={ESEWA_FORM_URL} style={{ margin: 0 }}>
+                        {esewaFields && Object.entries(esewaFields).map(([k, v]) => (
+                          <input key={k} type="hidden" name={k} value={v} readOnly />
+                        ))}
+                        <button
+                          type="submit"
+                          disabled={!esewaFields}
+                          style={{
+                            width: '100%', padding: '12px 16px',
+                            background: esewaFields ? '#60BB46' : theme.textMuted,
+                            border: 'none', borderRadius: 10,
+                            fontSize: 14, fontWeight: 700, color: theme.white,
+                            cursor: esewaFields ? 'pointer' : 'not-allowed',
+                            fontFamily: 'inherit', marginBottom: 16,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                          }}
+                        >
+                          <Zap size={16} fill={theme.white} />
+                          {esewaFields ? 'Pay instantly with eSewa' : 'Preparing eSewa…'}
+                        </button>
+                      </form>
+                      {esewaErr && (
+                        <div style={{
+                          background: theme.status.danger.bg, border: `1px solid ${theme.status.danger.border}`,
+                          borderRadius: 8, padding: '8px 12px', marginBottom: 16, marginTop: -6,
+                          fontSize: 12, color: theme.status.danger.text,
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                        }}>
+                          <span>{esewaErr}</span>
+                          <button onClick={prepareEsewa} style={{
+                            background: 'none', border: 'none', color: theme.status.danger.text,
+                            fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline',
+                          }}>Retry</button>
+                        </div>
+                      )}
                       <div style={{ textAlign: 'center', fontSize: 11, color: theme.textMuted, marginBottom: 16, marginTop: -8 }}>
                         — or scan the QR code and enter your reference below —
                       </div>
@@ -728,7 +804,7 @@ export default function StudentPayments() {
                     flexDirection: isMobile ? 'column-reverse' : 'row',
                     justifyContent: 'flex-end',
                   }}>
-                    <button onClick={() => setStep(1)} style={{
+                    <button onClick={() => { setStep(1); setEsewaFields(null); setEsewaErr('') }} style={{
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                       padding: '9px 18px', background: theme.pageBg,
                       border: `1px solid ${theme.border}`, borderRadius: 8,

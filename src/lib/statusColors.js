@@ -67,6 +67,7 @@ const MAP = {
   error:                chip('danger', 'Error'),
 
   // ── inactive / unknown ───────────────────────────────────
+  awaiting_payment:     chip('neutral', 'Awaiting Payment'),
   draft:                chip('neutral', 'Draft'),
   inactive:             chip('neutral', 'Inactive'),
   archived:             chip('neutral', 'Archived'),

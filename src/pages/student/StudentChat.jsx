@@ -557,11 +557,16 @@ export default function StudentChat() {
   if (isMobile) {
     return (
       <StudentLayout>
+        {/* Pinned top+bottom instead of height:100vh — body has zoom:1.08
+            (index.css) which inflates 100vh, so a vh-sized pane overflowed the
+            screen: the input bar sat past the fold with a scrollable gap below.
+            A fixed box anchored to the real viewport edges can't drift.
+            top:56 clears the mobile StudentLayout header. */}
         <div style={{
-          height: 'calc(100vh - 140px)',
+          position: 'fixed', top: 56, left: 0, right: 0, bottom: 0,
+          background: theme.pageBg, zIndex: 50,
           display: 'flex', flexDirection: 'column',
           fontFamily: "'Segoe UI', Arial, sans-serif",
-          margin: '-12px',
         }}>
           {!selected ? (
             <>
@@ -587,7 +592,9 @@ export default function StudentChat() {
   return (
     <StudentLayout>
       <div style={{
-        height: 'calc(100vh - 100px)',
+        // /1.08 counteracts the global body zoom:1.08 (see index.css) so the
+        // pane fills exactly the visible area — no overflow, no bottom gap.
+        height: 'calc(100vh / 1.08 - 100px)',
         display: 'flex', flexDirection: 'column',
         fontFamily: "'Segoe UI', Arial, sans-serif",
         overflow: 'hidden',

@@ -613,11 +613,15 @@ export default function StaffChat() {
   // ── Mobile: full-screen list OR full-screen chat, never both ──
   if (isMobile) {
     return (
+      // Pinned top+bottom instead of height:100vh — body has zoom:1.08
+      // (index.css) which inflates 100vh, so a vh-sized pane overflowed the
+      // screen: the input bar sat past the fold with a scrollable gap below it.
+      // A fixed box anchored to the real viewport edges can't drift.
       <div style={{
-        height: 'calc(100vh - 64px)',
+        position: 'fixed', top: 64, left: 0, right: 0, bottom: 0,
+        background: theme.pageBg, zIndex: 50,
         display: 'flex', flexDirection: 'column',
         fontFamily: "'Segoe UI', Arial, sans-serif",
-        margin: '-12px',
       }}>
         {!selected ? (
           <>
@@ -641,9 +645,12 @@ export default function StaffChat() {
   // ── Desktop: side-by-side panes, unchanged ──
   return (
     <div style={{
-      height: 'calc(100vh - 120px)',
+      // /1.08 counteracts the global body zoom:1.08 (see index.css) so the
+      // pane fills exactly the visible area — no overflow, no bottom gap.
+      height: 'calc(100vh / 1.08 - 120px)',
       display: 'flex', flexDirection: 'column',
       fontFamily: "'Segoe UI', Arial, sans-serif",
+      overflow: 'hidden',
     }}>
 
       {/* header */}

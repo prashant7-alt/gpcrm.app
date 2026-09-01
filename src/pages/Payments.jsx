@@ -199,7 +199,11 @@ export default function Payments() {
     const { data, error } = await supabase
       .from('payments').select('*').order('created_at', { ascending: false })
     if (error) console.error('Error loading payments:', error)
-    setPayments(data || [])
+    // 'awaiting_payment' rows are students mid-way through an eSewa/Khalti
+    // checkout — no money has moved yet. They only surface here once the
+    // gateway confirms and the verify function flips them to
+    // 'pending_verification'.
+    setPayments((data || []).filter(p => p.status !== 'awaiting_payment'))
     setLoading(false)
   }
 
