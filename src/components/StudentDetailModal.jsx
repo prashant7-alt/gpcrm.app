@@ -121,7 +121,8 @@ export default function StudentDetailModal({ student, onClose }) {
       ])
 
       if (cancelled) return
-      setPayments(pay.data || [])
+      // Hide unfinished gateway checkouts (see Payments.jsx).
+      setPayments((pay.data || []).filter(p => p.status !== 'awaiting_payment'))
       setDocuments(docs.data || [])
       setAppointments(appts.data || [])
       setLoginProfile(prof.data || null)

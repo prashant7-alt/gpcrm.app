@@ -123,7 +123,10 @@ export default function StudentPayments() {
       .eq('student_email', profile.email || '')
       .order('created_at', { ascending: false })
 
-    setPayments(data || [])
+    // 'awaiting_payment' = a gateway checkout that was started but never
+    // finished. It can't be resumed from the list, so don't clutter the
+    // history or the counts with it.
+    setPayments((data || []).filter(p => p.status !== 'awaiting_payment'))
     setLoading(false)
   }
 

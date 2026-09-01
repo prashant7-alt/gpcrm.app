@@ -7,6 +7,7 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 import { Receipt, CheckCircle2, Hourglass, Bot, X, Send, MessageSquare, BookOpen } from 'lucide-react'
 import AnnouncementsPanel from '../../components/AnnouncementsPanel'
 import { useRefetchOnFocus } from '../../hooks/useRefetchOnFocus'
+import { statusChip } from '../../lib/statusColors'
 
 // ── KNOWLEDGE BASE ─────────────────────────────────────────────────────────
 // Every intent has: id, topic (for the "Browse topics" menu), q (the canonical
@@ -728,7 +729,7 @@ export default function StudentDashboard() {
         .from('payments').select('*')
         .eq('student_email', profile.email || '')   // ← FIXED: was student_name
         .order('created_at', { ascending: false })
-      setPayments(pays || [])
+      setPayments((pays || []).filter(p => p.status !== 'awaiting_payment'))
     } catch { setPayments([]) }
 
     try {
@@ -742,12 +743,11 @@ export default function StudentDashboard() {
     setLoading(false)
   }
 
+  // Shared status palette + label, so 'awaiting_payment' / 'pending_verification'
+  // read as friendly text here too (was showing the raw DB value).
   const payBadge = (status) => {
-    if (status === 'paid')                 return { bg: theme.status.success.bg, color: theme.status.success.text }
-    if (status === 'pending')              return { bg: theme.status.warning.bg, color: theme.status.warning.text }
-    if (status === 'pending_verification') return { bg: theme.status.info.bg, color: theme.primary }
-    if (status === 'overdue')              return { bg: theme.status.danger.bg, color: theme.status.danger.text }
-    return { bg: theme.surfaceAlt, color: theme.textLight }
+    const c = statusChip(status || 'pending')
+    return { bg: c.bg, color: c.color, label: c.label }
   }
 
   if (loading) {
@@ -856,7 +856,7 @@ export default function StudentDashboard() {
                 padding: '3px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600,
                 background: payBadge(p.status).bg, color: payBadge(p.status).color,
               }}>
-                {p.status}
+                {payBadge(p.status).label}
               </span>
             </div>
           ))
