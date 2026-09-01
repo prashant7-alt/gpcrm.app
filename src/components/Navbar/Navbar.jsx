@@ -410,10 +410,12 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
                    keeps marginLeft at 0 so nothing shifts underneath it. */}
       <nav ref={drawerRef} style={{
         position: 'fixed',
-        // Pin top+bottom (not height:calc(100vh-64px)) — the app's body zoom:1.08
-        // inflates 100vh so a calc'd height renders taller than the screen and
-        // the last nav item ends up off the bottom edge with nothing to scroll.
-        top: 64, bottom: 0, left: 0,
+        // body has zoom:1.08 (index.css). `bottom:0` on a fixed element stops
+        // ~8% short of the screen here, leaving a background strip below the
+        // sidebar. Divide the zoom back out of the height, and extend the navy
+        // downward with a box-shadow so there is never a visible seam.
+        top: 64, left: 0,
+        height: 'calc(100vh / 1.08 - 64px)',
         width: drawerWidth,
         background: theme.sidebarBg,
         borderRight: `1px solid ${theme.palette.navyLine}`,
@@ -422,7 +424,7 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
         transform: menuOpen ? 'translateX(0)' : `translateX(-${drawerWidth}px)`,
         transition: 'transform 0.22s cubic-bezier(0.4,0,0.2,1)',
         overflow: 'hidden',
-        boxShadow: isMobile && menuOpen ? '2px 0 16px rgba(0,0,0,0.18)' : 'none',
+        boxShadow: `0 40vh 0 0 ${theme.sidebarBg}${isMobile && menuOpen ? ', 2px 0 16px rgba(0,0,0,0.18)' : ''}`,
       }}>
 
         {/* Role badge */}

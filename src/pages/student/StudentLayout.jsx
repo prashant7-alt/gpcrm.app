@@ -262,11 +262,12 @@ export default function StudentLayout({ children }) {
         background: SIDEBAR_BG,
         borderRight: `1px solid ${SIDEBAR_BORDER}`,
         position: 'fixed',
-        // Pin top+bottom rather than height:100vh — the app's body zoom:1.08
-        // inflates 100vh so the sidebar renders taller than the screen and the
-        // last item / footer falls off the bottom with nothing to scroll.
+        // body has zoom:1.08 (index.css). With `bottom:0` the fixed sidebar
+        // stops ~8% short of the screen, leaving a strip of page background
+        // below it. Size it with the zoom divided back out instead, and paint
+        // a tall navy box-shadow downward so there is never a visible seam.
         top: isMobile ? 56 : 0,
-        bottom: 0,
+        height: isMobile ? 'calc(100vh / 1.08 - 56px)' : 'calc(100vh / 1.08)',
         left: 0,
         display: 'flex',
         flexDirection: 'column',
@@ -276,7 +277,7 @@ export default function StudentLayout({ children }) {
           ? (menuOpen ? 'translateX(0)' : `translateX(-${drawerWidth}px)`)
           : 'none',
         transition: 'transform 0.22s cubic-bezier(0.4,0,0.2,1)',
-        boxShadow: isMobile && menuOpen ? '2px 0 16px rgba(0,0,0,0.18)' : 'none',
+        boxShadow: `0 40vh 0 0 ${SIDEBAR_BG}${isMobile && menuOpen ? ', 2px 0 16px rgba(0,0,0,0.18)' : ''}`,
       }}>
 
         {/* Logo — desktop only; mobile shows it in the top header instead */}
