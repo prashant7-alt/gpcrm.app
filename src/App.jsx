@@ -1,4 +1,4 @@
-import { useState, createContext, useContext } from 'react'
+import { useState, createContext, useContext, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 
 import Navbar         from './components/Navbar/Navbar'
@@ -6,35 +6,61 @@ import ProtectedRoute from './components/ProtectedRoute'
 import theme          from './theme'
 import { useIsMobile } from './hooks/useIsMobile'
 
+// Auth pages stay eager — one of them is always the entry point, and they're
+// small. Everything else is code-split so a page's JS only downloads when it's
+// first opened, instead of shipping the whole CRM in the initial bundle.
 import Login          from './pages/auth/login'
 import StudentLogin   from './pages/auth/StudentLogin'
 import ResetPassword  from './pages/auth/ResetPassword'
-import Dashboard      from './pages/Dashboard'
-import Applications   from './pages/Applications'
-import Students       from './pages/Students'
-import Visitors       from './pages/Visitors'
-import Payments       from './pages/Payments'
-import Staff          from './pages/Staff'
-import Documents      from './pages/Documents'
-import Reports        from './pages/Reports'
-import Appointments   from './pages/Appointments'
-import Tasks          from './pages/Tasks'
-import Settings       from './pages/Settings'
-import StaffChat      from './pages/StaffChat'
 
-import StudentDashboard    from './pages/student/StudentDashboard'
-import StudentAppointments from './pages/student/StudentAppointments'
-import StudentProfile      from './pages/student/StudentProfile'
-import StudentVisaStatus   from './pages/student/StudentVisaStatus'
-import StudentDocuments    from './pages/student/StudentDocuments'
-import StudentPayments     from './pages/student/StudentPayments'
-import StudentChat         from './pages/student/StudentChat'
+const Dashboard      = lazy(() => import('./pages/Dashboard'))
+const Applications   = lazy(() => import('./pages/Applications'))
+const Students       = lazy(() => import('./pages/Students'))
+const Visitors       = lazy(() => import('./pages/Visitors'))
+const Payments       = lazy(() => import('./pages/Payments'))
+const Staff          = lazy(() => import('./pages/Staff'))
+const Documents      = lazy(() => import('./pages/Documents'))
+const Reports        = lazy(() => import('./pages/Reports'))
+const Appointments   = lazy(() => import('./pages/Appointments'))
+const Tasks          = lazy(() => import('./pages/Tasks'))
+const Settings       = lazy(() => import('./pages/Settings'))
+const StaffChat      = lazy(() => import('./pages/StaffChat'))
 
-import EsewaSuccess  from './pages/payment/EsewaSuccess'
-import EsewaFailure  from './pages/payment/EsewaFailure'
-import KhaltiSuccess from './pages/payment/KhaltiSuccess'
+const StudentDashboard    = lazy(() => import('./pages/student/StudentDashboard'))
+const StudentAppointments = lazy(() => import('./pages/student/StudentAppointments'))
+const StudentProfile      = lazy(() => import('./pages/student/StudentProfile'))
+const StudentVisaStatus   = lazy(() => import('./pages/student/StudentVisaStatus'))
+const StudentDocuments    = lazy(() => import('./pages/student/StudentDocuments'))
+const StudentPayments     = lazy(() => import('./pages/student/StudentPayments'))
+const StudentChat         = lazy(() => import('./pages/student/StudentChat'))
+
+const EsewaSuccess  = lazy(() => import('./pages/payment/EsewaSuccess'))
+const EsewaFailure  = lazy(() => import('./pages/payment/EsewaFailure'))
+const KhaltiSuccess = lazy(() => import('./pages/payment/KhaltiSuccess'))
 
 const SIDEBAR_WIDTH = 230
+
+// Shown for the brief moment a code-split page's chunk is downloading.
+function RouteFallback() {
+  return (
+    <div style={{
+      minHeight: '100vh', display: 'flex',
+      alignItems: 'center', justifyContent: 'center',
+      background: theme.pageBg, color: theme.textLight, fontSize: 14,
+      fontFamily: "'Segoe UI', Arial, sans-serif",
+    }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{
+          width: 26, height: 26, margin: '0 auto 12px',
+          border: `3px solid ${theme.border}`, borderTopColor: theme.primary,
+          borderRadius: '50%', animation: 'spin 0.8s linear infinite',
+        }} />
+        Loading…
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    </div>
+  )
+}
 
 // All non-student roles
 const ALL_STAFF = ['admin', 'staff', 'finance_officer', 'document_handler', 'receptionist', 'counselor', 'visa_officer']
@@ -101,6 +127,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <MenuProvider>
+      <Suspense fallback={<RouteFallback />}>
       <Routes>
 
         {/* ── Public ── */}
@@ -187,6 +214,7 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
 
       </Routes>
+      </Suspense>
       </MenuProvider>
     </BrowserRouter>
   )

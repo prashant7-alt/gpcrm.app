@@ -1,19 +1,28 @@
 import { useState, useEffect } from 'react'
 
-// Returns true when viewport width is <= breakpoint (default 768px = phone/tablet)
-// Updates automatically when the window is resized
+// Returns true when viewport width is <= breakpoint (default 768px = phone/tablet).
+//
+// Uses a matchMedia listener rather than a raw `resize` handler, so it only
+// re-renders when the value actually flips — dragging a desktop window no
+// longer fires a setState (and a re-render of every component that reads this)
+// on every pixel.
 export function useIsMobile(breakpoint = 768) {
+  const query = `(max-width: ${breakpoint}px)`
+
   const [isMobile, setIsMobile] = useState(
-    () => window.innerWidth <= breakpoint
+    () => typeof window !== 'undefined' && window.matchMedia(query).matches
   )
 
   useEffect(() => {
-    function handleResize() {
-      setIsMobile(window.innerWidth <= breakpoint)
-    }
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [breakpoint])
+    const mql = window.matchMedia(query)
+    const onChange = e => setIsMobile(e.matches)
+
+    // Sync in case the breakpoint prop changed between renders.
+    setIsMobile(mql.matches)
+
+    mql.addEventListener('change', onChange)
+    return () => mql.removeEventListener('change', onChange)
+  }, [query])
 
   return isMobile
 }
