@@ -116,7 +116,9 @@ export default function StudentDetailModal({ student, onClose }) {
           ? supabase.from('appointments').select('*').or(orFilter).order('date', { ascending: false })
           : Promise.resolve({ data: [] }),
         student.id != null
-          ? supabase.from('profiles').select('id, email, avatar_url, role, applicant_id').eq('applicant_id', student.id).maybeSingle()
+          ? supabase.from('profiles')
+              .select('id, email, avatar_url, role, applicant_id, education_level, grade, institution, field_of_study, english_test, preferred_intake')
+              .eq('applicant_id', student.id).maybeSingle()
           : Promise.resolve({ data: null }),
       ])
 
@@ -175,6 +177,17 @@ export default function StudentDetailModal({ student, onClose }) {
       Icon: IdCard, label: 'Student login',
       value: loginProfile ? `Active (${loginProfile.email || student.email})` : 'Not linked',
     },
+  ]
+
+  // Self-reported by the student in their portal (My Profile → Academic
+  // Background). Lives on their `profiles` row, not the applicant record.
+  const academicRows = [
+    { label: 'Highest Qualification', value: loginProfile?.education_level },
+    { label: 'Grade / GPA',           value: loginProfile?.grade },
+    { label: 'School / College',      value: loginProfile?.institution },
+    { label: 'Field of Study',        value: loginProfile?.field_of_study },
+    { label: 'English Test Score',    value: loginProfile?.english_test },
+    { label: 'Preferred Intake',      value: loginProfile?.preferred_intake },
   ]
 
   return createPortal(
@@ -268,6 +281,26 @@ export default function StudentDetailModal({ student, onClose }) {
                 </div>
               ))}
             </div>
+          </SectionCard>
+
+          {/* Academic background — self-reported by the student in their portal */}
+          <SectionCard icon={GraduationCap} title="Academic Background">
+            {academicRows.some(r => r.value) ? (
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px 18px' }}>
+                {academicRows.map(row => (
+                  <div key={row.label} style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 10.5, color: theme.textLight, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
+                      {row.label}
+                    </div>
+                    <div style={{ fontSize: 13, color: theme.textMid, wordBreak: 'break-word' }}>
+                      {row.value || '—'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Empty>The student hasn’t filled in their academic background yet.</Empty>
+            )}
           </SectionCard>
 
           {/* Fee status */}

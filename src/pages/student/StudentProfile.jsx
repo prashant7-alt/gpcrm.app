@@ -6,8 +6,20 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 import { useRefetchOnFocus } from '../../hooks/useRefetchOnFocus'
 import {
   User, Lock, Pencil, Eye, EyeOff,
-  AlertTriangle, Mail, Check, X,
+  AlertTriangle, Mail, Check, X, GraduationCap,
 } from 'lucide-react'
+
+// Self-reported academic fields the student manages themselves. Kept in one
+// place so the form, the loader and the save all stay in sync.
+const EDU_FIELDS = [
+  { key: 'education_level',  label: 'Highest Qualification', placeholder: "e.g. +2 / High School, Bachelor's" },
+  { key: 'grade',            label: 'Grade / GPA',           placeholder: 'e.g. 3.6 / 4.0 or 78%' },
+  { key: 'institution',      label: 'School / College',      placeholder: 'Last institution attended' },
+  { key: 'field_of_study',   label: 'Field of Study',        placeholder: 'e.g. Science, Management' },
+  { key: 'english_test',     label: 'English Test Score',    placeholder: 'e.g. IELTS 7.0, PTE 65' },
+  { key: 'preferred_intake', label: 'Preferred Intake',      placeholder: 'e.g. Fall 2026' },
+]
+const blankEdu = () => Object.fromEntries(EDU_FIELDS.map(f => [f.key, '']))
 
 // Same as the login page — open a Gmail compose tab instead of the OS mail
 // client (which is Outlook on Windows for a plain mailto: link).
@@ -109,6 +121,12 @@ export default function StudentProfile() {
   const [savingInfo, setSavingInfo] = useState(false)
   const [infoMsg,    setInfoMsg]    = useState('')
 
+  // academic background edit (self-reported, student-managed)
+  const [eduMode,   setEduMode]   = useState(false)
+  const [eduForm,   setEduForm]   = useState(blankEdu)
+  const [savingEdu, setSavingEdu] = useState(false)
+  const [eduMsg,    setEduMsg]    = useState('')
+
   // password change
   const [pwForm,   setPwForm]   = useState({ current: '', next: '', confirm: '' })
   const [showPw,   setShowPw]   = useState({ current: false, next: false, confirm: false })
@@ -133,7 +151,34 @@ export default function StudentProfile() {
     setProfile(prof)
     setEditName(prof?.name || '')
     setEditPhone(prof?.phone_new || prof?.phone || '')
+    setEduForm(Object.fromEntries(EDU_FIELDS.map(f => [f.key, prof?.[f.key] || ''])))
     setLoading(false)
+  }
+
+  // ── Save academic background ───────────────────────────────────────────────
+  async function saveEdu() {
+    setSavingEdu(true)
+    setEduMsg('')
+
+    const patch = Object.fromEntries(
+      EDU_FIELDS.map(f => [f.key, eduForm[f.key].trim() || null])
+    )
+
+    const { error } = await supabase
+      .from('profiles')
+      .update(patch)
+      .eq('id', profile.id)
+
+    setSavingEdu(false)
+
+    if (error) {
+      setEduMsg('error:' + error.message)
+    } else {
+      setProfile(p => ({ ...p, ...patch }))
+      setEduMsg('success:Academic background saved!')
+      setEduMode(false)
+      setTimeout(() => setEduMsg(''), 3000)
+    }
   }
 
   // ── Save personal info ─────────────────────────────────────────────────────
@@ -395,6 +440,109 @@ export default function StudentProfile() {
               >
                 <Pencil size={14} strokeWidth={2.4} />
                 Edit Profile
+              </button>
+            )}
+          </div>
+        </Section>
+
+        {/* ══════════════════════════════════════
+            ACADEMIC BACKGROUND  (self-reported)
+            ══════════════════════════════════════ */}
+        <Section
+          Icon={GraduationCap}
+          iconBg={theme.status.info.bg}
+          iconColor={theme.primary}
+          title="Academic Background"
+          subtitle="Your grades, course and study details — visible to your counsellor"
+          isMobile={isMobile}
+        >
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+            gap: 14,
+            marginBottom: 16,
+          }}>
+            {EDU_FIELDS.map(f => (
+              <div key={f.key}>
+                <label style={lbl}>{f.label}</label>
+                <input
+                  value={eduMode ? eduForm[f.key] : (profile?.[f.key] || '—')}
+                  onChange={e => setEduForm(p => ({ ...p, [f.key]: e.target.value }))}
+                  disabled={!eduMode}
+                  placeholder={f.placeholder}
+                  style={inp(!eduMode)}
+                />
+              </div>
+            ))}
+          </div>
+
+          {eduMsg && (() => {
+            const ok = eduMsg.startsWith('success:')
+            return (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '9px 14px', borderRadius: 8, fontSize: 13, marginBottom: 14,
+                background: ok ? theme.status.success.bg : theme.status.danger.bg,
+                color:      ok ? theme.status.success.text : theme.status.danger.text,
+                border: `1px solid ${ok ? theme.status.success.border : theme.status.danger.border}`,
+              }}>
+                {ok ? <Check size={15} strokeWidth={2.6} /> : <X size={15} strokeWidth={2.6} />}
+                {eduMsg.slice(eduMsg.indexOf(':') + 1)}
+              </div>
+            )
+          })()}
+
+          <div style={{
+            display: 'flex', gap: 8, justifyContent: 'flex-end',
+            flexDirection: isMobile ? 'column-reverse' : 'row',
+          }}>
+            {eduMode ? (
+              <>
+                <button
+                  onClick={() => {
+                    setEduForm(Object.fromEntries(EDU_FIELDS.map(f => [f.key, profile?.[f.key] || ''])))
+                    setEduMode(false)
+                    setEduMsg('')
+                  }}
+                  style={{
+                    padding: '8px 18px', background: theme.pageBg,
+                    border: `1px solid ${theme.border}`, borderRadius: 8,
+                    fontSize: 13, color: theme.textLight, cursor: 'pointer',
+                    fontFamily: 'inherit', width: isMobile ? '100%' : 'auto',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveEdu}
+                  disabled={savingEdu}
+                  style={{
+                    padding: '8px 18px',
+                    background: savingEdu ? theme.textMuted : theme.primary,
+                    border: 'none', borderRadius: 8,
+                    fontSize: 13, fontWeight: 600, color: theme.white,
+                    cursor: savingEdu ? 'not-allowed' : 'pointer',
+                    fontFamily: 'inherit', width: isMobile ? '100%' : 'auto',
+                  }}
+                >
+                  {savingEdu ? 'Saving…' : 'Save Changes'}
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setEduMode(true)}
+                style={{
+                  padding: '8px 18px',
+                  background: theme.status.info.bg,
+                  border: `1px solid ${theme.status.info.border}`,
+                  borderRadius: 8, fontSize: 13, fontWeight: 600,
+                  color: theme.primary, cursor: 'pointer', fontFamily: 'inherit',
+                  width: isMobile ? '100%' : 'auto',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                }}
+              >
+                <Pencil size={14} strokeWidth={2.4} />
+                {EDU_FIELDS.some(f => profile?.[f.key]) ? 'Edit Details' : 'Add Details'}
               </button>
             )}
           </div>
