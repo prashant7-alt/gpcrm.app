@@ -2,17 +2,20 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECURITY (added 2026-08-27)
-// This endpoint permanently deletes a user (profile row + auth user). It was
-// previously PUBLIC and UNAUTHENTICATED — anyone could POST { user_id } and wipe
-// any / every account.
+// SECURITY (added 2026-08-27, hardened 2026-09-02)
+// Permanently deletes a user: profile row(s) + the auth login.
 //
-// Now:
 //  - Caller must present a valid Supabase session (Authorization: Bearer <jwt>).
-//  - Caller must be admin / staff / receptionist (the roles that manage records).
-//  - A caller cannot delete their own account through this endpoint.
-//  - Deleting another admin requires the caller to be an admin.
+//  - Caller must be admin / staff / receptionist.
+//  - A caller cannot delete their own account here.
+//  - Deleting an admin requires the caller to be an admin.
 //  - CORS restricted to ALLOWED_ORIGINS when that secret is set.
+//
+// 2026-09-02: accepts `{ user_id?, email? }`. When the applicant→profile link
+// was never made (or the email was typo'd on one side), staff still need the
+// login gone. So: resolve by user_id first, then by email via `profiles`, and
+// finally scan `auth.users` by email. Deleting a login that doesn't exist is a
+// success (the caller wants the end state "this email can't sign in").
 // ─────────────────────────────────────────────────────────────────────────────
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -47,6 +50,20 @@ async function getCaller(req: Request) {
   return { role: profile.role, id: user.id };
 }
 
+/** Find an auth user id by email by scanning pages of auth.users. */
+async function findAuthUserIdByEmail(email: string): Promise<string | null> {
+  const needle = email.trim().toLowerCase();
+  const perPage = 1000;
+  for (let page = 1; page <= 20; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error || !data?.users?.length) return null;
+    const hit = data.users.find((u) => (u.email ?? "").toLowerCase() === needle);
+    if (hit) return hit.id;
+    if (data.users.length < perPage) return null;
+  }
+  return null;
+}
+
 serve(async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -61,25 +78,55 @@ serve(async (req) => {
       return json({ success: false, message: "Not permitted to delete accounts" }, 403);
     }
 
-    const { user_id } = await req.json();
-    if (!user_id) return json({ success: false, message: "user_id is required" }, 400);
-    if (user_id === caller.id) {
+    const body = await req.json().catch(() => ({}));
+    let userId: string | null = body?.user_id ?? null;
+    const email: string | null = (body?.email ?? "").trim().toLowerCase() || null;
+
+    if (!userId && !email) {
+      return json({ success: false, message: "user_id or email is required" }, 400);
+    }
+
+    // Resolve a user id from the email if we weren't handed one.
+    if (!userId && email) {
+      const { data: prof } = await admin
+        .from("profiles").select("id").ilike("email", email).maybeSingle();
+      userId = prof?.id ?? (await findAuthUserIdByEmail(email));
+    }
+
+    if (userId === caller.id) {
       return json({ success: false, message: "You cannot delete your own account here" }, 400);
     }
 
     // Guard: only an admin may delete another admin.
-    const { data: target } = await admin.from("profiles").select("role").eq("id", user_id).maybeSingle();
-    if (target?.role === "admin" && caller.role !== "admin") {
-      return json({ success: false, message: "Only an admin can delete an admin account" }, 403);
+    if (userId) {
+      const { data: target } = await admin.from("profiles").select("role").eq("id", userId).maybeSingle();
+      if (target?.role === "admin" && caller.role !== "admin") {
+        return json({ success: false, message: "Only an admin can delete an admin account" }, 403);
+      }
     }
 
-    const { error: profileError } = await admin.from("profiles").delete().eq("id", user_id);
-    if (profileError) return json({ success: false, message: profileError.message }, 400);
+    // Remove profile row(s) — by id and, defensively, by email.
+    if (userId) {
+      const { error } = await admin.from("profiles").delete().eq("id", userId);
+      if (error) return json({ success: false, message: "Profile delete failed: " + error.message }, 400);
+    }
+    if (email) {
+      await admin.from("profiles").delete().ilike("email", email);
+    }
 
-    const { error: authError } = await admin.auth.admin.deleteUser(user_id);
-    if (authError) return json({ success: false, message: authError.message }, 400);
+    // Remove the auth login. A "user not found" here is fine — the goal is that
+    // this email can no longer sign in.
+    if (userId) {
+      const { error } = await admin.auth.admin.deleteUser(userId);
+      if (error && !/not.*found/i.test(error.message)) {
+        return json({ success: false, message: "Auth delete failed: " + error.message }, 400);
+      }
+    } else if (email) {
+      const scanned = await findAuthUserIdByEmail(email);
+      if (scanned) await admin.auth.admin.deleteUser(scanned).catch(() => {});
+    }
 
-    return json({ success: true });
+    return json({ success: true, deleted_user_id: userId });
   } catch (err) {
     return json({ success: false, message: err instanceof Error ? err.message : String(err) }, 500);
   }

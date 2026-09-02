@@ -74,11 +74,28 @@ export default function Applications() {
 
     setSaving(true)
 
+    const emailNorm = form.email.trim().toLowerCase()
+
+    // One email → one account. Check both tables before creating anything so a
+    // duplicate never leaves an orphan applicant row behind. (A DB unique index
+    // on lower(email) — one-account-per-email.sql — is the hard backstop.)
+    const [{ data: dupApplicant }, { data: dupProfile }] = await Promise.all([
+      supabase.from('applicants').select('id, name').ilike('email', emailNorm).maybeSingle(),
+      supabase.from('profiles').select('id, name, role').ilike('email', emailNorm).maybeSingle(),
+    ])
+    if (dupApplicant || dupProfile) {
+      const who = dupApplicant?.name || dupProfile?.name || 'someone'
+      const asRole = dupProfile?.role ? ` (${dupProfile.role} account)` : ''
+      alert(`"${emailNorm}" is already registered to ${who}${asRole}.\n\nOne email can only have one account. Use a different email, or delete the existing record first.`)
+      setSaving(false)
+      return
+    }
+
     const { data: newApplicant, error: appError } = await supabase
       .from('applicants')
       .insert({
         name:    form.name.trim(),
-        email:   form.email.trim().toLowerCase(),
+        email:   emailNorm,
         phone:   form.phone.trim()  || null,
         course:  form.course.trim() || null,
         country: form.country       || null,
@@ -88,7 +105,10 @@ export default function Applications() {
       .single()
 
     if (appError) {
-      alert('Error saving applicant: ' + appError.message)
+      const dup = appError.code === '23505' || /duplicate key|unique/i.test(appError.message || '')
+      alert(dup
+        ? `"${emailNorm}" is already registered. One email can only have one account.`
+        : 'Error saving applicant: ' + appError.message)
       setSaving(false)
       return
     }
@@ -108,14 +128,15 @@ export default function Applications() {
       const result = await res.json()
 
       if (!result.success) {
-        alert(
-          `Applicant added but login creation failed: ${result.message}\n\n` +
-          `The applicant appears in the list. You can try creating their login manually later.`
-        )
+        // Roll back the applicant row — an applicant with no login is exactly
+        // the orphan state we're trying to avoid. Common cause: the email is
+        // already registered (one account per email).
+        await supabase.from('applicants').delete().eq('id', newApplicant.id)
+        const taken = /already been registered|already registered|duplicate|exists/i.test(result.message || '')
+        alert(taken
+          ? `"${form.email.trim().toLowerCase()}" already has an account. One email can only have one account — nothing was created.`
+          : `Login creation failed: ${result.message}\n\nThe applicant was not saved. Please try again.`)
         setSaving(false)
-        setShowAdd(false)
-        setForm({ name: '', email: '', phone: '', course: '', country: '', password: '' })
-        load()
         return
       }
 
@@ -178,43 +199,46 @@ export default function Applications() {
   }
 
   async function deleteApplicant(applicant) {
-    const confirmed = window.confirm(`Delete "${applicant.name}"? This cannot be undone.`)
+    const confirmed = window.confirm(
+      `Delete "${applicant.name}"?\n\nThis removes their applicant record AND their student login — ` +
+      `they will no longer be able to sign in. This cannot be undone.`
+    )
     if (!confirmed) return
     setDeleting(applicant.id)
     try {
-      let profile = null
-
+      // Find the linked login by applicant_id, then by email.
+      let profileId = null
       const byId = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('applicant_id', applicant.id)
-        .maybeSingle()
-      profile = byId.data
+        .from('profiles').select('id').eq('applicant_id', applicant.id).maybeSingle()
+      profileId = byId.data?.id || null
 
-      if (!profile && applicant.email) {
+      if (!profileId && applicant.email) {
         const byEmail = await supabase
-          .from('profiles')
-          .select('id')
-          .ilike('email', applicant.email.trim())
-          .maybeSingle()
-        profile = byEmail.data
+          .from('profiles').select('id').ilike('email', applicant.email.trim()).maybeSingle()
+        profileId = byEmail.data?.id || null
       }
 
-      if (profile?.id) {
+      // Always call delete-user when we have an id OR an email. The function
+      // resolves the login by email too, so an account whose applicant_id was
+      // never linked still gets its sign-in revoked. Only skip it when there's
+      // genuinely nothing to look up.
+      if (profileId || applicant.email) {
         let result = null
         try {
           const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-user`, {
             method:  'POST',
             headers: await functionHeaders(),
-            body: JSON.stringify({ user_id: profile.id }),
+            body: JSON.stringify({
+              user_id: profileId || null,
+              email:   applicant.email ? applicant.email.trim().toLowerCase() : null,
+            }),
           })
           result = await res.json()
 
           if (!res.ok || !result?.success) {
             alert(
-              `Could not delete this student's login account: ${result?.message || 'Unknown error'}\n\n` +
-              `To prevent a login that can still access the portal after deletion, ` +
-              `the applicant and profile records were NOT removed either. ` +
+              `Could not remove this student's login: ${result?.message || 'Unknown error'}\n\n` +
+              `Nothing was deleted, so the student can still sign in. ` +
               `Please try again, or check the delete-user function logs in Supabase.`
             )
             setDeleting(null)
@@ -222,16 +246,12 @@ export default function Applications() {
           }
         } catch (fnErr) {
           alert(
-            `Network error while deleting the student's login account: ${fnErr.message}\n\n` +
-            `Nothing was deleted, so the student's login still works. Please try again.`
+            `Network error while removing the student's login: ${fnErr.message}\n\n` +
+            `Nothing was deleted, so the student can still sign in. Please try again.`
           )
           setDeleting(null)
           return
         }
-
-        await supabase.from('profiles').delete().eq('id', profile.id)
-      } else {
-        console.warn('[deleteApplicant] No linked profile found for', applicant.id, applicant.email)
       }
 
       await supabase.from('applicants').delete().eq('id', applicant.id)
