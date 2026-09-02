@@ -93,6 +93,18 @@ export default function Applications() {
       return
     }
 
+    // Verify our own login is still valid BEFORE touching the DB — the
+    // create-staff-user function rejects a stale token with "Invalid or expired
+    // session", and we don't want to insert an applicant we then can't attach a
+    // login to. getUser() round-trips to the auth server, so it catches an
+    // expired token (long-open tab) or a rotated JWT secret.
+    const { data: { user: me }, error: sessErr } = await supabase.auth.getUser()
+    if (sessErr || !me) {
+      alert('Your session has expired. Sign out and sign back in, then add the applicant again.')
+      setSaving(false)
+      return
+    }
+
     const { data: newApplicant, error: appError } = await supabase
       .from('applicants')
       .insert({
@@ -134,9 +146,12 @@ export default function Applications() {
         // the orphan state we're trying to avoid. Common cause: the email is
         // already registered (one account per email).
         await supabase.from('applicants').delete().eq('id', newApplicant.id)
-        const taken = /already been registered|already registered|duplicate|exists/i.test(result.message || '')
+        const taken   = /already been registered|already registered|duplicate|exists/i.test(result.message || '')
+        const expired = /invalid or expired session|missing authorization|jwt/i.test(result.message || '') || res.status === 401
         alert(taken
           ? `"${form.email.trim().toLowerCase()}" already has an account. One email can only have one account — nothing was created.`
+          : expired
+          ? `Your session has expired — nothing was saved.\n\nSign out, sign back in, and add the applicant again.`
           : `Login creation failed: ${result.message}\n\nThe applicant was not saved. Please try again.`)
         setSaving(false)
         return
