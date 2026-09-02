@@ -7,7 +7,7 @@ import StudentDetailModal from '../components/StudentDetailModal'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
 import { COUNTRIES, COUNTRY_CODES, DEFAULT_VISA_RATES, fetchVisaRates } from '../lib/visaRates'
-import { Eye, Globe } from 'lucide-react'
+import { Eye, Globe, Search } from 'lucide-react'
 
 // Same shared status colours as the rest of the app (src/lib/statusColors.js).
 const stageStyle = (stage) => statusChip(stage || 'New')
@@ -237,7 +237,7 @@ export default function Students() {
           background: theme.white, border: `1px solid ${theme.border}`,
           borderRadius: 8, padding: '8px 14px', flex: 1,
         }}>
-          <span style={{ color: theme.textMuted }}>&#128269;</span>
+          <Search size={15} style={{ color: theme.textMuted, flexShrink: 0 }} />
           <input
             placeholder="Search by name, phone, email, country..."
             value={search}
