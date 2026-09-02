@@ -83,6 +83,8 @@ function StatCard({ label, value, sub, Icon, iconColor, iconBg, valueColor, onCl
         padding: '20px 22px',
         display: 'flex',
         flexDirection: 'column',
+        alignItems: 'center',
+        textAlign: 'center',
         gap: 8,
         cursor: onClick ? 'pointer' : 'default',
         transition: 'box-shadow 0.15s ease, border-color 0.15s ease',
@@ -96,30 +98,28 @@ function StatCard({ label, value, sub, Icon, iconColor, iconBg, valueColor, onCl
         e.currentTarget.style.borderColor = C.border
       } : undefined}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <span style={{
-          fontSize: 11.5,
-          color: C.textLight,
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: '0.05em',
-        }}>
-          {label}
-        </span>
-
-        <div style={{
-          width: 36, height: 36,
-          borderRadius: 10,
-          background: iconBg || theme.surfaceAlt,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
-        }}>
-          <Icon size={17} color={iconColor || C.textLight} strokeWidth={1.9} />
-        </div>
+      <div style={{
+        width: 36, height: 36,
+        borderRadius: 10,
+        background: iconBg || theme.surfaceAlt,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0,
+      }}>
+        <Icon size={17} color={iconColor || C.textLight} strokeWidth={1.9} />
       </div>
 
+      <span style={{
+        fontSize: 11.5,
+        color: C.textLight,
+        fontWeight: 600,
+        textTransform: 'uppercase',
+        letterSpacing: '0.05em',
+      }}>
+        {label}
+      </span>
+
       <div style={{
-        fontSize: 32,
+        fontSize: 22,
         fontWeight: 800,
         color: valueColor || C.textDark,
         lineHeight: 1,
@@ -355,6 +355,21 @@ export default function Dashboard() {
     hour: '2-digit', minute: '2-digit', hour12: true
   })
 
+  // ── A greeting that sounds like a person, not a status bar ──
+  const hour       = now.getHours()
+  const greeting   = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+  const firstName  = (profile.name || '').trim().split(/\s+/)[0] || 'there'
+  const dateStr    = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+
+  // A plain-English read on the day, built from whatever's actually pending
+  const dayNote = (() => {
+    const bits = []
+    if (todayAppts > 0)    bits.push(`${todayAppts} appointment${todayAppts > 1 ? 's' : ''} on the calendar`)
+    if (pendingTaskCnt > 0) bits.push(`${pendingTaskCnt} task${pendingTaskCnt > 1 ? 's' : ''} still open`)
+    if (bits.length === 0) return "Nothing urgent right now — good time to get ahead of things."
+    return `You've got ${bits.join(' and ')}.`
+  })()
+
   const recentApplicants = applicants.slice(0, 5)
 
   const dueTasks = tasks
@@ -376,29 +391,45 @@ export default function Dashboard() {
   return (
     <div style={{ background: C.pageBg }}>
 
-      {/* ── HEADER ROW ── */}
+      {/* ── GREETING — talks to the person, not at them ── */}
       <div style={{
         display: 'flex',
-        justifyContent: isMobile ? 'space-between' : 'flex-end',
-        alignItems: 'center',
-        marginBottom: 12, gap: 10, fontSize: 12, color: C.textMuted,
-        flexWrap: 'wrap',
+        flexDirection: isMobile ? 'column' : 'row',
+        justifyContent: 'space-between',
+        alignItems: isMobile ? 'flex-start' : 'flex-end',
+        marginBottom: 18, gap: 12, flexWrap: 'wrap',
       }}>
-        <span>Last updated {timeStr}</span>
+        <div>
+          <h1 style={{
+            fontSize: isMobile ? 20 : 24, fontWeight: 800,
+            color: C.textDark, margin: 0, letterSpacing: '-0.015em',
+          }}>
+            {greeting}, {firstName}
+          </h1>
+          <div style={{ fontSize: 13, color: C.textLight, marginTop: 5, lineHeight: 1.5 }}>
+            {dateStr} · {dayNote}
+          </div>
+        </div>
 
-        <button
-          onClick={load}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '7px 14px',
-            background: C.cardBg, border: `1px solid ${C.border}`,
-            borderRadius: 8, fontSize: 12, fontWeight: 600,
-            color: C.green, cursor: 'pointer',
-          }}
-        >
-          <RefreshCw size={13} strokeWidth={2.2} />
-          Refresh
-        </button>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          fontSize: 12, color: C.textMuted, flexShrink: 0,
+        }}>
+          <span>Updated {timeStr}</span>
+          <button
+            onClick={load}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '7px 14px',
+              background: C.cardBg, border: `1px solid ${C.border}`,
+              borderRadius: 8, fontSize: 12, fontWeight: 600,
+              color: C.green, cursor: 'pointer',
+            }}
+          >
+            <RefreshCw size={13} strokeWidth={2.2} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* ── ANNOUNCEMENTS (admin posts, everyone reads) ── */}
@@ -492,7 +523,7 @@ export default function Dashboard() {
           borderRadius: 12, padding: isMobile ? '18px 16px' : '20px 24px',
         }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: C.textDark, marginBottom: 20 }}>
-            Pipeline Overview
+            Where everyone stands
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
@@ -544,12 +575,12 @@ export default function Dashboard() {
           borderRadius: 12, padding: isMobile ? '18px 16px' : '20px 22px',
         }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: C.textDark, marginBottom: 18 }}>
-            Destination Countries
+            Where they're headed
           </div>
 
           {topCountries.length === 0 ? (
             <div style={{ fontSize: 13, color: C.textMuted, textAlign: 'center', paddingTop: 30 }}>
-              No data yet
+              Nothing to show here yet
             </div>
           ) : (
             <div style={{
@@ -597,7 +628,7 @@ export default function Dashboard() {
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           }}>
             <span style={{ fontSize: 15, fontWeight: 700, color: C.textDark }}>
-              Recent Applicants
+              Just came in
             </span>
             <a href="/applications" style={{ fontSize: 12, color: C.green, fontWeight: 600, textDecoration: 'none' }}>
               View all →
@@ -608,7 +639,7 @@ export default function Dashboard() {
           {isMobile ? (
             recentApplicants.length === 0 ? (
               <div style={{ padding: 40, textAlign: 'center', color: C.textLight, fontSize: 13 }}>
-                No applicants yet
+                Nobody new yet — check back later
               </div>
             ) : (
               recentApplicants.map((a, i) => (
@@ -705,7 +736,7 @@ export default function Dashboard() {
             borderBottom: `1px solid ${C.border}`,
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           }}>
-            <span style={{ fontSize: 15, fontWeight: 700, color: C.textDark }}>Due Tasks</span>
+            <span style={{ fontSize: 15, fontWeight: 700, color: C.textDark }}>On your plate</span>
             <a href="/tasks" style={{ fontSize: 12, color: C.green, fontWeight: 600, textDecoration: 'none' }}>
               View all →
             </a>
@@ -714,7 +745,7 @@ export default function Dashboard() {
           {dueTasks.length === 0 ? (
             <div style={{ padding: '40px 20px', textAlign: 'center', color: C.textLight, fontSize: 13 }}>
               <CheckCircle2 size={26} style={{ marginBottom: 10, opacity: 0.3 }} />
-              <div>No tasks due in the next 3 days</div>
+              <div>You're all caught up — nothing due right now</div>
             </div>
           ) : (
             dueTasks.map((t, i) => (
