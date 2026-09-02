@@ -106,22 +106,23 @@ export default function StudentDetailModal({ student, onClose }) {
     async function loadAll() {
       setLoading(true)
 
-      // Match on email when we have one, otherwise fall back to name. These
-      // tables only store loose text, not a real FK to `applicants`.
-      const orFilter = [
-        email && `student_email.ilike.${email}`,
-        name  && `student_name.ilike.${name}`,
-      ].filter(Boolean).join(',')
+      // Match this student's payments / appointments by their EXACT email —
+      // the same key the student's own portal uses. Only fall back to a name
+      // match when the applicant has no email on file: a shared full name
+      // (e.g. two "Prashant Sharma"s, or staff-added payments that only
+      // captured a name) must never pull in another student's records.
+      const matchCol = email ? 'student_email' : name ? 'student_name' : null
+      const matchVal = email || name
 
       const [pay, docs, appts, prof] = await Promise.all([
-        orFilter
-          ? supabase.from('payments').select('*').or(orFilter).order('created_at', { ascending: false })
+        matchCol
+          ? supabase.from('payments').select('*').ilike(matchCol, matchVal).order('created_at', { ascending: false })
           : Promise.resolve({ data: [] }),
         email
           ? supabase.from('student_documents').select('*').ilike('student_email', email)
           : Promise.resolve({ data: [] }),
-        orFilter
-          ? supabase.from('appointments').select('*').or(orFilter).order('date', { ascending: false })
+        matchCol
+          ? supabase.from('appointments').select('*').ilike(matchCol, matchVal).order('date', { ascending: false })
           : Promise.resolve({ data: [] }),
         student.id != null
           ? supabase.from('profiles')
