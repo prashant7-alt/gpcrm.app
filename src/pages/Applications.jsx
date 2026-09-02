@@ -229,8 +229,9 @@ export default function Applications() {
             method:  'POST',
             headers: await functionHeaders(),
             body: JSON.stringify({
-              user_id: profileId || null,
-              email:   applicant.email ? applicant.email.trim().toLowerCase() : null,
+              user_id:      profileId || null,
+              email:        applicant.email ? applicant.email.trim().toLowerCase() : null,
+              applicant_id: applicant.id,
             }),
           })
           result = await res.json()
@@ -254,7 +255,15 @@ export default function Applications() {
         }
       }
 
-      await supabase.from('applicants').delete().eq('id', applicant.id)
+      const { error: delErr } = await supabase.from('applicants').delete().eq('id', applicant.id)
+      if (delErr) {
+        // Most likely a lingering profiles.applicant_id FK, or RLS. The login
+        // was already handled above; report so it doesn't look like it worked.
+        alert(
+          `The student's login was removed, but the applicant record could not be deleted:\n` +
+          `${delErr.message}\n\nRefresh and try Delete again.`
+        )
+      }
       load()
     } catch (err) {
       alert('Error deleting: ' + err.message)

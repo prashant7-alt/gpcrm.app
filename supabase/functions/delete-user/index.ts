@@ -87,12 +87,19 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     let userId: string | null = body?.user_id ?? null;
     const email: string | null = (body?.email ?? "").trim().toLowerCase() || null;
+    const applicantId: string | null = body?.applicant_id ?? null;
 
-    if (!userId && !email) {
-      return json({ success: false, message: "user_id or email is required" }, 400);
+    if (!userId && !email && !applicantId) {
+      return json({ success: false, message: "user_id, email or applicant_id is required" }, 400);
     }
 
-    // Resolve a user id from the email if we weren't handed one.
+    // Resolve a user id we weren't handed one: try the applicant link first
+    // (the one join that survives a typo'd email), then the email.
+    if (!userId && applicantId) {
+      const { data: prof } = await admin
+        .from("profiles").select("id").eq("applicant_id", applicantId).maybeSingle();
+      userId = prof?.id ?? null;
+    }
     if (!userId && email) {
       const { data: prof } = await admin
         .from("profiles").select("id").ilike("email", email).maybeSingle();
@@ -111,10 +118,15 @@ serve(async (req) => {
       }
     }
 
-    // Remove profile row(s) — by id and, defensively, by email.
+    // Remove profile row(s) — by id, by applicant link, and by email. Any
+    // surviving profile row keeps a usable login AND (via profiles.applicant_id
+    // -> applicants.id) blocks the applicant row from being deleted.
     if (userId) {
       const { error } = await admin.from("profiles").delete().eq("id", userId);
       if (error) return json({ success: false, message: "Profile delete failed: " + error.message }, 400);
+    }
+    if (applicantId) {
+      await admin.from("profiles").delete().eq("applicant_id", applicantId);
     }
     if (email) {
       await admin.from("profiles").delete().ilike("email", email);
