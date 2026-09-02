@@ -5,7 +5,9 @@ import { statusChip } from '../lib/statusColors'
 import { openReceipt } from '../lib/receipt'
 import { exportRows, asDate } from '../lib/exportCsv'
 import { sendPaymentConfirmedEmail } from '../emailService'
+import Pagination from '../components/Pagination'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { usePagination } from '../hooks/usePagination'
 import { useRefetchOnFocus, useRefreshHold } from '../hooks/useRefetchOnFocus'
 import {
   Download,
@@ -250,6 +252,9 @@ export default function Payments() {
     return matchSearch && matchType && matchStatus && !hidePending
   })
 
+  const pg = usePagination(filtered, { pageSize: 20, resetKey: `${search}|${typeFilter}|${statusFilter}` })
+  const rows = pg.pageItems
+
   async function handleAddPayment(e) {
     e.preventDefault()
     const { data, error } = await supabase.from('payments').insert({
@@ -403,12 +408,12 @@ export default function Payments() {
           </div>
         )}
 
-        {filtered.map((p,i) => (
+        {rows.map((p,i) => (
           isMobile ? (
             // ── Mobile card ──
             <div key={p.id} style={{
               padding: '14px 16px',
-              borderBottom: i < filtered.length - 1 ? `1px solid ${theme.border}` : 'none',
+              borderBottom: i < rows.length - 1 ? `1px solid ${theme.border}` : 'none',
               display: 'flex', flexDirection: 'column', gap: 8,
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
@@ -474,7 +479,7 @@ export default function Payments() {
           ) : (
             // ── Desktop row ──
             <div key={p.id}
-              style={{ display:'grid', gridTemplateColumns:'2fr 1.5fr 1.5fr 1fr 1.4fr 1fr 2fr', padding:'13px 16px', borderBottom:i<filtered.length-1?`1px solid ${theme.border}`:'none', alignItems:'center' }}
+              style={{ display:'grid', gridTemplateColumns:'2fr 1.5fr 1.5fr 1fr 1.4fr 1fr 2fr', padding:'13px 16px', borderBottom:i<rows.length-1?`1px solid ${theme.border}`:'none', alignItems:'center' }}
               onMouseEnter={e=>e.currentTarget.style.background=theme.pageBg}
               onMouseLeave={e=>e.currentTarget.style.background='transparent'}
             >
@@ -536,6 +541,8 @@ export default function Payments() {
           )
         ))}
       </div>
+
+      <Pagination {...pg} onPage={pg.setPage} noun="payments" />
 
       {/* View Modal */}
       <ViewModal

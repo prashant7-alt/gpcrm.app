@@ -4,8 +4,10 @@ import { supabase, functionHeaders } from '../supabase'
 import theme from '../theme'
 import { statusChip } from '../lib/statusColors'
 import BottomButtons from '../components/BottomButtons'
+import Pagination from '../components/Pagination'
 import { sendWelcomeEmail } from '../emailService'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { usePagination } from '../hooks/usePagination'
 import { useRefetchOnFocus, useRefreshHold } from '../hooks/useRefetchOnFocus'
 
 const SUPABASE_URL = 'https://txwpmjtixdbebnbqorju.supabase.co'
@@ -289,6 +291,9 @@ export default function Applications() {
     return matchSearch && matchFilter && matchCountry
   })
 
+  const pg = usePagination(filtered, { pageSize: 20, resetKey: `${search}|${filter}|${country}` })
+  const rows = pg.pageItems
+
   const tableCols = '2fr 1.5fr 1.5fr 1fr 1fr 0.8fr'
 
   return (
@@ -377,12 +382,12 @@ export default function Applications() {
           </div>
         )}
 
-        {filtered.map((a, i) => (
+        {rows.map((a, i) => (
           isMobile ? (
             // ── Mobile card ──
             <div key={a.id} style={{
               padding: '14px 16px',
-              borderBottom: i < filtered.length - 1 ? `1px solid ${theme.border}` : 'none',
+              borderBottom: i < rows.length - 1 ? `1px solid ${theme.border}` : 'none',
               opacity: deleting === a.id ? 0.5 : 1,
               display: 'flex', flexDirection: 'column', gap: 8,
             }}>
@@ -436,7 +441,7 @@ export default function Applications() {
             <div key={a.id} style={{
               display: 'grid', gridTemplateColumns: tableCols,
               padding: '13px 16px',
-              borderBottom: i < filtered.length - 1 ? `1px solid ${theme.border}` : 'none',
+              borderBottom: i < rows.length - 1 ? `1px solid ${theme.border}` : 'none',
               alignItems: 'center', opacity: deleting === a.id ? 0.5 : 1,
             }}
               onMouseEnter={e => e.currentTarget.style.background = theme.pageBg}
@@ -496,6 +501,8 @@ export default function Applications() {
           )
         ))}
       </div>
+
+      <Pagination {...pg} onPage={pg.setPage} noun="applicants" />
 
       {/* add modal */}
       {showAdd && (

@@ -3,8 +3,10 @@ import { X } from 'lucide-react'
 import { supabase } from '../supabase'
 import theme from '../theme'
 import BottomButtons from '../components/BottomButtons'
+import Pagination from '../components/Pagination'
 import { exportRows, asDate } from '../lib/exportCsv'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { usePagination } from '../hooks/usePagination'
 import { useRefetchOnFocus, useRefreshHold } from '../hooks/useRefetchOnFocus'
 
 const statusStyle = (status) => {
@@ -120,6 +122,9 @@ export default function Visitors() {
     const matchInterest = interest === 'All Interest'  || v.interest === interest
     return matchSearch && matchPurpose && matchInterest
   })
+
+  const pg = usePagination(filtered, { pageSize: 20, resetKey: `${search}|${purpose}|${interest}` })
+  const rows = pg.pageItems
 
   const tableCols = '36px 2fr 1.5fr 1.5fr 1.5fr 1.5fr 1fr 1fr 1fr'
 
@@ -348,14 +353,14 @@ export default function Visitors() {
         )}
 
         {/* visitor rows */}
-        {filtered.map((v, i) => (
+        {rows.map((v, i) => (
           isMobile ? (
             // ── Mobile card ──
             <div
               key={v.id}
               style={{
                 padding: '14px 16px',
-                borderBottom: i < filtered.length - 1 ? `1px solid ${theme.border}` : 'none',
+                borderBottom: i < rows.length - 1 ? `1px solid ${theme.border}` : 'none',
                 display: 'flex', flexDirection: 'column', gap: 8,
               }}
             >
@@ -410,7 +415,7 @@ export default function Visitors() {
                 display: 'grid',
                 gridTemplateColumns: tableCols,
                 padding: '12px 16px',
-                borderBottom: i < filtered.length - 1
+                borderBottom: i < rows.length - 1
                   ? `1px solid ${theme.border}` : 'none',
                 alignItems: 'center',
               }}
@@ -466,6 +471,8 @@ export default function Visitors() {
           )
         ))}
       </div>
+
+      <Pagination {...pg} onPage={pg.setPage} noun="visitors" />
 
       {/* view visitor modal */}
       {viewVisitor && (

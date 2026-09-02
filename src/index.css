@@ -28,6 +28,14 @@ body {
   zoom: 1.08;
 }
 
+/* On phones the layout is already sized for small screens, and `zoom` on an
+   ancestor breaks `position: fixed` in mobile browsers — the fixed top navbar
+   drifts and hides on scroll. Drop the zoom below the mobile breakpoint so the
+   navbar (and the fixed chat panes) stay pinned to the real viewport. */
+@media (max-width: 768px) {
+  body { zoom: 1; }
+}
+
 a {
   color: #1E5AA8;
 }

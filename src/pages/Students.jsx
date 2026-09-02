@@ -4,7 +4,9 @@ import theme from '../theme'
 import { statusChip } from '../lib/statusColors'
 import { exportRows, asDate } from '../lib/exportCsv'
 import StudentDetailModal from '../components/StudentDetailModal'
+import Pagination from '../components/Pagination'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { usePagination } from '../hooks/usePagination'
 import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus'
 import { COUNTRIES, COUNTRY_CODES, DEFAULT_VISA_RATES, fetchVisaRates } from '../lib/visaRates'
 import { Eye, Globe, Search } from 'lucide-react'
@@ -87,6 +89,9 @@ export default function Students() {
 
     return matchSearch && matchCountry
   })
+
+  const pg = usePagination(filtered, { pageSize: 20, resetKey: `${search}|${selectedCountry}|${countryFilter}` })
+  const rows = pg.pageItems
 
   const handleCountryCard = (country) => {
     if (selectedCountry === country) {
@@ -314,7 +319,7 @@ export default function Students() {
           </div>
         )}
 
-        {filtered.map((s, i) => (
+        {rows.map((s, i) => (
           isMobile ? (
             // ── Mobile card ──
             <div
@@ -322,7 +327,7 @@ export default function Students() {
               onClick={() => setViewStudent(s)}
               style={{
                 padding: '14px 18px',
-                borderBottom: i < filtered.length - 1 ? `1px solid ${theme.border}` : 'none',
+                borderBottom: i < rows.length - 1 ? `1px solid ${theme.border}` : 'none',
                 display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer',
               }}
             >
@@ -378,7 +383,7 @@ export default function Students() {
                 display: 'grid',
                 gridTemplateColumns: tableCols,
                 padding: '13px 18px',
-                borderBottom: i < filtered.length - 1 ? `1px solid ${theme.border}` : 'none',
+                borderBottom: i < rows.length - 1 ? `1px solid ${theme.border}` : 'none',
                 alignItems: 'center', cursor: 'pointer',
               }}
               onMouseEnter={e => e.currentTarget.style.background = theme.pageBg || theme.pageBg}
@@ -429,6 +434,8 @@ export default function Students() {
           )
         ))}
       </div>
+
+      <Pagination {...pg} onPage={pg.setPage} noun="students" />
 
       {viewStudent && (
         <StudentDetailModal

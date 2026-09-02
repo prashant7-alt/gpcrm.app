@@ -33,6 +33,7 @@ export default function Reports() {
   const [tasks,      setTasks]      = useState([])
   const [profiles,   setProfiles]   = useState([])
   const [loading,    setLoading]    = useState(true)
+  const [hoverBar,   setHoverBar]   = useState(null) // country name whose bar is hovered
 
   // load everything at once when page opens
   async function load() {
@@ -371,10 +372,13 @@ export default function Reports() {
 
           {/* compact horizontal row per status — label left, bar + count right */}
           {funnelData.map(stage => (
-            <div key={stage.label} style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              marginBottom: 10,
-            }}>
+            <div
+              key={stage.label}
+              title={`${stage.label}: ${stage.count} ${stage.count === 1 ? 'person' : 'people'} at this stage`}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                marginBottom: 10,
+              }}>
               <div style={{
                 width: 100, flexShrink: 0,
                 fontSize: 12, color: theme.textLight, fontWeight: 500,
@@ -440,16 +444,48 @@ export default function Reports() {
               minWidth: isMobile ? 480 : 'auto',
             }}>
               {countryData.map(d => (
-                <div key={d.country} style={{
-                  flex: 1,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 3,
-                  height: '100%',
-                  justifyContent: 'flex-end',
-                  minWidth: isMobile ? 50 : 'auto',
-                }}>
+                <div
+                  key={d.country}
+                  onMouseEnter={() => setHoverBar(d.country)}
+                  onMouseLeave={() => setHoverBar(null)}
+                  title={`${d.country} — ${d.total} applicant${d.total === 1 ? '' : 's'}, ${d.abroad} gone abroad`}
+                  style={{
+                    position: 'relative',
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 3,
+                    height: '100%',
+                    justifyContent: 'flex-end',
+                    minWidth: isMobile ? 50 : 'auto',
+                    cursor: 'default',
+                  }}>
+
+                  {/* hover tooltip — what the bars mean + the numbers */}
+                  {hoverBar === d.country && (
+                    <div style={{
+                      position: 'absolute',
+                      bottom: 'calc(100% + 6px)',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      background: theme.textDark || '#243447',
+                      color: '#fff',
+                      borderRadius: 8,
+                      padding: '8px 10px',
+                      fontSize: 11,
+                      lineHeight: 1.5,
+                      whiteSpace: 'nowrap',
+                      zIndex: 5,
+                      boxShadow: '0 6px 20px rgba(0,0,0,0.22)',
+                      pointerEvents: 'none',
+                    }}>
+                      <div style={{ fontWeight: 700, marginBottom: 3 }}>{d.country}</div>
+                      <div><span style={{ color: theme.purple }}>■</span> Total applicants: <b>{d.total}</b></div>
+                      <div><span style={{ color: theme.primary }}>■</span> Gone abroad: <b>{d.abroad}</b></div>
+                    </div>
+                  )}
+
                   {/* total + abroad bars side by side */}
                   <div style={{
                     display: 'flex',
@@ -465,6 +501,7 @@ export default function Reports() {
                       background: theme.purple,
                       borderRadius: '3px 3px 0 0',
                       transition: 'height 0.5s ease',
+                      opacity: hoverBar && hoverBar !== d.country ? 0.45 : 1,
                     }} />
                     {/* abroad bar */}
                     <div style={{
@@ -473,13 +510,15 @@ export default function Reports() {
                       background: theme.primary,
                       borderRadius: '3px 3px 0 0',
                       transition: 'height 0.5s ease',
+                      opacity: hoverBar && hoverBar !== d.country ? 0.45 : 1,
                     }} />
                   </div>
 
                   {/* country label */}
                   <span style={{
                     fontSize: 10,
-                    color: theme.textLight,
+                    color: hoverBar === d.country ? theme.textDark : theme.textLight,
+                    fontWeight: hoverBar === d.country ? 700 : 400,
                     textAlign: 'center',
                     marginTop: 4,
                     lineHeight: 1.2,

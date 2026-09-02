@@ -4,8 +4,10 @@ import { supabase } from '../supabase'
 import theme from '../theme'
 import { statusChip } from '../lib/statusColors'
 import BottomButtons from '../components/BottomButtons'
+import Pagination from '../components/Pagination'
 import { advanceApplicantStage } from '../lib/pipelineStages' // adjust path if needed
 import { useIsMobile } from '../hooks/useIsMobile'
+import { usePagination } from '../hooks/usePagination'
 import { useRefetchOnFocus, useRefreshHold } from '../hooks/useRefetchOnFocus'
 
 // Colours from the shared status system (src/lib/statusColors.js):
@@ -173,6 +175,9 @@ export default function Appointments() {
     return matchSearch && matchFilter
   })
 
+  const pg = usePagination(filtered, { pageSize: 20, resetKey: `${search}|${filter}` })
+  const rows = pg.pageItems
+
   // counts for tabs
   const counts = {
     All:       appointments.length,
@@ -331,12 +336,12 @@ export default function Appointments() {
           </div>
         )}
 
-        {filtered.map((a, i) => (
+        {rows.map((a, i) => (
           isMobile ? (
             // ── Mobile card ──
             <div key={a.id} style={{
               padding: '14px 16px',
-              borderBottom: i < filtered.length - 1 ? `1px solid ${theme.border}` : 'none',
+              borderBottom: i < rows.length - 1 ? `1px solid ${theme.border}` : 'none',
               display: 'flex', flexDirection: 'column', gap: 8,
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
@@ -441,7 +446,7 @@ export default function Appointments() {
               display: 'grid',
               gridTemplateColumns: tableCols,
               padding: '13px 16px',
-              borderBottom: i < filtered.length - 1
+              borderBottom: i < rows.length - 1
                 ? `1px solid ${theme.border}` : 'none',
               alignItems: 'center',
             }}
@@ -575,6 +580,8 @@ export default function Appointments() {
           )
         ))}
       </div>
+
+      <Pagination {...pg} onPage={pg.setPage} noun="appointments" />
 
       {/* ── reschedule modal ── */}
       {rescheduleId && (

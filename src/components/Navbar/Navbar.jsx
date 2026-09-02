@@ -412,12 +412,12 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
                    keeps marginLeft at 0 so nothing shifts underneath it. */}
       <nav ref={drawerRef} style={{
         position: 'fixed',
-        // body has zoom:1.08 (index.css). `bottom:0` on a fixed element stops
-        // ~8% short of the screen here, leaving a background strip below the
-        // sidebar. Divide the zoom back out of the height, and extend the navy
-        // downward with a box-shadow so there is never a visible seam.
+        // Desktop body has zoom:1.08 (index.css) — `bottom:0` on a fixed element
+        // stops ~8% short, leaving a strip below the sidebar, so divide the zoom
+        // back out of the height. On mobile the zoom is off (index.css media
+        // query) so use the plain height.
         top: 64, left: 0,
-        height: 'calc(100vh / 1.08 - 64px)',
+        height: isMobile ? 'calc(100vh - 64px)' : 'calc(100vh / 1.08 - 64px)',
         width: drawerWidth,
         background: theme.sidebarBg,
         borderRight: `1px solid ${theme.palette.navyLine}`,

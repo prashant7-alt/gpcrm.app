@@ -262,12 +262,12 @@ export default function StudentLayout({ children }) {
         background: SIDEBAR_BG,
         borderRight: `1px solid ${SIDEBAR_BORDER}`,
         position: 'fixed',
-        // body has zoom:1.08 (index.css). With `bottom:0` the fixed sidebar
-        // stops ~8% short of the screen, leaving a strip of page background
-        // below it. Size it with the zoom divided back out instead, and paint
-        // a tall navy box-shadow downward so there is never a visible seam.
+        // Desktop body has zoom:1.08 (index.css) — with `bottom:0` the fixed
+        // sidebar stops ~8% short, leaving a strip of page background below it,
+        // so divide the zoom back out. On mobile the zoom is off (index.css
+        // media query) so use the plain height.
         top: isMobile ? 56 : 0,
-        height: isMobile ? 'calc(100vh / 1.08 - 56px)' : 'calc(100vh / 1.08)',
+        height: isMobile ? 'calc(100vh - 56px)' : 'calc(100vh / 1.08)',
         left: 0,
         display: 'flex',
         flexDirection: 'column',
