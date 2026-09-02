@@ -255,10 +255,18 @@ export default function Applications() {
         }
       }
 
+      // Clear child rows that FK to applicants.id before deleting the applicant.
+      // student_documents has a real FK; payments / appointments key on loose
+      // email text (no FK) so they don't block the delete.
+      await supabase.from('student_documents').delete().eq('applicant_id', applicant.id)
+      if (applicant.email) {
+        await supabase.from('student_documents').delete().ilike('student_email', applicant.email.trim())
+      }
+
       const { error: delErr } = await supabase.from('applicants').delete().eq('id', applicant.id)
       if (delErr) {
-        // Most likely a lingering profiles.applicant_id FK, or RLS. The login
-        // was already handled above; report so it doesn't look like it worked.
+        // A lingering FK from another table, or RLS. The login was already
+        // handled above; report so it doesn't look like it worked.
         alert(
           `The student's login was removed, but the applicant record could not be deleted:\n` +
           `${delErr.message}\n\nRefresh and try Delete again.`
