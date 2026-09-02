@@ -6,20 +6,11 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 import { useRefetchOnFocus } from '../../hooks/useRefetchOnFocus'
 import {
   User, Lock, Pencil, Eye, EyeOff,
-  AlertTriangle, Mail, Check, X, GraduationCap,
+  AlertTriangle, Mail, Check, X,
 } from 'lucide-react'
-
-// Self-reported academic fields the student manages themselves. Kept in one
-// place so the form, the loader and the save all stay in sync.
-const EDU_FIELDS = [
-  { key: 'education_level',  label: 'Highest Qualification', placeholder: "e.g. +2 / High School, Bachelor's" },
-  { key: 'grade',            label: 'Grade / GPA',           placeholder: 'e.g. 3.6 / 4.0 or 78%' },
-  { key: 'institution',      label: 'School / College',      placeholder: 'Last institution attended' },
-  { key: 'field_of_study',   label: 'Field of Study',        placeholder: 'e.g. Science, Management' },
-  { key: 'english_test',     label: 'English Test Score',    placeholder: 'e.g. IELTS 7.0, PTE 65' },
-  { key: 'preferred_intake', label: 'Preferred Intake',      placeholder: 'e.g. Fall 2026' },
-]
-const blankEdu = () => Object.fromEntries(EDU_FIELDS.map(f => [f.key, '']))
+import {
+  PROFILE_SECTIONS, profileToForm, formToPatch,
+} from '../../lib/studentProfileSchema'
 
 // Same as the login page — open a Gmail compose tab instead of the OS mail
 // client (which is Outlook on Windows for a plain mailto: link).
@@ -107,6 +98,81 @@ function Section({ title, subtitle, Icon, iconBg, iconColor, isMobile, children 
   )
 }
 
+// ── One schema-driven field: text / select / multiselect / date ────────────
+const splitCsv = (v) => String(v || '').split(',').map(s => s.trim()).filter(Boolean)
+
+function FieldControl({ field, value, editing, onChange }) {
+  const { type, options, placeholder } = field
+
+  if (!editing) {
+    const shown = type === 'multiselect'
+      ? (splitCsv(value).join(', ') || '—')
+      : (value || '—')
+    return <input value={shown} disabled style={inp(true)} />
+  }
+
+  if (type === 'select') {
+    return (
+      <select
+        value={value || ''}
+        onChange={e => onChange(e.target.value)}
+        style={{ ...inp(false), cursor: 'pointer' }}
+      >
+        <option value="">Select…</option>
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    )
+  }
+
+  if (type === 'multiselect') {
+    const sel = new Set(splitCsv(value))
+    const toggle = (o) => {
+      sel.has(o) ? sel.delete(o) : sel.add(o)
+      onChange(options.filter(x => sel.has(x)).join(', '))
+    }
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {options.map(o => {
+          const on = sel.has(o)
+          return (
+            <button
+              type="button" key={o} onClick={() => toggle(o)}
+              style={{
+                padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'inherit',
+                border: `1px solid ${on ? theme.primary : theme.inputBorder}`,
+                background: on ? theme.status.info.bg : theme.white,
+                color: on ? theme.primary : theme.textMid,
+              }}
+            >
+              {o}
+            </button>
+          )
+        })}
+      </div>
+    )
+  }
+
+  if (type === 'date') {
+    return (
+      <input
+        type="date" value={value || ''}
+        onChange={e => onChange(e.target.value)}
+        style={inp(false)}
+      />
+    )
+  }
+
+  return (
+    <input
+      value={value || ''}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      style={inp(false)}
+    />
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 export default function StudentProfile() {
   const isMobile = useIsMobile()
@@ -121,11 +187,11 @@ export default function StudentProfile() {
   const [savingInfo, setSavingInfo] = useState(false)
   const [infoMsg,    setInfoMsg]    = useState('')
 
-  // academic background edit (self-reported, student-managed)
-  const [eduMode,   setEduMode]   = useState(false)
-  const [eduForm,   setEduForm]   = useState(blankEdu)
-  const [savingEdu, setSavingEdu] = useState(false)
-  const [eduMsg,    setEduMsg]    = useState('')
+  // extended "consultancy" profile — one edit mode across every schema section
+  const [extMode,   setExtMode]   = useState(false)
+  const [extForm,   setExtForm]   = useState({})
+  const [savingExt, setSavingExt] = useState(false)
+  const [extMsg,    setExtMsg]    = useState('')
 
   // password change
   const [pwForm,   setPwForm]   = useState({ current: '', next: '', confirm: '' })
@@ -151,33 +217,31 @@ export default function StudentProfile() {
     setProfile(prof)
     setEditName(prof?.name || '')
     setEditPhone(prof?.phone_new || prof?.phone || '')
-    setEduForm(Object.fromEntries(EDU_FIELDS.map(f => [f.key, prof?.[f.key] || ''])))
+    setExtForm(profileToForm(prof))
     setLoading(false)
   }
 
-  // ── Save academic background ───────────────────────────────────────────────
-  async function saveEdu() {
-    setSavingEdu(true)
-    setEduMsg('')
+  // ── Save the extended profile (all schema sections at once) ────────────────
+  async function saveExt() {
+    setSavingExt(true)
+    setExtMsg('')
 
-    const patch = Object.fromEntries(
-      EDU_FIELDS.map(f => [f.key, eduForm[f.key].trim() || null])
-    )
+    const patch = formToPatch(extForm)
 
     const { error } = await supabase
       .from('profiles')
       .update(patch)
       .eq('id', profile.id)
 
-    setSavingEdu(false)
+    setSavingExt(false)
 
     if (error) {
-      setEduMsg('error:' + error.message)
+      setExtMsg('error:' + error.message)
     } else {
       setProfile(p => ({ ...p, ...patch }))
-      setEduMsg('success:Academic background saved!')
-      setEduMode(false)
-      setTimeout(() => setEduMsg(''), 3000)
+      setExtMsg('success:Profile details saved!')
+      setExtMode(false)
+      setTimeout(() => setExtMsg(''), 3000)
     }
   }
 
@@ -446,64 +510,28 @@ export default function StudentProfile() {
         </Section>
 
         {/* ══════════════════════════════════════
-            ACADEMIC BACKGROUND  (self-reported)
+            CONSULTANCY PROFILE — schema-driven, one shared edit mode
             ══════════════════════════════════════ */}
-        <Section
-          Icon={GraduationCap}
-          iconBg={theme.status.info.bg}
-          iconColor={theme.primary}
-          title="Academic Background"
-          subtitle="Your grades, course and study details — visible to your counsellor"
-          isMobile={isMobile}
-        >
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-            gap: 14,
-            marginBottom: 16,
-          }}>
-            {EDU_FIELDS.map(f => (
-              <div key={f.key}>
-                <label style={lbl}>{f.label}</label>
-                <input
-                  value={eduMode ? eduForm[f.key] : (profile?.[f.key] || '—')}
-                  onChange={e => setEduForm(p => ({ ...p, [f.key]: e.target.value }))}
-                  disabled={!eduMode}
-                  placeholder={f.placeholder}
-                  style={inp(!eduMode)}
-                />
-              </div>
-            ))}
+        <div style={{
+          display: 'flex', alignItems: isMobile ? 'stretch' : 'center',
+          justifyContent: 'space-between', gap: 10,
+          flexDirection: isMobile ? 'column' : 'row',
+          margin: '4px 2px 12px',
+        }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: theme.textStrong }}>
+              Your study profile
+            </div>
+            <div style={{ fontSize: 12.5, color: theme.textLight, marginTop: 2 }}>
+              The more you fill in, the better the GP Assistant and your counsellor can match you.
+            </div>
           </div>
 
-          {eduMsg && (() => {
-            const ok = eduMsg.startsWith('success:')
-            return (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '9px 14px', borderRadius: 8, fontSize: 13, marginBottom: 14,
-                background: ok ? theme.status.success.bg : theme.status.danger.bg,
-                color:      ok ? theme.status.success.text : theme.status.danger.text,
-                border: `1px solid ${ok ? theme.status.success.border : theme.status.danger.border}`,
-              }}>
-                {ok ? <Check size={15} strokeWidth={2.6} /> : <X size={15} strokeWidth={2.6} />}
-                {eduMsg.slice(eduMsg.indexOf(':') + 1)}
-              </div>
-            )
-          })()}
-
-          <div style={{
-            display: 'flex', gap: 8, justifyContent: 'flex-end',
-            flexDirection: isMobile ? 'column-reverse' : 'row',
-          }}>
-            {eduMode ? (
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexDirection: isMobile ? 'column-reverse' : 'row' }}>
+            {extMode ? (
               <>
                 <button
-                  onClick={() => {
-                    setEduForm(Object.fromEntries(EDU_FIELDS.map(f => [f.key, profile?.[f.key] || ''])))
-                    setEduMode(false)
-                    setEduMsg('')
-                  }}
+                  onClick={() => { setExtForm(profileToForm(profile)); setExtMode(false); setExtMsg('') }}
                   style={{
                     padding: '8px 18px', background: theme.pageBg,
                     border: `1px solid ${theme.border}`, borderRadius: 8,
@@ -514,23 +542,23 @@ export default function StudentProfile() {
                   Cancel
                 </button>
                 <button
-                  onClick={saveEdu}
-                  disabled={savingEdu}
+                  onClick={saveExt}
+                  disabled={savingExt}
                   style={{
                     padding: '8px 18px',
-                    background: savingEdu ? theme.textMuted : theme.primary,
+                    background: savingExt ? theme.textMuted : theme.primary,
                     border: 'none', borderRadius: 8,
                     fontSize: 13, fontWeight: 600, color: theme.white,
-                    cursor: savingEdu ? 'not-allowed' : 'pointer',
+                    cursor: savingExt ? 'not-allowed' : 'pointer',
                     fontFamily: 'inherit', width: isMobile ? '100%' : 'auto',
                   }}
                 >
-                  {savingEdu ? 'Saving…' : 'Save Changes'}
+                  {savingExt ? 'Saving…' : 'Save All'}
                 </button>
               </>
             ) : (
               <button
-                onClick={() => setEduMode(true)}
+                onClick={() => setExtMode(true)}
                 style={{
                   padding: '8px 18px',
                   background: theme.status.info.bg,
@@ -542,11 +570,60 @@ export default function StudentProfile() {
                 }}
               >
                 <Pencil size={14} strokeWidth={2.4} />
-                {EDU_FIELDS.some(f => profile?.[f.key]) ? 'Edit Details' : 'Add Details'}
+                Edit Details
               </button>
             )}
           </div>
-        </Section>
+        </div>
+
+        {extMsg && (() => {
+          const ok = extMsg.startsWith('success:')
+          return (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '9px 14px', borderRadius: 8, fontSize: 13, marginBottom: 14,
+              background: ok ? theme.status.success.bg : theme.status.danger.bg,
+              color:      ok ? theme.status.success.text : theme.status.danger.text,
+              border: `1px solid ${ok ? theme.status.success.border : theme.status.danger.border}`,
+            }}>
+              {ok ? <Check size={15} strokeWidth={2.6} /> : <X size={15} strokeWidth={2.6} />}
+              {extMsg.slice(extMsg.indexOf(':') + 1)}
+            </div>
+          )
+        })()}
+
+        {PROFILE_SECTIONS.map(section => (
+          <Section
+            key={section.id}
+            Icon={section.Icon}
+            iconBg={theme.status.info.bg}
+            iconColor={theme.primary}
+            title={section.title}
+            subtitle={section.subtitle}
+            isMobile={isMobile}
+          >
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+              gap: 14,
+            }}>
+              {section.fields.map(field => (
+                <div
+                  key={field.key}
+                  style={field.type === 'multiselect' ? { gridColumn: isMobile ? 'auto' : '1 / -1' } : undefined}
+                >
+                  <label style={lbl}>{field.label}</label>
+                  <FieldControl
+                    field={field}
+                    value={extForm[field.key]}
+                    editing={extMode}
+                    onChange={v => setExtForm(p => ({ ...p, [field.key]: v }))}
+                  />
+                </div>
+              ))}
+            </div>
+          </Section>
+        ))}
 
         {/* ══════════════════════════════════════
             CHANGE PASSWORD

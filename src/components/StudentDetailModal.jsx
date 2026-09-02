@@ -5,10 +5,18 @@ import theme from '../theme'
 import { statusChip } from '../lib/statusColors'
 import { STAGE_ORDER } from '../lib/pipelineStages'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { PROFILE_SECTIONS, PROFILE_FIELD_KEYS } from '../lib/studentProfileSchema'
 import {
   X, Mail, Phone, Globe2, GraduationCap, CalendarDays, CreditCard,
   FolderOpen, CheckCircle2, Clock, IdCard, ExternalLink, Check,
 } from 'lucide-react'
+
+const splitCsv = (v) => String(v || '').split(',').map(s => s.trim()).filter(Boolean)
+const showField = (field, row) => {
+  const v = row?.[field.key]
+  if (!v) return '—'
+  return field.type === 'multiselect' ? splitCsv(v).join(', ') : String(v)
+}
 
 // Statuses the admin can set that aren't part of the linear pipeline.
 const SPECIAL_STAGES = ['Pending', 'Approved', 'Rejected', 'Lead']
@@ -117,7 +125,7 @@ export default function StudentDetailModal({ student, onClose }) {
           : Promise.resolve({ data: [] }),
         student.id != null
           ? supabase.from('profiles')
-              .select('id, email, avatar_url, role, applicant_id, education_level, grade, institution, field_of_study, english_test, preferred_intake')
+              .select(['id', 'email', 'avatar_url', 'role', 'applicant_id', ...PROFILE_FIELD_KEYS].join(', '))
               .eq('applicant_id', student.id).maybeSingle()
           : Promise.resolve({ data: null }),
       ])
@@ -179,16 +187,10 @@ export default function StudentDetailModal({ student, onClose }) {
     },
   ]
 
-  // Self-reported by the student in their portal (My Profile → Academic
-  // Background). Lives on their `profiles` row, not the applicant record.
-  const academicRows = [
-    { label: 'Highest Qualification', value: loginProfile?.education_level },
-    { label: 'Grade / GPA',           value: loginProfile?.grade },
-    { label: 'School / College',      value: loginProfile?.institution },
-    { label: 'Field of Study',        value: loginProfile?.field_of_study },
-    { label: 'English Test Score',    value: loginProfile?.english_test },
-    { label: 'Preferred Intake',      value: loginProfile?.preferred_intake },
-  ]
+  // Self-reported by the student in their portal (My Profile). Lives on their
+  // `profiles` row, not the applicant record. Sections come from the shared
+  // schema so the portal form and this view never drift apart.
+  const anyExtended = loginProfile && PROFILE_FIELD_KEYS.some(k => loginProfile[k])
 
   return createPortal(
     <div
@@ -283,25 +285,33 @@ export default function StudentDetailModal({ student, onClose }) {
             </div>
           </SectionCard>
 
-          {/* Academic background — self-reported by the student in their portal */}
-          <SectionCard icon={GraduationCap} title="Academic Background">
-            {academicRows.some(r => r.value) ? (
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px 18px' }}>
-                {academicRows.map(row => (
-                  <div key={row.label} style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 10.5, color: theme.textLight, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
-                      {row.label}
-                    </div>
-                    <div style={{ fontSize: 13, color: theme.textMid, wordBreak: 'break-word' }}>
-                      {row.value || '—'}
-                    </div>
+          {/* Self-reported profile — one card per schema section */}
+          {!anyExtended ? (
+            <SectionCard icon={GraduationCap} title="Student Profile">
+              <Empty>The student hasn’t filled in their study profile yet.</Empty>
+            </SectionCard>
+          ) : (
+            PROFILE_SECTIONS.map(section => {
+              const rows = section.fields.filter(f => loginProfile?.[f.key])
+              if (!rows.length) return null
+              return (
+                <SectionCard key={section.id} icon={section.Icon} title={section.title}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px 18px' }}>
+                    {rows.map(f => (
+                      <div key={f.key} style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 10.5, color: theme.textLight, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
+                          {f.label}
+                        </div>
+                        <div style={{ fontSize: 13, color: theme.textMid, wordBreak: 'break-word' }}>
+                          {showField(f, loginProfile)}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <Empty>The student hasn’t filled in their academic background yet.</Empty>
-            )}
-          </SectionCard>
+                </SectionCard>
+              )
+            })
+          )}
 
           {/* Fee status */}
           <SectionCard

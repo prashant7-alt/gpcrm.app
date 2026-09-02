@@ -8,6 +8,7 @@ import { Receipt, CheckCircle2, Hourglass, Bot, X, Send, MessageSquare, BookOpen
 import AnnouncementsPanel from '../../components/AnnouncementsPanel'
 import { useRefetchOnFocus } from '../../hooks/useRefetchOnFocus'
 import { statusChip } from '../../lib/statusColors'
+import { recommendUniversities, formatRecommendation } from '../../lib/universityRecommender'
 
 // ── KNOWLEDGE BASE ─────────────────────────────────────────────────────────
 // Every intent has: id, topic (for the "Browse topics" menu), q (the canonical
@@ -326,6 +327,20 @@ const INTENTS = [
     answer: `The **No Objection Certificate (NOC)** from Nepal's **Ministry of Education, Science & Technology** is required before you leave to study abroad. Many embassies ask for it, and you show it at immigration when flying out.\n\n**Apply (Kathmandu / online portal + Ministry office) with:**\n• Offer / admission letter + fee structure\n• Passport & citizenship\n• Academic certificates (SEE onwards) + transcripts\n• Proof of fee payment / financial capacity / loan\n• IELTS/PTE report\n• Passport photos + the application form & fee\n\n⏱️ Usually issued in a **few working days**. Your counsellor guides you through the current process.`,
     suggestions: ['How do I get documents verified?', 'What documents do I need?', 'How do I pay the tuition from Nepal?'],
   },
+
+  // ═══ RECOMMENDATIONS ══════════════════════════════════════════════════
+  // The answer here is a static fallback — sendMessage() intercepts these
+  // keywords first and replies with a live shortlist built from the student's
+  // saved profile (src/lib/universityRecommender.js).
+  {
+    id: 'reco_uni', topic: 'Recommendations', q: 'Recommend universities for my profile',
+    keywords: ['recommend', 'recommendation', 'suggest university', 'suggest college', 'shortlist',
+               'which university', 'which universities', 'which college', 'best university for me',
+               'university for me', 'universities for me', 'college for me', 'match me',
+               'where should i apply', 'where can i apply', 'university suggestion', 'suggest me'],
+    answer: `I can build you a starting university shortlist from your saved profile.\n\nFirst, open **My Profile** and fill in **Study Preferences** (countries, field, level, budget, intake) and your **grade** — then ask me **"recommend universities for my profile"**.\n\nThe more of your profile is filled in, the sharper the list.`,
+    suggestions: ['What IELTS score do I need?', 'How much does studying abroad cost?', 'How do I get a scholarship?'],
+  },
 ]
 
 // ── Matching ───────────────────────────────────────────────────────────────
@@ -363,15 +378,15 @@ function findIntent(userMessage) {
 }
 
 // Topics for the "Browse all topics" menu, in display order.
-const TOPIC_ORDER = ['Getting started', 'English & tests', 'Documents', 'Money & funding',
-  'Visa', 'Work & PR', 'After you arrive', 'Nepal process']
+const TOPIC_ORDER = ['Recommendations', 'Getting started', 'English & tests', 'Documents',
+  'Money & funding', 'Visa', 'Work & PR', 'After you arrive', 'Nepal process']
 
 const INITIAL_SUGGESTIONS = [
+  'Recommend universities for my profile',
   'How do I start the process?',
   'What documents do I need?',
   'How much does studying abroad cost?',
   'What are my visa chances?',
-  'Can I work while studying?',
   'Which country should I choose?',
 ]
 
@@ -440,7 +455,17 @@ function ChatBotWidget({ navigate, isMobile }) {
   const [suggestions, setSuggestions] = useState(INITIAL_SUGGESTIONS)
   const [showTopics,  setShowTopics]  = useState(false)
   const [unread,      setUnread]      = useState(0)
+  const [fullProfile, setFullProfile] = useState(null) // extended profile for recommendations
   const messagesEndRef = useRef(null)
+
+  // Pull the student's full profile row once — the recommender reads the
+  // extended fields (Study Preferences, grade, budget…) that localStorage
+  // doesn't carry.
+  useEffect(() => {
+    if (!profile.id) return
+    supabase.from('profiles').select('*').eq('id', profile.id).single()
+      .then(({ data }) => setFullProfile(data || null))
+  }, [profile.id])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -478,6 +503,21 @@ function ChatBotWidget({ navigate, isMobile }) {
         setSuggestions([])
         return
       }
+
+      // Live university shortlist from the student's saved profile.
+      const RECO_KW = ['recommend', 'suggest univ', 'suggest college', 'suggest me', 'shortlist',
+        'which university', 'which universit', 'which college', 'university for me', 'universities for me',
+        'college for me', 'match me', 'where should i apply', 'where can i apply', 'university suggestion']
+      if (RECO_KW.some(k => msg.toLowerCase().includes(k))) {
+        const result = recommendUniversities(fullProfile || {})
+        setMessages(prev => [...prev, { id: Date.now(), role: 'bot', text: formatRecommendation(result, firstName) }])
+        const s = result.ok
+          ? ['What IELTS score do I need?', 'How do I get a scholarship?', 'How much does studying abroad cost?']
+          : ['How do I choose the right course?', 'Which country should I choose?']
+        setSuggestions(s)
+        return
+      }
+
       const intent = findIntent(msg)
       if (intent) {
         setMessages(prev => [...prev, { id: Date.now(), role: 'bot', text: intent.answer, suggestions: intent.suggestions }])
