@@ -23,13 +23,25 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 })
 
 /**
- * Headers for calling an Edge Function that now requires the caller's session.
- * Returns a plain object with Content-Type + Authorization (Bearer <access_token>).
- * If there is no session the Authorization header is omitted and the function
- * will reject the request with 401.
+ * Headers for calling an Edge Function that requires the caller's session.
+ * Returns Content-Type + Authorization (Bearer <access_token>).
+ *
+ * The access token is only valid for ~1 hour. On a long-open admin tab it
+ * expires, and the Edge Function then rejects the call with "Invalid or expired
+ * session". So: if the stored token is missing or within 2 minutes of expiry,
+ * force a refresh here first, using the refresh token, before handing the header
+ * out. If the refresh token itself is dead, the Authorization header is omitted
+ * and the caller should tell the user to sign in again.
  */
 export async function functionHeaders(extra = {}) {
-  const { data: { session } } = await supabase.auth.getSession()
+  let { data: { session } } = await supabase.auth.getSession()
+
+  const expiresInMs = session?.expires_at ? session.expires_at * 1000 - Date.now() : -1
+  if (!session || expiresInMs < 120_000) {
+    const { data } = await supabase.auth.refreshSession()
+    if (data?.session) session = data.session
+  }
+
   const headers = { 'Content-Type': 'application/json', ...extra }
   if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`
   return headers

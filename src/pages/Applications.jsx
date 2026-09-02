@@ -93,16 +93,19 @@ export default function Applications() {
       return
     }
 
-    // Verify our own login is still valid BEFORE touching the DB — the
+    // Make sure our login token is fresh BEFORE touching the DB — the
     // create-staff-user function rejects a stale token with "Invalid or expired
-    // session", and we don't want to insert an applicant we then can't attach a
-    // login to. getUser() round-trips to the auth server, so it catches an
-    // expired token (long-open tab) or a rotated JWT secret.
-    const { data: { user: me }, error: sessErr } = await supabase.auth.getUser()
-    if (sessErr || !me) {
-      alert('Your session has expired. Sign out and sign back in, then add the applicant again.')
-      setSaving(false)
-      return
+    // session", and we don't want an applicant row we then can't attach a login
+    // to. refreshSession() mints a new token from the refresh token; if that
+    // fails too, the session is genuinely dead and a re-login is needed.
+    const { data: refreshed } = await supabase.auth.refreshSession()
+    if (!refreshed?.session) {
+      const { data: existing } = await supabase.auth.getSession()
+      if (!existing?.session) {
+        alert('Your session has expired. Sign out and sign back in, then add the applicant again.')
+        setSaving(false)
+        return
+      }
     }
 
     const { data: newApplicant, error: appError } = await supabase

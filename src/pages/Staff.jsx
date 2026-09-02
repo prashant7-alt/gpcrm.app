@@ -70,20 +70,44 @@ export default function Staff() {
 
     const roleObj   = ROLES.find(r => r.value === form.role)
     const roleLabel = roleObj?.label || 'Staff'
+    const emailNorm = form.email.trim().toLowerCase()
 
     setSaving(true)
 
+    // Refresh our token first — a long-open admin tab expires it, and the
+    // create-staff-user function then rejects the call with "Invalid or expired
+    // session". If the refresh token is dead too, ask for a re-login.
+    const { data: refreshed } = await supabase.auth.refreshSession()
+    if (!refreshed?.session) {
+      const { data: existing } = await supabase.auth.getSession()
+      if (!existing?.session) {
+        alert('Your session has expired. Sign out and sign back in, then add the staff member again.')
+        setSaving(false)
+        return
+      }
+    }
+
+    // Reject an email that already has ANY account (staff or student) up front.
+    const { data: dupProfile } = await supabase
+      .from('profiles').select('id, name, role').ilike('email', emailNorm).maybeSingle()
+    if (dupProfile) {
+      alert(`"${emailNorm}" already has a ${dupProfile.role} account (${dupProfile.name}).\n\nOne email can only have one account.`)
+      setSaving(false)
+      return
+    }
+
     // Step 1 — save to staff table (display label for card)
-    const { error: staffError } = await supabase.from('staff').insert({
+    const { data: newStaff, error: staffError } = await supabase.from('staff').insert({
       name:   form.name.trim(),
       role:   roleLabel,
-      email:  form.email.trim().toLowerCase(),
+      email:  emailNorm,
       phone:  form.phone.trim() || null,
       joined: form.joined || null,
-    })
+    }).select().single()
 
     if (staffError) {
-      alert('Error saving staff: ' + staffError.message)
+      const dup = staffError.code === '23505' || /duplicate key|unique/i.test(staffError.message || '')
+      alert(dup ? `"${emailNorm}" is already registered.` : 'Error saving staff: ' + staffError.message)
       setSaving(false)
       return
     }
@@ -94,7 +118,7 @@ export default function Staff() {
         method:  'POST',
         headers: await functionHeaders(),
         body: JSON.stringify({
-          email:    form.email.trim().toLowerCase(),
+          email:    emailNorm,
           password: staffPassword,
           name:     form.name.trim(),
           role:     form.role,   // system role value e.g. 'counselor'
@@ -104,16 +128,18 @@ export default function Staff() {
       const result = await res.json()
 
       if (!result.success) {
-        alert('Staff saved but login creation failed: ' + result.message)
+        // Roll the staff row back — a staff card with no login is a dead entry.
+        await supabase.from('staff').delete().eq('id', newStaff.id)
+        const expired = /invalid or expired session|missing authorization|jwt/i.test(result.message || '') || res.status === 401
+        alert(expired
+          ? `Your session has expired — nothing was saved.\n\nSign out, sign back in, and add the staff member again.`
+          : `Login creation failed: ${result.message}\n\nThe staff member was not saved. Please try again.`)
         setSaving(false)
-        setShowAdd(false)
-        setForm({ name: '', role: '', email: '', phone: '', joined: '' })
-        setStaffPassword('')
-        load()
         return
       }
     } catch (err) {
-      alert('Network error creating login: ' + err.message)
+      await supabase.from('staff').delete().eq('id', newStaff.id)
+      alert('Network error creating login: ' + err.message + '\n\nNothing was saved.')
       setSaving(false)
       return
     }

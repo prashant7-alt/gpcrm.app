@@ -72,6 +72,21 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
     setSubmitting(true)
 
     try {
+      // If a portal login is being created, refresh our token first — a stale
+      // admin session makes create-staff-user fail with "Invalid or expired
+      // session" after the applicant row is already in.
+      if (form.email && form.password) {
+        const { data: refreshed } = await supabase.auth.refreshSession()
+        if (!refreshed?.session) {
+          const { data: existing } = await supabase.auth.getSession()
+          if (!existing?.session) {
+            alert('Your session has expired. Sign out and sign back in, then add the applicant again.')
+            setSubmitting(false)
+            return
+          }
+        }
+      }
+
       // ── check duplicate email before creating anything ──
       if (form.email) {
         const cleanEmail = form.email.toLowerCase().trim()
@@ -140,6 +155,18 @@ const BottomButtons = forwardRef(function BottomButtons({ onAdd }, ref) {
       let result = null
       if (form.email && form.password) {
         result = await createStudentAccount(form, applicant.id)
+
+        // No login at all (not just a profile-link hiccup) → roll the applicant
+        // row back so there's no login-less orphan.
+        if (result?.error && !result.userId) {
+          await supabase.from('applicants').delete().eq('id', applicant.id)
+          const expired = /invalid or expired session|missing authorization|jwt/i.test(result.error || '')
+          alert(expired
+            ? 'Your session has expired — nothing was saved.\n\nSign out, sign back in, and add the applicant again.'
+            : `Login creation failed: ${result.error}\n\nThe applicant was not saved. Please try again.`)
+          setSubmitting(false)
+          return
+        }
       }
 
       const savedEmail    = form.email
