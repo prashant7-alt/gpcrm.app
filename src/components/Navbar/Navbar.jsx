@@ -294,11 +294,13 @@ export default function Navbar({ menuOpen, setMenuOpen }) {
           <div style={{ width: 1, height: 32, background: 'rgba(255,255,255,0.18)', flexShrink: 0 }} />
         )}
 
-        {/* Page title — scales down so it never forces horizontal scroll */}
+        {/* Page title — smaller and centred; scales down so it never forces
+            horizontal scroll */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
-            fontSize: isMobile ? 17 : 30,
+            fontSize: isMobile ? 15 : 20,
             fontWeight: 700, color: theme.textOnDark, lineHeight: 1.2,
+            textAlign: 'center',
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
           }}>
             {title}
