@@ -25,10 +25,16 @@ const STAFF_ROLES   = ['admin', 'staff', 'finance_officer', 'document_handler', 
 const ALL_ROLES     = [...STAFF_ROLES, 'student']
 const CAN_ADD_STUDENT = ['admin', 'staff', 'receptionist']
 
+// Local dev origins are always allowed — a CORS grant to the developer's own
+// machine can't be exploited by a remote page. Production stays locked to
+// ALLOWED_ORIGINS.
+const isLocalhost = (o: string) => /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o)
+
 function corsHeaders(req: Request) {
   const origin = req.headers.get('Origin') ?? ''
   const allow =
-    ALLOWED_ORIGINS.length === 0 ? (origin || '*')
+    isLocalhost(origin) ? origin
+    : ALLOWED_ORIGINS.length === 0 ? (origin || '*')
     : ALLOWED_ORIGINS.includes(origin) ? origin
     : ALLOWED_ORIGINS[0]
   return {
