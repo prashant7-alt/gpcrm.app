@@ -261,13 +261,6 @@ export default function Login() {
           >
             Student login
           </Link>
-          <span style={{ margin: '0 8px', color: theme.border }}>|</span>
-          <Link
-            to="/"
-            style={{ color: theme.textLight, fontWeight: 500, textDecoration: 'none' }}
-          >
-            Back
-          </Link>
         </div>
 
       </div>

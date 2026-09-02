@@ -362,8 +362,9 @@ export default function StudentLogin() {
               {SUPPORT_EMAIL}
             </a>
             <div style={{ marginTop: 10 }}>
-              <Link to="/" style={{ color: theme.textLight, fontWeight: 500, textDecoration: 'none' }}>
-                &larr; Back
+              Staff or admin?{' '}
+              <Link to="/staff-login" style={{ color: theme.accent, fontWeight: 600, textDecoration: 'none' }}>
+                Continue as employee
               </Link>
             </div>
           </div>

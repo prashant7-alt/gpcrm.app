@@ -8,7 +8,6 @@ import { useIsMobile } from './hooks/useIsMobile'
 
 import Login          from './pages/auth/login'
 import StudentLogin   from './pages/auth/StudentLogin'
-import LoginChooser   from './pages/auth/LoginChooser'
 import ResetPassword  from './pages/auth/ResetPassword'
 import Dashboard      from './pages/Dashboard'
 import Applications   from './pages/Applications'
@@ -105,11 +104,11 @@ export default function App() {
       <Routes>
 
         {/* ── Public ── */}
-        {/* Root + unknown paths show the portal chooser (Student / Employee).
-            The employee sign-in is reachable at /staff-login; the old
-            /team-portal-x7k2f9 path is kept as an alias so existing bookmarks
-            and ProtectedRoute.jsx keep working. */}
-        <Route path="/"      element={<LoginChooser />} />
+        {/* Root + unknown paths land on the student sign-in. Staff get there
+            via the "Continue as employee" link, which goes to /staff-login;
+            the old /team-portal-x7k2f9 path is kept as an alias so existing
+            bookmarks and ProtectedRoute.jsx keep working. */}
+        <Route path="/"      element={<StudentLogin />} />
         <Route path="/student-login" element={<StudentLogin />} />
         <Route path="/staff-login" element={<Login />} />
         <Route path="/team-portal-x7k2f9" element={<Login />} />
