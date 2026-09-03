@@ -37,7 +37,7 @@ export async function functionHeaders(extra = {}) {
   let { data: { session } } = await supabase.auth.getSession()
 
   const expiresInMs = session?.expires_at ? session.expires_at * 1000 - Date.now() : -1
-  if (!session || expiresInMs < 120_000) {
+  if (!session || expiresInMs < 150_000) {
     const { data } = await supabase.auth.refreshSession()
     if (data?.session) session = data.session
   }

@@ -319,31 +319,33 @@ export default function Reports() {
             background: theme.cardBg,
             border: `1px solid ${theme.border}`,
             borderRadius: 12,
-            padding: isMobile ? '14px 16px' : '20px',
+            padding: isMobile ? '16px' : '20px 18px',
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            textAlign: 'center', gap: 8,
           }}>
             <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              marginBottom: 10,
+              width: isMobile ? 32 : 36, height: isMobile ? 32 : 36, borderRadius: 10,
+              background: theme.surfaceAlt, flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <p style={{
-                fontSize: 12,
-                color: theme.textLight,
-                margin: 0,
-                fontWeight: 600,
-                textTransform: 'uppercase',
-                letterSpacing: '0.03em',
-              }}>
-                {card.label}
-              </p>
-              <card.Icon size={16} color={card.border} strokeWidth={2.2} />
+              <card.Icon size={isMobile ? 15 : 17} color={card.border} strokeWidth={2.2} />
             </div>
+            <p style={{
+              fontSize: 12,
+              color: theme.textLight,
+              margin: 0,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.03em',
+            }}>
+              {card.label}
+            </p>
             {/* big number */}
             <div style={{
-              fontSize: isMobile ? 24 : 34,
+              fontSize: isMobile ? 20 : 22,
               fontWeight: 800,
               color: theme.textDark,
               lineHeight: 1,
-              marginBottom: 6,
             }}>
               {card.value}
             </div>

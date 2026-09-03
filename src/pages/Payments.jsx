@@ -35,6 +35,23 @@ const PAYMENT_TYPES = [
   'Other',
 ]
 
+// Typical Nepal fee ranges (from the agency fee guide). `avg` is the midpoint
+// of the range and is used to pre-fill the amount when staff pick a fee type —
+// staff can still type any figure over it.
+const FEE_REFERENCE = {
+  'Consultation Fee': { min: 0,     max: 5000,  avg: 2500,  label: 'Free – Rs 5,000' },
+  'Application Fee':  { min: 0,     max: 25000, avg: 12500, label: 'Rs 0 – 25,000 / university' },
+  'Visa Fee':        { min: 10000, max: 60000, avg: 35000, label: 'Rs 10,000 – 60,000+' },
+  'Service Charge':  { min: 15000, max: 75000, avg: 45000, label: 'Rs 15,000 – 75,000' },
+  'Document Fee':    { min: 5000,  max: 15000, avg: 10000, label: 'Rs 5,000 – 15,000' },
+}
+const AVG_AMOUNTS = new Set(Object.values(FEE_REFERENCE).map(r => String(r.avg)))
+const blankForm = () => ({
+  student_name: '', student_email: '',
+  amount: String(FEE_REFERENCE['Consultation Fee'].avg),
+  type: 'Consultation Fee', method: 'Cash', note: '',
+})
+
 // Colours + label come from the shared status system (src/lib/statusColors.js)
 // so "paid" is the same green here, on the student portal and on receipts.
 const badgeStyle = (status) => statusChip(status || 'pending')
@@ -188,11 +205,11 @@ export default function Payments() {
   const [showModal,    setShowModal]    = useState(false)
   const [viewPayment,  setViewPayment]  = useState(null)
   const [markingPaid,  setMarkingPaid]  = useState(null)
-  const [form, setForm] = useState({
-    student_name:'', amount:'', type:'Consultation Fee', method:'Cash', note:'',
-  })
+  const [form, setForm] = useState(blankForm())
+  const [students, setStudents] = useState([])   // for the "Request Payment" picker
 
   useEffect(() => { loadPayments() }, [])
+  useEffect(() => { loadStudents() }, [])
   useRefetchOnFocus(loadPayments)
   useRefreshHold(showModal)
 
@@ -205,6 +222,19 @@ export default function Payments() {
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [])
+
+  // Students who have a portal login — only they can receive & pay a request.
+  async function loadStudents() {
+    const { data } = await supabase
+      .from('profiles').select('email, name').eq('role', 'student').order('name')
+    const seen = new Set()
+    const list = (data || []).filter(s => {
+      const e = (s.email || '').trim().toLowerCase()
+      if (!e || seen.has(e)) return false
+      seen.add(e); return true
+    })
+    setStudents(list)
+  }
 
   async function loadPayments() {
     const { data, error } = await supabase
@@ -255,18 +285,38 @@ export default function Payments() {
   const pg = usePagination(filtered, { pageSize: 20, resetKey: `${search}|${typeFilter}|${statusFilter}` })
   const rows = pg.pageItems
 
+  // Pick a fee type and pre-fill the amount with that fee's average, unless
+  // staff have already typed a custom figure of their own.
+  function pickType(type) {
+    setForm(f => {
+      const ref = FEE_REFERENCE[type]
+      const custom = f.amount && !AVG_AMOUNTS.has(String(f.amount))
+      return { ...f, type, amount: custom ? f.amount : (ref ? String(ref.avg) : '') }
+    })
+  }
+
   async function handleAddPayment(e) {
     e.preventDefault()
+    const email = form.student_email.trim().toLowerCase()
+    if (!/^\S+@\S+\.\S+$/.test(email)) { alert('Enter a valid student email'); return }
+    if (!(Number(form.amount) > 0))    { alert('Enter a valid amount'); return }
+
     const { data, error } = await supabase.from('payments').insert({
-      student_name:form.student_name, amount:Number(form.amount),
-      type:form.type, method:form.method, note:form.note, status:'pending',
+      student_name:  form.student_name.trim(),
+      student_email: email,                       // the student sees & pays it from their portal
+      amount:        Number(form.amount),
+      type:          form.type,
+      method:        form.method,
+      note:          form.note,
+      status:        'pending',
+      date:          new Date().toISOString().split('T')[0],
     }).select().single()
-    if (error) { alert('Error saving payment: '+error.message); return }
+    if (error) { alert('Error saving payment request: '+error.message); return }
     if (data) setPayments(prev => [data, ...prev])   // show it in the list now
     // It goes in as 'pending', which the default view hides — jump to the
-    // Pending filter so the row the staff member just added stays visible.
+    // Pending filter so the row the staff member just requested stays visible.
     setStatusFilter('pending')
-    setForm({ student_name:'', amount:'', type:'Consultation Fee', method:'Cash', note:'' })
+    setForm(blankForm())
     setShowModal(false)
   }
 
@@ -330,7 +380,7 @@ export default function Payments() {
       }}>
         <div>
           <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight:700, color:theme.textDark, margin:0 }}>Payments</h1>
-          <p style={{ fontSize:13, color:theme.textLight, marginTop:4 }}>Manage and confirm student payments</p>
+          <p style={{ fontSize:13, color:theme.textLight, marginTop:4 }}>Request, manage and confirm student payments</p>
         </div>
         <div style={{ display:'flex', gap:10, flexDirection: isMobile ? 'column' : 'row' }}>
           <button
@@ -351,9 +401,9 @@ export default function Payments() {
             <Download size={15} />
             Export
           </button>
-          <button onClick={() => setShowModal(true)} style={{ padding:'8px 16px', background:theme.primary, border:'none', borderRadius:8, fontSize:13, fontWeight:600, color:theme.white, cursor:'pointer', width: isMobile ? '100%' : 'auto', display:'flex', alignItems:'center', justifyContent:'center', gap:7 }}>
+          <button onClick={() => { setForm(blankForm()); setShowModal(true) }} style={{ padding:'8px 16px', background:theme.primary, border:'none', borderRadius:8, fontSize:13, fontWeight:600, color:theme.white, cursor:'pointer', width: isMobile ? '100%' : 'auto', display:'flex', alignItems:'center', justifyContent:'center', gap:7 }}>
             <Plus size={15} />
-            Add Payment
+            Request Payment
           </button>
         </div>
       </div>
@@ -361,11 +411,19 @@ export default function Payments() {
       {/* stat cards */}
       <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: isMobile ? 10 : 14, marginBottom:24 }}>
         {stats.map(s => (
-          <div key={s.label} style={{ background:theme.cardBg, border:`1px solid ${theme.border}`, borderRadius:10, padding: isMobile ? '12px 14px' : '16px' }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
-              <div style={{ fontSize:11, color:theme.textLight }}>{s.label}</div>
-              <s.Icon size={15} color={s.top} strokeWidth={2.2} />
+          <div key={s.label} style={{
+            background:theme.cardBg, border:`1px solid ${theme.border}`, borderRadius:10,
+            padding: isMobile ? '14px 12px' : '18px 16px',
+            display:'flex', flexDirection:'column', alignItems:'center', textAlign:'center', gap:8,
+          }}>
+            <div style={{
+              width: isMobile ? 32 : 36, height: isMobile ? 32 : 36, borderRadius:10,
+              background: theme.surfaceAlt, flexShrink:0,
+              display:'flex', alignItems:'center', justifyContent:'center',
+            }}>
+              <s.Icon size={isMobile ? 15 : 17} color={s.top} strokeWidth={2.2} />
             </div>
+            <div style={{ fontSize:11, color:theme.textLight }}>{s.label}</div>
             <div style={{ fontSize: isMobile ? 16 : 20, fontWeight:800, color:s.color, lineHeight:1 }}>{s.value}</div>
           </div>
         ))}
@@ -563,28 +621,85 @@ export default function Payments() {
             boxShadow:'0 20px 60px rgba(0,0,0,0.2)',
           }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-              <h2 style={{ fontSize:16, fontWeight:700, color:theme.textDark, margin:0 }}>Add Payment</h2>
+              <h2 style={{ fontSize:16, fontWeight:700, color:theme.textDark, margin:0 }}>Request Payment</h2>
               <button onClick={()=>setShowModal(false)} style={{ background:'none', border:'none', cursor:'pointer', color:theme.textLight, display:'flex' }}>
                 <X size={18} />
               </button>
             </div>
+            <p style={{ fontSize:12, color:theme.textLight, margin:'0 0 16px' }}>
+              The student gets this in <strong>My Payments</strong> and pays it from their portal (Cash, eSewa or Khalti).
+            </p>
             <form onSubmit={handleAddPayment}>
-              <Field label="Student Name"><input required placeholder="e.g. Aarav Sharma" value={form.student_name} onChange={e=>setForm({...form,student_name:e.target.value})} style={inputStyle(theme)}/></Field>
-              <Field label="Amount (NPR)"><input required type="number" placeholder="e.g. 15000" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} style={inputStyle(theme)}/></Field>
+              <Field label="Student">
+                <select
+                  required
+                  value={form.student_email}
+                  onChange={e=>{
+                    const s = students.find(x => (x.email||'').trim().toLowerCase() === e.target.value)
+                    setForm({ ...form, student_email: e.target.value, student_name: s?.name || '' })
+                  }}
+                  style={inputStyle(theme)}
+                >
+                  <option value="">Select a student…</option>
+                  {students.map(s => {
+                    const email = (s.email || '').trim().toLowerCase()
+                    return <option key={email} value={email}>{s.name ? `${s.name} — ${email}` : email}</option>
+                  })}
+                </select>
+                {students.length === 0 && (
+                  <div style={{ fontSize:11, color:theme.textMuted, marginTop:5 }}>No student logins found yet.</div>
+                )}
+              </Field>
               <Field label="Payment Type">
-                <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})} style={inputStyle(theme)}>
+                <select value={form.type} onChange={e=>pickType(e.target.value)} style={inputStyle(theme)}>
                   {PAYMENT_TYPES.filter(t=>t!=='All Types').map(t=><option key={t}>{t}</option>)}
                 </select>
               </Field>
-              <Field label="Payment Method">
+              <Field label="Amount (NPR)">
+                <input required type="number" placeholder="e.g. 15000" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} style={inputStyle(theme)}/>
+                {FEE_REFERENCE[form.type] && (
+                  <div style={{ fontSize:11, color:theme.textMuted, marginTop:5 }}>
+                    Typical Nepal range: {FEE_REFERENCE[form.type].label} · avg{' '}
+                    <button type="button" onClick={()=>setForm({...form,amount:String(FEE_REFERENCE[form.type].avg)})}
+                      style={{ background:'none', border:'none', padding:0, color:theme.primary, fontWeight:700, cursor:'pointer', fontFamily:'inherit', fontSize:11 }}>
+                      Rs {FEE_REFERENCE[form.type].avg.toLocaleString()}
+                    </button>
+                  </div>
+                )}
+              </Field>
+              <Field label="Suggested Method">
                 <select value={form.method} onChange={e=>setForm({...form,method:e.target.value})} style={inputStyle(theme)}>
                   <option>Cash</option><option>eSewa</option><option>Khalti</option><option>Bank Transfer</option><option>Cheque</option>
                 </select>
               </Field>
               <Field label="Note (optional)"><input placeholder="Any extra info..." value={form.note} onChange={e=>setForm({...form,note:e.target.value})} style={inputStyle(theme)}/></Field>
+
+              {/* Fee guide — typical Nepal ranges + the average used to pre-fill */}
+              <div style={{ border:`1px solid ${theme.border}`, borderRadius:8, overflow:'hidden', marginTop:4 }}>
+                <div style={{ display:'grid', gridTemplateColumns:'1.3fr 1.4fr 0.8fr', padding:'7px 12px', background:theme.pageBg, borderBottom:`1px solid ${theme.border}` }}>
+                  {['Fee Type','Typical Nepal Range','Avg'].map(h=>(
+                    <span key={h} style={{ fontSize:10, fontWeight:700, color:theme.textMuted, textTransform:'uppercase', letterSpacing:'0.04em' }}>{h}</span>
+                  ))}
+                </div>
+                {Object.entries(FEE_REFERENCE).map(([type, r], i, arr) => {
+                  const active = form.type === type
+                  return (
+                    <div key={type} onClick={()=>pickType(type)} style={{
+                      display:'grid', gridTemplateColumns:'1.3fr 1.4fr 0.8fr', padding:'7px 12px', cursor:'pointer',
+                      borderBottom: i<arr.length-1 ? `1px solid ${theme.surfaceAlt}` : 'none',
+                      background: active ? theme.status.info.bg : 'transparent',
+                    }}>
+                      <span style={{ fontSize:11, fontWeight: active?700:600, color: active?theme.primary:theme.textDark }}>{type}</span>
+                      <span style={{ fontSize:11, color:theme.textMid }}>{r.label}</span>
+                      <span style={{ fontSize:11, fontWeight:700, color:theme.textDark }}>{r.avg.toLocaleString()}</span>
+                    </div>
+                  )
+                })}
+              </div>
+
               <div style={{ display:'flex', gap:10, marginTop:20, flexDirection: isMobile ? 'column-reverse' : 'row' }}>
                 <button type="button" onClick={()=>setShowModal(false)} style={{ flex:1, padding:'10px', background:theme.pageBg, border:`1px solid ${theme.border}`, borderRadius:8, fontSize:13, color:theme.textMid, cursor:'pointer' }}>Cancel</button>
-                <button type="submit" style={{ flex:1, padding:'10px', background:theme.primary, border:'none', borderRadius:8, fontSize:13, fontWeight:600, color:theme.white, cursor:'pointer' }}>Save Payment</button>
+                <button type="submit" style={{ flex:1, padding:'10px', background:theme.primary, border:'none', borderRadius:8, fontSize:13, fontWeight:600, color:theme.white, cursor:'pointer' }}>Send Request</button>
               </div>
             </form>
           </div>

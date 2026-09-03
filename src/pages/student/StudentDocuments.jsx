@@ -19,6 +19,7 @@ import { supabase } from '../../supabase'
 import { useRefetchOnFocus, useRefreshHold } from '../../hooks/useRefetchOnFocus'
 import DocViewerModal from '../../components/DocViewerModal'
 import {
+  ArrowLeft,
   FolderOpen,
   GraduationCap,
   ClipboardList,
@@ -234,7 +235,9 @@ export default function StudentDocuments() {
         background: `linear-gradient(135deg, ${theme.status.info.bg} 0%, ${theme.status.info.bg} 50%, ${theme.status.success.bg} 100%)`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontFamily: "'Segoe UI', Arial, sans-serif", padding: 20,
+        position: 'relative',
       }}>
+        <BackLink onClick={() => navigate('/student/dashboard')} style={{ position: 'absolute', top: 20, left: 20 }} />
         <div style={{ ...card, padding: '36px 32px', maxWidth: 460, textAlign: 'center' }}>
           <FolderOpen size={40} color={theme.inputBorder} style={{ marginBottom: 14 }} />
           <h2 style={{ fontSize: 18, fontWeight: 700, color: theme.textStrong, marginBottom: 8 }}>
@@ -256,6 +259,11 @@ export default function StudentDocuments() {
       fontFamily: "'Segoe UI', Arial, sans-serif",
       padding: '40px 16px',
     }}>
+
+      {/* ── Back to dashboard ───────────────────────────── */}
+      <div style={{ maxWidth: 920, margin: '0 auto 18px' }}>
+        <BackLink onClick={() => navigate('/student/dashboard')} />
+      </div>
 
       {/* ── Brand bar ───────────────────────────────────── */}
       <div style={{ textAlign: 'center', marginBottom: 36 }}>
@@ -573,6 +581,25 @@ export default function StudentDocuments() {
 }
 
 // ─── SUB-COMPONENTS ───────────────────────────────────────────────────────────
+
+function BackLink({ onClick, style }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        padding: '8px 14px', background: theme.white,
+        border: `1px solid ${theme.border}`, borderRadius: 9,
+        fontSize: 13, fontWeight: 600, color: theme.textMid,
+        cursor: 'pointer', fontFamily: 'inherit',
+        boxShadow: '0 1px 6px rgba(0,0,0,0.06)',
+        ...style,
+      }}
+    >
+      <ArrowLeft size={15} color={theme.textMid} /> Back to Dashboard
+    </button>
+  )
+}
 
 function Chip({ label, bg, color, border, dot }) {
   return (

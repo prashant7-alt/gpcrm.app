@@ -848,20 +848,19 @@ export default function StudentDashboard() {
         {statCards.map(card => (
           <div key={card.label} style={{
             background: theme.white, border: `1px solid ${theme.border}`,
-            borderRadius: 10, padding: 16,
-            display: 'flex', alignItems: 'center', gap: 14,
+            borderRadius: 10, padding: '18px 16px',
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            textAlign: 'center', gap: 8,
           }}>
             <div style={{
-              width: 44, height: 44, borderRadius: 10, background: card.bg,
+              width: 38, height: 38, borderRadius: 10, background: card.bg,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               flexShrink: 0, color: card.color,
             }}>
-              <card.Icon size={22} strokeWidth={2} />
+              <card.Icon size={18} strokeWidth={2} />
             </div>
-            <div>
-              <div style={{ fontSize: 11, color: theme.textLight, marginBottom: 4 }}>{card.label}</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: theme.textStrong, lineHeight: 1 }}>{card.value}</div>
-            </div>
+            <div style={{ fontSize: 11, color: theme.textLight }}>{card.label}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: theme.textStrong, lineHeight: 1 }}>{card.value}</div>
           </div>
         ))}
       </div>

@@ -76,6 +76,9 @@ export default function StudentPayments() {
   })
   const [createdId,   setCreatedId]   = useState(null)
   const [qrLoadError, setQrLoadError] = useState(false)
+  // true when the modal is settling an existing request that staff raised —
+  // the type & amount are fixed, the student only chooses how to pay.
+  const [payingExisting, setPayingExisting] = useState(false)
 
   // eSewa "pay instantly" is a native <form> POST (see step 2). We pre-fetch the
   // signed field set here so tapping the button is a plain, synchronous form
@@ -132,6 +135,25 @@ export default function StudentPayments() {
 
   const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }))
 
+  // Open the pay flow for a request a staff member raised. We seed `createdId`
+  // with the existing row so every pay path updates it instead of inserting a
+  // new one, and lock the type/amount that staff set.
+  function payExisting(p) {
+    setForm({
+      amount:    String(p.amount ?? ''),
+      type:      p.type || TYPE_OPTIONS[0],
+      method:    DIGITAL_METHODS.includes(p.method) ? p.method : 'Cash',
+      note:      p.note || '',
+      reference: '',
+    })
+    setCreatedId(p.id)
+    setPayingExisting(true)
+    setStep(1)
+    setQrLoadError(false)
+    setEsewaFields(null); setEsewaErr(''); setKhaltiErr(''); setKhaltiBusy(false)
+    setShowModal(true)
+  }
+
   // Creates the payments row on demand and remembers its id, so we never write
   // an unpaid row to the DB just because the student typed an amount. Digital
   // payments only get a row once the student actually starts paying (gateway
@@ -186,7 +208,7 @@ export default function StudentPayments() {
     // is only created when the student actually pays (see payWith*Now /
     // submitReference), so nothing shows up for staff before a real payment.
     if (DIGITAL_METHODS.includes(form.method)) {
-      setCreatedId(null)
+      if (!payingExisting) setCreatedId(null)   // keep the staff request's row when settling one
       setQrLoadError(false)
       setStep(2)
       return
@@ -198,7 +220,9 @@ export default function StudentPayments() {
     setSaving(false)
     if (!id) { alert('Could not submit the request. Please try again.'); return }
 
-    alert('Payment request submitted!')
+    alert(payingExisting
+      ? `Please pay Rs ${Number(form.amount).toLocaleString()} in person. Staff will confirm it.`
+      : 'Payment request submitted!')
     resetModal()
     load()
   }
@@ -347,6 +371,7 @@ export default function StudentPayments() {
     setShowModal(false)
     setStep(1)
     setCreatedId(null)
+    setPayingExisting(false)
     setQrLoadError(false)
     setEsewaFields(null)
     setEsewaErr('')
@@ -383,7 +408,7 @@ export default function StudentPayments() {
             </p>
           </div>
           <button
-            onClick={() => setShowModal(true)}
+            onClick={() => { resetModal(); setShowModal(true) }}
             style={{
               padding: '9px 18px', background: theme.primary,
               border: 'none', borderRadius: 8,
@@ -409,22 +434,21 @@ export default function StudentPayments() {
           ].map(c => (
             <div key={c.label} style={{
               background: theme.white, border: `1px solid ${theme.border}`,
-              borderRadius: 10, padding: '16px 18px',
-              display: 'flex', alignItems: 'center', gap: 14,
+              borderRadius: 10, padding: '18px 16px',
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              textAlign: 'center', gap: 8,
             }}>
               <div style={{
-                width: 42, height: 42, borderRadius: 10,
+                width: 38, height: 38, borderRadius: 10,
                 background: c.bg,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 flexShrink: 0,
               }}>
-                <c.Icon size={20} color={c.iconColor} strokeWidth={1.75} />
+                <c.Icon size={18} color={c.iconColor} strokeWidth={1.75} />
               </div>
-              <div>
-                <div style={{ fontSize: 11, color: theme.textLight, marginBottom: 3 }}>{c.label}</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: theme.textStrong, lineHeight: 1 }}>
-                  {c.value}
-                </div>
+              <div style={{ fontSize: 11, color: theme.textLight }}>{c.label}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: theme.textStrong, lineHeight: 1 }}>
+                {c.value}
               </div>
             </div>
           ))}
@@ -506,6 +530,22 @@ export default function StudentPayments() {
                   </div>
                 )}
 
+                {(p.status === 'pending' || p.status === 'overdue') && (
+                  <button
+                    onClick={() => payExisting(p)}
+                    style={{
+                      alignSelf: 'flex-start', marginTop: 2,
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '8px 16px', background: theme.primary,
+                      border: 'none', borderRadius: 8,
+                      fontSize: 12, fontWeight: 700, color: theme.white,
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >
+                    <Zap size={13} /> Pay now
+                  </button>
+                )}
+
                 {p.status === 'paid' && (
                   <button
                     onClick={() => openReceipt(p)}
@@ -558,6 +598,21 @@ export default function StudentPayments() {
                   {p.reference || p.pidx || '—'}
                 </div>
                 <div>
+                  {(p.status === 'pending' || p.status === 'overdue') && (
+                    <button
+                      onClick={() => payExisting(p)}
+                      title="Pay this request"
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                        padding: '5px 10px', background: theme.primary,
+                        border: 'none', borderRadius: 7,
+                        fontSize: 12, fontWeight: 700, color: theme.white,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                      }}
+                    >
+                      <Zap size={12} /> Pay
+                    </button>
+                  )}
                   {p.status === 'paid' && (
                     <button
                       onClick={() => openReceipt(p)}
@@ -607,9 +662,9 @@ export default function StudentPayments() {
               {/* ── STEP 1 ── */}
               {step === 1 && (
                 <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: payingExisting ? 14 : 22 }}>
                     <h3 style={{ fontSize: 16, fontWeight: 700, color: theme.textStrong, margin: 0 }}>
-                      Request a Payment
+                      {payingExisting ? 'Complete Your Payment' : 'Request a Payment'}
                     </h3>
                     <button onClick={resetModal} style={{
                       background: 'none', border: 'none',
@@ -620,11 +675,25 @@ export default function StudentPayments() {
                     </button>
                   </div>
 
+                  {payingExisting && (
+                    <div style={{
+                      background: theme.primaryLight, border: `1px solid ${theme.border}`,
+                      borderRadius: 8, padding: '8px 12px', marginBottom: 16,
+                      fontSize: 12, color: theme.primary,
+                    }}>
+                      Global Pathway requested this payment. Choose how you want to pay it below.
+                    </div>
+                  )}
+
                   <div style={{ marginBottom: 14 }}>
                     <label style={labelStyle}>Payment Type *</label>
-                    <select value={form.type} onChange={e => set('type', e.target.value)} style={inputStyle}>
-                      {TYPE_OPTIONS.map(o => <option key={o}>{o}</option>)}
-                    </select>
+                    {payingExisting ? (
+                      <div style={{ ...inputStyle, background: theme.pageBg, color: theme.textMid }}>{form.type}</div>
+                    ) : (
+                      <select value={form.type} onChange={e => set('type', e.target.value)} style={inputStyle}>
+                        {TYPE_OPTIONS.map(o => <option key={o}>{o}</option>)}
+                      </select>
+                    )}
                   </div>
 
                   <div style={{ marginBottom: 14 }}>
@@ -633,8 +702,9 @@ export default function StudentPayments() {
                       type="number" min="1"
                       placeholder="e.g. 5000"
                       value={form.amount}
-                      onChange={e => { set('amount', e.target.value); setEsewaFields(null); setEsewaErr(''); setKhaltiErr('') }}
-                      style={inputStyle}
+                      readOnly={payingExisting}
+                      onChange={e => { if (payingExisting) return; set('amount', e.target.value); setEsewaFields(null); setEsewaErr(''); setKhaltiErr('') }}
+                      style={payingExisting ? { ...inputStyle, background: theme.pageBg, color: theme.textMid } : inputStyle}
                     />
                   </div>
 
@@ -701,7 +771,7 @@ export default function StudentPayments() {
                         ? 'Submitting…'
                         : DIGITAL_METHODS.includes(form.method)
                           ? <>Next <ArrowRight size={14} /></>
-                          : 'Submit Request'}
+                          : payingExisting ? 'Confirm Payment' : 'Submit Request'}
                     </button>
                   </div>
                 </>

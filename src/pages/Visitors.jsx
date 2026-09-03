@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { X, UserPlus } from 'lucide-react'
 import { supabase } from '../supabase'
 import theme from '../theme'
+import { createApplicantWithLogin } from '../lib/createApplicant'
 import BottomButtons from '../components/BottomButtons'
 import Pagination from '../components/Pagination'
 import { exportRows, asDate } from '../lib/exportCsv'
@@ -27,6 +28,13 @@ export default function Visitors() {
   const [showModal, setShowModal] = useState(false)
   const [viewVisitor, setViewVisitor] = useState(null) // visitor shown in the "View" modal
 
+  // "Convert to Applicant" — the visitor being converted + its pre-filled form
+  const [convertVisitor, setConvertVisitor] = useState(null)
+  const [converting,     setConverting]     = useState(false)
+  const [convForm,       setConvForm]       = useState({
+    name: '', email: '', password: '', phone: '', course: '', country: '',
+  })
+
   // form fields for new visitor
   const [form, setForm] = useState({
     name:     '',
@@ -39,7 +47,7 @@ export default function Visitors() {
 
   useEffect(() => { load() }, [])
   useRefetchOnFocus(load)
-  useRefreshHold(showModal || !!viewVisitor)
+  useRefreshHold(showModal || !!viewVisitor || !!convertVisitor)
 
   async function load() {
     const { data } = await supabase
@@ -84,6 +92,52 @@ export default function Visitors() {
       interest: '', country: '', status: 'New',
     })
     setShowModal(false)
+  }
+
+  // ── Convert a visitor into an applicant (+ student login) ──────────────────
+  function openConvert(v) {
+    setConvForm({
+      name:     v.name || '',
+      email:    '',
+      password: '',
+      phone:    v.phone || '',
+      course:   '',
+      country:  v.country || v.interest || '',
+    })
+    setViewVisitor(null)
+    setConvertVisitor(v)
+  }
+
+  const setConv = (key, val) => setConvForm(prev => ({ ...prev, [key]: val }))
+
+  async function doConvert() {
+    if (converting) return
+    if (!convForm.name.trim())  return alert('Name is required')
+    if (!convForm.email.trim()) return alert('Email is required so the student can log in')
+    if (!convForm.password || convForm.password.length < 8) return alert('Password must be at least 8 characters')
+
+    setConverting(true)
+    const result = await createApplicantWithLogin({ ...convForm })
+    if (!result.ok) { setConverting(false); alert(result.message); return }
+    if (result.warning) alert(result.warning)
+
+    // Mark the source visitor as Converted so it's clear it was actioned.
+    const { error: upErr } = await supabase
+      .from('visitors').update({ status: 'Converted' }).eq('id', convertVisitor.id)
+    if (!upErr) {
+      setVisitors(prev => prev.map(x => (x.id === convertVisitor.id ? { ...x, status: 'Converted' } : x)))
+    }
+
+    const { name, email, password } = convForm
+    setConverting(false)
+    setConvertVisitor(null)
+    alert(
+      `${name} is now an applicant with a student login!\n\n` +
+      `Email:    ${email}\n` +
+      `Password: ${password}\n\n` +
+      `A welcome email has been sent, and this visitor is marked "Converted".` +
+      (upErr ? `\n\n(Note: could not update the visitor status — ${upErr.message})` : '')
+    )
   }
 
   const todayStr = new Date().toDateString()
@@ -202,27 +256,26 @@ export default function Visitors() {
           <div key={s.label} style={{
             background: theme.cardBg,
             border: `1px solid ${theme.border}`,
-            borderRadius: 10, padding: isMobile ? 12 : 16,
-            display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 14,
+            borderRadius: 10, padding: isMobile ? 14 : 18,
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            textAlign: 'center', gap: 8,
           }}>
             <div style={{
-              width: isMobile ? 34 : 44, height: isMobile ? 34 : 44, borderRadius: 10,
+              width: isMobile ? 34 : 38, height: isMobile ? 34 : 38, borderRadius: 10,
               background: s.iconBg,
               display: 'flex', alignItems: 'center',
-              justifyContent: 'center', fontSize: isMobile ? 16 : 22, flexShrink: 0,
+              justifyContent: 'center', fontSize: isMobile ? 16 : 19, flexShrink: 0,
             }}>
               {s.icon}
             </div>
-            <div>
-              <div style={{ fontSize: 11, color: theme.textLight, marginBottom: 4 }}>
-                {s.label}
-              </div>
-              <div style={{
-                fontSize: isMobile ? 20 : 28, fontWeight: 800,
-                color: s.color, lineHeight: 1,
-              }}>
-                {s.value}
-              </div>
+            <div style={{ fontSize: 11, color: theme.textLight }}>
+              {s.label}
+            </div>
+            <div style={{
+              fontSize: isMobile ? 18 : 22, fontWeight: 800,
+              color: s.color, lineHeight: 1,
+            }}>
+              {s.value}
             </div>
           </div>
         ))}
@@ -405,6 +458,19 @@ export default function Visitors() {
                   color: theme.primary, cursor: 'pointer',}}>
                   View
                 </button>
+                {v.status !== 'Converted' && (
+                  <button
+                    onClick={() => openConvert(v)}
+                    style={{
+                    flex: 1, padding: '7px 10px',
+                    background: theme.status.success.bg,
+                    border: 'none', borderRadius: 6,
+                    fontSize: 12, fontWeight: 600,
+                    color: theme.status.success.text, cursor: 'pointer',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,}}>
+                    <UserPlus size={13} /> Convert
+                  </button>
+                )}
               </div>
             </div>
           ) : (
@@ -466,6 +532,27 @@ export default function Visitors() {
                   color: theme.primary, cursor: 'pointer',}}>
                   View
                 </button>
+                {v.status === 'Converted' ? (
+                  <span style={{
+                    padding: '5px 10px', fontSize: 12, fontWeight: 600,
+                    color: theme.status.success.text, display: 'inline-flex', alignItems: 'center', gap: 4,
+                  }}>
+                    ✓ Applicant
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => openConvert(v)}
+                    style={{
+                      padding: '5px 10px',
+                      background: theme.status.success.bg,
+                      border: 'none', borderRadius: 6,
+                      fontSize: 12, fontWeight: 600,
+                      color: theme.status.success.text, cursor: 'pointer',
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                    }}>
+                    <UserPlus size={12} /> Convert
+                  </button>
+                )}
               </div>
             </div>
           )
@@ -564,20 +651,103 @@ export default function Visitors() {
               </div>
             ))}
 
-            {/* close button */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
+            {/* actions */}
+            <div style={{
+              display: 'flex', gap: 10, marginTop: 20,
+              flexDirection: isMobile ? 'column-reverse' : 'row',
+              justifyContent: 'flex-end',
+            }}>
               <button
                 onClick={() => setViewVisitor(null)}
                 style={{
                   padding: '9px 18px',
-                  background: theme.primary,
-                  border: 'none', borderRadius: 8,
-                  fontSize: 13, fontWeight: 600,
-                  color: theme.white, cursor: 'pointer',
+                  background: theme.pageBg,
+                  border: `1px solid ${theme.border}`, borderRadius: 8,
+                  fontSize: 13, color: theme.textMid, cursor: 'pointer',
                   width: isMobile ? '100%' : 'auto',
                 }}
               >
                 Close
+              </button>
+              {viewVisitor.status !== 'Converted' && (
+                <button
+                  onClick={() => openConvert(viewVisitor)}
+                  style={{
+                    padding: '9px 18px',
+                    background: theme.primary,
+                    border: 'none', borderRadius: 8,
+                    fontSize: 13, fontWeight: 600,
+                    color: theme.white, cursor: 'pointer',
+                    width: isMobile ? '100%' : 'auto',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  }}
+                >
+                  <UserPlus size={15} /> Convert to Applicant
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* convert to applicant modal */}
+      {convertVisitor && (
+        <div
+          onClick={() => !converting && setConvertVisitor(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+            display: 'flex', alignItems: isMobile ? 'flex-end' : 'center',
+            justifyContent: 'center', zIndex: 200,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: theme.white, border: `1px solid ${theme.border}`,
+              borderRadius: isMobile ? '14px 14px 0 0' : 14,
+              padding: isMobile ? 20 : 28,
+              width: isMobile ? '100%' : 440,
+              maxHeight: '90vh', overflowY: 'auto', boxSizing: 'border-box',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: theme.textDark, margin: 0 }}>Convert to Applicant</h3>
+              <button onClick={() => !converting && setConvertVisitor(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.textLight, display: 'inline-flex' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ padding: '10px 14px', background: theme.status.info.bg, border: `1px solid ${theme.status.info.border}`, borderRadius: 8, fontSize: 12, color: theme.primary, marginBottom: 18 }}>
+              Creates an applicant record and a student login from this visitor, then marks the visitor <strong>Converted</strong>.
+            </div>
+
+            {[
+              { label: 'Full Name *',              key: 'name',     placeholder: 'Ram Sharma',          type: 'text'  },
+              { label: 'Email * (for login)',      key: 'email',    placeholder: 'ram@email.com',        type: 'email' },
+              { label: 'Login Password * (min 8)', key: 'password', placeholder: 'Set student password', type: 'text'  },
+              { label: 'Phone',                    key: 'phone',    placeholder: '98XXXXXXXX',           type: 'text'  },
+              { label: 'Course',                   key: 'course',   placeholder: 'BSc Computer Science', type: 'text'  },
+              { label: 'Country',                  key: 'country',  placeholder: 'Australia, UK...',     type: 'text'  },
+            ].map(f => (
+              <div key={f.key} style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: theme.textLight, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>{f.label}</label>
+                <input
+                  type={f.type} placeholder={f.placeholder} value={convForm[f.key]}
+                  onChange={e => setConv(f.key, e.target.value)}
+                  style={{ width: '100%', padding: '9px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, color: theme.textStrong, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', background: theme.pageBg }}
+                />
+              </div>
+            ))}
+
+            <div style={{
+              display: 'flex', gap: 10, marginTop: 20,
+              flexDirection: isMobile ? 'column-reverse' : 'row',
+              justifyContent: 'flex-end',
+            }}>
+              <button onClick={() => setConvertVisitor(null)} disabled={converting} style={{ padding: '9px 18px', background: theme.pageBg, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, color: theme.textLight, cursor: converting ? 'not-allowed' : 'pointer', width: isMobile ? '100%' : 'auto' }}>Cancel</button>
+              <button onClick={doConvert} disabled={converting} style={{ padding: '9px 20px', background: converting ? theme.textMuted : theme.primary, border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, color: theme.white, cursor: converting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', width: isMobile ? '100%' : 'auto' }}>
+                {converting ? 'Converting...' : 'Convert + Create Login'}
               </button>
             </div>
           </div>

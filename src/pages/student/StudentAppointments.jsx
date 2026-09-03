@@ -142,23 +142,24 @@ export default function StudentAppointments() {
           {statCards.map(s => (
             <div key={s.label} style={{
               background: theme.white, border: `1px solid ${theme.border}`,
-              borderRadius: 10, padding: isMobile ? '12px 10px' : '16px 18px',
+              borderRadius: 10, padding: isMobile ? '14px 10px' : '18px 16px',
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              textAlign: 'center', gap: isMobile ? 6 : 8,
             }}>
               <div style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                fontSize: isMobile ? 10 : 11, color: theme.textLight, fontWeight: 500, marginBottom: 6,
+                width: isMobile ? 26 : 32, height: isMobile ? 26 : 32,
+                borderRadius: 8, background: s.bg,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
               }}>
-                <div style={{
-                  width: isMobile ? 22 : 26, height: isMobile ? 22 : 26,
-                  borderRadius: 7, background: s.bg,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0,
-                }}>
-                  <s.Icon size={isMobile ? 13 : 15} color={s.color} strokeWidth={2.4} />
-                </div>
+                <s.Icon size={isMobile ? 14 : 16} color={s.color} strokeWidth={2.4} />
+              </div>
+              <div style={{
+                fontSize: isMobile ? 10 : 11, color: theme.textLight, fontWeight: 500,
+              }}>
                 {s.label}
               </div>
-              <div style={{ fontSize: isMobile ? 20 : 28, fontWeight: 800, color: s.color }}>
+              <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 800, color: s.color, lineHeight: 1 }}>
                 {s.value}
               </div>
             </div>

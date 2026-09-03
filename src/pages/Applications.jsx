@@ -5,7 +5,7 @@ import theme from '../theme'
 import { statusChip } from '../lib/statusColors'
 import BottomButtons from '../components/BottomButtons'
 import Pagination from '../components/Pagination'
-import { sendWelcomeEmail } from '../emailService'
+import { createApplicantWithLogin } from '../lib/createApplicant'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { usePagination } from '../hooks/usePagination'
 import { useRefetchOnFocus, useRefreshHold } from '../hooks/useRefetchOnFocus'
@@ -75,128 +75,25 @@ export default function Applications() {
     if (!form.password || form.password.length < 8) return alert('Password must be at least 8 characters')
 
     setSaving(true)
-
-    const emailNorm = form.email.trim().toLowerCase()
-
-    // One email → one account. Check both tables before creating anything so a
-    // duplicate never leaves an orphan applicant row behind. (A DB unique index
-    // on lower(email) — one-account-per-email.sql — is the hard backstop.)
-    const [{ data: dupApplicant }, { data: dupProfile }] = await Promise.all([
-      supabase.from('applicants').select('id, name').ilike('email', emailNorm).maybeSingle(),
-      supabase.from('profiles').select('id, name, role').ilike('email', emailNorm).maybeSingle(),
-    ])
-    if (dupApplicant || dupProfile) {
-      const who = dupApplicant?.name || dupProfile?.name || 'someone'
-      const asRole = dupProfile?.role ? ` (${dupProfile.role} account)` : ''
-      alert(`"${emailNorm}" is already registered to ${who}${asRole}.\n\nOne email can only have one account. Use a different email, or delete the existing record first.`)
-      setSaving(false)
-      return
-    }
-
-    // Make sure our login token is fresh BEFORE touching the DB — the
-    // create-staff-user function rejects a stale token with "Invalid or expired
-    // session", and we don't want an applicant row we then can't attach a login
-    // to. refreshSession() mints a new token from the refresh token; if that
-    // fails too, the session is genuinely dead and a re-login is needed.
-    const { data: refreshed } = await supabase.auth.refreshSession()
-    if (!refreshed?.session) {
-      const { data: existing } = await supabase.auth.getSession()
-      if (!existing?.session) {
-        alert('Your session has expired. Sign out and sign back in, then add the applicant again.')
-        setSaving(false)
-        return
-      }
-    }
-
-    const { data: newApplicant, error: appError } = await supabase
-      .from('applicants')
-      .insert({
-        name:    form.name.trim(),
-        email:   emailNorm,
-        phone:   form.phone.trim()  || null,
-        course:  form.course.trim() || null,
-        country: form.country       || null,
-        status:  'New',
-      })
-      .select()
-      .single()
-
-    if (appError) {
-      const dup = appError.code === '23505' || /duplicate key|unique/i.test(appError.message || '')
-      alert(dup
-        ? `"${emailNorm}" is already registered. One email can only have one account.`
-        : 'Error saving applicant: ' + appError.message)
-      setSaving(false)
-      return
-    }
-
-    try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/create-staff-user`, {
-        method:  'POST',
-        headers: await functionHeaders(),
-        body: JSON.stringify({
-          email:    form.email.trim().toLowerCase(),
-          password: form.password,
-          name:     form.name.trim(),
-          role:     'student',
-        }),
-      })
-
-      const result = await res.json()
-
-      if (!result.success) {
-        // Roll back the applicant row — an applicant with no login is exactly
-        // the orphan state we're trying to avoid. Common cause: the email is
-        // already registered (one account per email).
-        await supabase.from('applicants').delete().eq('id', newApplicant.id)
-        const taken   = /already been registered|already registered|duplicate|exists/i.test(result.message || '')
-        const expired = /invalid or expired session|missing authorization|jwt/i.test(result.message || '') || res.status === 401
-        alert(taken
-          ? `"${form.email.trim().toLowerCase()}" already has an account. One email can only have one account — nothing was created.`
-          : expired
-          ? `Your session has expired — nothing was saved.\n\nSign out, sign back in, and add the applicant again.`
-          : `Login creation failed: ${result.message}\n\nThe applicant was not saved. Please try again.`)
-        setSaving(false)
-        return
-      }
-
-      const { error: linkError } = await supabase
-        .from('profiles')
-        .update({ applicant_id: newApplicant.id })
-        .eq('id', result.user_id)
-
-      if (linkError) {
-        alert(
-          `Login was created but linking it to the applicant record failed:\n` +
-          `${linkError.message}\n\n` +
-          `This student's account may show "No application found" until this is fixed. ` +
-          `Check that your RLS policy on "profiles" allows updating applicant_id ` +
-          `for the currently signed-in admin/staff user.`
-        )
-      }
-
-      await sendWelcomeEmail({
-        student_name:     form.name.trim(),
-        student_email:    form.email.trim().toLowerCase(),
-        student_password: form.password,
-      })
-
-    } catch (err) {
-      alert('Network error creating login: ' + err.message)
-      setSaving(false)
-      return
-    }
-
+    const { name, email, password } = form
+    const result = await createApplicantWithLogin({
+      name, email, password,
+      phone: form.phone, course: form.course, country: form.country,
+    })
     setSaving(false)
+
+    if (!result.ok)      { alert(result.message); return }
+    if (result.warning)  alert(result.warning)
+
     setShowAdd(false)
     setForm({ name: '', email: '', phone: '', course: '', country: '', password: '' })
     load()
 
     alert(
       `Applicant added and student login created!\n\n` +
-      `Name:     ${form.name}\n` +
-      `Email:    ${form.email}\n` +
-      `Password: ${form.password}\n\n` +
+      `Name:     ${name}\n` +
+      `Email:    ${email}\n` +
+      `Password: ${password}\n\n` +
       `A welcome email with these login details has been sent to the student.`
     )
   }

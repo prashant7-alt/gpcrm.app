@@ -320,23 +320,22 @@ export default function Tasks() {
         {statCards.map(s => (
           <div key={s.label} style={{
             background: theme.white, border: `1px solid ${theme.border}`,
-            borderRadius: 10, padding: isMobile ? '12px 14px' : '16px 18px',
-            display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 14,
+            borderRadius: 10, padding: isMobile ? '14px 12px' : '18px 16px',
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            textAlign: 'center', gap: 8,
           }}>
             <div style={{
-              width: isMobile ? 32 : 40, height: isMobile ? 32 : 40, borderRadius: 10,
+              width: isMobile ? 32 : 36, height: isMobile ? 32 : 36, borderRadius: 10,
               background: s.bg, flexShrink: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <s.Icon size={isMobile ? 16 : 19} color={s.color} strokeWidth={2.2} />
+              <s.Icon size={isMobile ? 16 : 18} color={s.color} strokeWidth={2.2} />
             </div>
-            <div>
-              <div style={{ fontSize: 11, color: theme.textLight, fontWeight: 500, marginBottom: 2 }}>
-                {s.label}
-              </div>
-              <div style={{ fontSize: isMobile ? 20 : 26, fontWeight: 800, color: s.color, lineHeight: 1 }}>
-                {s.value}
-              </div>
+            <div style={{ fontSize: 11, color: theme.textLight, fontWeight: 500 }}>
+              {s.label}
+            </div>
+            <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 800, color: s.color, lineHeight: 1 }}>
+              {s.value}
             </div>
           </div>
         ))}
