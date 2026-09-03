@@ -9,6 +9,7 @@ import Pagination from '../components/Pagination'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { usePagination } from '../hooks/usePagination'
 import { useRefetchOnFocus, useRefreshHold } from '../hooks/useRefetchOnFocus'
+import { useFormDraft, hasFormDraft } from '../hooks/useFormDraft'
 import {
   Download,
   Plus,
@@ -202,10 +203,11 @@ export default function Payments() {
   const [typeFilter,   setTypeFilter]   = useState('All Types')
   const [statusFilter, setStatusFilter] = useState('All')
   const [loading,      setLoading]      = useState(true)
-  const [showModal,    setShowModal]    = useState(false)
   const [viewPayment,  setViewPayment]  = useState(null)
   const [markingPaid,  setMarkingPaid]  = useState(null)
-  const [form, setForm] = useState(blankForm())
+  // The "Request Payment" draft survives navigating away & back (and reloads).
+  const [showModal, setShowModal] = useState(() => hasFormDraft('payments:request'))
+  const [form, setForm] = useFormDraft('payments:request', blankForm(), showModal)
   const [students, setStudents] = useState([])   // for the "Request Payment" picker
 
   useEffect(() => { loadPayments() }, [])

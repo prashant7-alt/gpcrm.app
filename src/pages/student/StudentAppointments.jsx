@@ -6,6 +6,7 @@ import StudentLayout from './StudentLayout'
 import { statusChip } from '../../lib/statusColors'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { useRefetchOnFocus, useRefreshHold } from '../../hooks/useRefetchOnFocus'
+import { useFormDraft, hasFormDraft } from '../../hooks/useFormDraft'
 import { Clock, CheckCircle2, CalendarCheck2, CalendarDays } from 'lucide-react'
 
 // Same shared status colours as the staff side.
@@ -19,11 +20,14 @@ export default function StudentAppointments() {
 
   const [appointments, setAppointments] = useState([])
   const [loading,      setLoading]      = useState(true)
-  const [showModal,    setShowModal]    = useState(false)
   const [saving,       setSaving]       = useState(false)
-  const [form,         setForm]         = useState({
-    type: '', date: '', time: '', note: '',
-  })
+  // The "Book Appointment" draft survives navigating away & back (and reloads).
+  const [showModal, setShowModal] = useState(() => hasFormDraft('student:appointment'))
+  const [form, setForm] = useFormDraft(
+    'student:appointment',
+    { type: '', date: '', time: '', note: '' },
+    showModal,
+  )
 
   useEffect(() => {
     if (!profile.id) { navigate('/student-login'); return }

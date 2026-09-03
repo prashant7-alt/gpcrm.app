@@ -9,6 +9,7 @@ import { exportRows, asDate } from '../lib/exportCsv'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { usePagination } from '../hooks/usePagination'
 import { useRefetchOnFocus, useRefreshHold } from '../hooks/useRefetchOnFocus'
+import { useFormDraft, hasFormDraft, readFormDraft } from '../hooks/useFormDraft'
 
 const statusStyle = (status) => {
   if (status === 'Converted') return { bg: theme.status.success.bg, color: theme.status.success.text }
@@ -25,25 +26,30 @@ export default function Visitors() {
   const [purpose,   setPurpose]   = useState('All Purposes')
   const [interest,  setInterest]  = useState('All Interest')
   const [loading,   setLoading]   = useState(true)
-  const [showModal, setShowModal] = useState(false)
   const [viewVisitor, setViewVisitor] = useState(null) // visitor shown in the "View" modal
 
-  // "Convert to Applicant" — the visitor being converted + its pre-filled form
-  const [convertVisitor, setConvertVisitor] = useState(null)
-  const [converting,     setConverting]     = useState(false)
-  const [convForm,       setConvForm]       = useState({
-    name: '', email: '', password: '', phone: '', course: '', country: '',
+  // "Convert to Applicant" — the visitor being converted + its pre-filled form.
+  // Both the "Log Visitor" and "Convert" drafts survive navigating away & back
+  // (and full reloads); `password` is never written to storage.
+  const [converting, setConverting] = useState(false)
+  const [convertVisitor, setConvertVisitor] = useState(() => {
+    const d = readFormDraft('visitors:convert')
+    return d && d._vid ? { id: d._vid } : null
   })
+  const [convForm, setConvForm] = useFormDraft(
+    'visitors:convert',
+    { name: '', email: '', password: '', phone: '', course: '', country: '', _vid: '' },
+    !!convertVisitor,
+    { omit: ['password'] },
+  )
 
   // form fields for new visitor
-  const [form, setForm] = useState({
-    name:     '',
-    phone:    '',
-    purpose:  '',
-    interest: '',
-    country:  '',
-    status:   'New',
-  })
+  const [showModal, setShowModal] = useState(() => hasFormDraft('visitors:log'))
+  const [form, setForm] = useFormDraft(
+    'visitors:log',
+    { name: '', phone: '', purpose: '', interest: '', country: '', status: 'New' },
+    showModal,
+  )
 
   useEffect(() => { load() }, [])
   useRefetchOnFocus(load)
@@ -103,6 +109,7 @@ export default function Visitors() {
       phone:    v.phone || '',
       course:   '',
       country:  v.country || v.interest || '',
+      _vid:     v.id,
     })
     setViewVisitor(null)
     setConvertVisitor(v)
@@ -117,7 +124,8 @@ export default function Visitors() {
     if (!convForm.password || convForm.password.length < 8) return alert('Password must be at least 8 characters')
 
     setConverting(true)
-    const result = await createApplicantWithLogin({ ...convForm })
+    const { _vid, ...convPayload } = convForm
+    const result = await createApplicantWithLogin({ ...convPayload })
     if (!result.ok) { setConverting(false); alert(result.message); return }
     if (result.warning) alert(result.warning)
 

@@ -8,6 +8,7 @@ import { advanceApplicantStage } from '../lib/pipelineStages' // adjust path if 
 import { useIsMobile } from '../hooks/useIsMobile'
 import { usePagination } from '../hooks/usePagination'
 import { useRefetchOnFocus, useRefreshHold } from '../hooks/useRefetchOnFocus'
+import { useFormDraft, readFormDraft } from '../hooks/useFormDraft'
 
 // Colours from the shared status system (src/lib/statusColors.js):
 // confirmed/completed = green, pending = amber, rejected = red.
@@ -21,9 +22,16 @@ export default function Appointments() {
   const [filter,       setFilter]       = useState('All')
   const [loading,      setLoading]      = useState(true)
 
-  // modal for reschedule
-  const [rescheduleId, setRescheduleId] = useState(null)
-  const [rescheduleForm, setRescheduleForm] = useState({ date: '', time: '' })
+  // modal for reschedule — the draft survives navigating away & back (and reloads)
+  const [rescheduleId, setRescheduleId] = useState(() => {
+    const d = readFormDraft('appointments:reschedule')
+    return d && d.id ? d.id : null
+  })
+  const [rescheduleForm, setRescheduleForm] = useFormDraft(
+    'appointments:reschedule',
+    { id: '', date: '', time: '' },
+    !!rescheduleId,
+  )
 
   useEffect(() => { load() }, [])
   useRefetchOnFocus(load)
@@ -107,7 +115,7 @@ export default function Appointments() {
   // ── OPEN reschedule modal ──
   function openReschedule(appt) {
     setRescheduleId(appt.id)
-    setRescheduleForm({ date: appt.date || '', time: appt.time || '' })
+    setRescheduleForm({ id: appt.id, date: appt.date || '', time: appt.time || '' })
   }
 
   // ── SAVE reschedule ──

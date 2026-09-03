@@ -30,14 +30,48 @@ const audienceLabel = (a) =>
 
 const EMPTY_FORM = { title: '', body: '', audience: 'all', pinned: false }
 
+// ── Draft persistence ───────────────────────────────────────────────────────
+// The compose / edit form lives in component state, so navigating to another
+// page unmounts the panel and would throw away an unfinished announcement.
+// Stash the draft in sessionStorage while it has content and restore it on
+// mount; clear it the moment the admin posts or cancels.
+const draftKey = (audience) => `gpcrm:announce-draft:${audience || 'all'}`
+
+function readDraft(audience) {
+  try {
+    const d = JSON.parse(sessionStorage.getItem(draftKey(audience)) || 'null')
+    const t = String(d?.form?.title || '').trim()
+    const b = String(d?.form?.body  || '').trim()
+    return (d && (t || b)) ? d : null
+  } catch { return null }
+}
+
 export default function AnnouncementsPanel({ audience, isAdmin = false, style }) {
+  const restored = isAdmin ? readDraft(audience) : null
+
   const [items,     setItems]     = useState([])
   const [loading,   setLoading]   = useState(true)
-  const [composing, setComposing] = useState(false)
-  const [editingId, setEditingId] = useState(null)
-  const [form,      setForm]      = useState(EMPTY_FORM)
+  const [composing, setComposing] = useState(!!restored && !restored.editingId)
+  const [editingId, setEditingId] = useState(restored?.editingId ?? null)
+  const [form,      setForm]      = useState(restored?.form ?? EMPTY_FORM)
   const [busy,      setBusy]      = useState(false)
   const [err,       setErr]       = useState('')
+
+  // Persist / clear the draft whenever the form or its content changes.
+  useEffect(() => {
+    if (!isAdmin) return
+    const hasContent = form.title.trim() || form.body.trim()
+    try {
+      if ((composing || editingId) && hasContent) {
+        sessionStorage.setItem(
+          draftKey(audience),
+          JSON.stringify({ editingId: editingId || null, form }),
+        )
+      } else {
+        sessionStorage.removeItem(draftKey(audience))
+      }
+    } catch { /* private mode / quota — draft just won't survive navigation */ }
+  }, [isAdmin, audience, composing, editingId, form])
 
   useEffect(() => {
     let alive = true

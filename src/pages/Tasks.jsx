@@ -3,6 +3,7 @@ import theme from '../theme'
 import { supabase } from '../supabase'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useRefetchOnFocus, useRefreshHold } from '../hooks/useRefetchOnFocus'
+import { useFormDraft, hasFormDraft } from '../hooks/useFormDraft'
 import {
   Plus,
   Search,
@@ -90,20 +91,21 @@ export default function Tasks() {
   const [search,   setSearch]   = useState('')
   const [assignee, setAssignee] = useState('All')
   const [priority, setPriority] = useState('All')
-  const [showAdd,  setShowAdd]  = useState(false)
-  const [editTask, setEditTask] = useState(null)
   const [saving,   setSaving]   = useState(false)
   const [deleting, setDeleting] = useState(null)
 
   const emptyForm = {
-    title: '', description: '', assigned_to: '', assignee_id: '',
+    id: '', title: '', description: '', assigned_to: '', assignee_id: '',
     due_date: '', priority: 'Medium', status: 'pending', related_to: '',
   }
-  const [form, setForm] = useState(emptyForm)
+  // The add / edit modal draft survives navigating away & back (and reloads).
+  const [showAdd, setShowAdd] = useState(() => hasFormDraft('tasks'))
+  const [form, setForm] = useFormDraft('tasks', emptyForm, showAdd)
+  const isEdit = !!form.id
 
   useEffect(() => { load() }, [])
   useRefetchOnFocus(load)
-  useRefreshHold(showAdd || !!editTask)
+  useRefreshHold(showAdd)
 
   async function load() {
     setLoading(true)
@@ -155,12 +157,12 @@ export default function Tasks() {
 
   function openAdd() {
     setForm(emptyForm)
-    setEditTask(null)
     setShowAdd(true)
   }
 
   function openEdit(task) {
     setForm({
+      id:          task.id,
       title:       task.title       || '',
       description: task.notes       || '',
       assigned_to: task.assigned_to || '',
@@ -170,7 +172,6 @@ export default function Tasks() {
       status:      task.status      || 'pending',
       related_to:  task.related_to  || '',
     })
-    setEditTask(task)
     setShowAdd(true)
   }
 
@@ -190,11 +191,11 @@ export default function Tasks() {
     }
 
     let error
-    if (editTask) {
-      const res = await supabase.from('tasks').update(payload).eq('id', editTask.id)
+    if (isEdit) {
+      const res = await supabase.from('tasks').update(payload).eq('id', form.id)
       error = res.error
       // Reflect the edit in the list immediately — no refetch / refresh needed.
-      if (!error) setTasks(prev => prev.map(t => (t.id === editTask.id ? { ...t, ...payload } : t)))
+      if (!error) setTasks(prev => prev.map(t => (t.id === form.id ? { ...t, ...payload } : t)))
     } else {
       const res = await supabase.from('tasks').insert(payload).select().single()
       error = res.error
@@ -209,7 +210,6 @@ export default function Tasks() {
     }
 
     setShowAdd(false)
-    setEditTask(null)
   }
 
   async function deleteTask(id) {
@@ -568,7 +568,7 @@ export default function Tasks() {
               alignItems: 'center', marginBottom: 22,
             }}>
               <h3 style={{ fontSize: 16, fontWeight: 700, color: theme.textStrong, margin: 0 }}>
-                {editTask ? 'Edit Task' : 'Add New Task'}
+                {isEdit ? 'Edit Task' : 'Add New Task'}
               </h3>
               <button onClick={() => setShowAdd(false)} style={{
                 background: 'none', border: 'none', cursor: 'pointer', color: theme.textMuted, display: 'flex',
@@ -654,7 +654,7 @@ export default function Tasks() {
               </div>
             </div>
 
-            {editTask && (
+            {isEdit && (
               <div style={{ marginBottom: 14 }}>
                 <label style={labelStyle}>Status</label>
                 <select value={form.status} onChange={e => set('status', e.target.value)} style={inputStyle}>
@@ -686,7 +686,7 @@ export default function Tasks() {
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
               }}>
                 <CheckCircle2 size={15} />
-                {saving ? 'Saving...' : editTask ? 'Save Changes' : 'Add Task'}
+                {saving ? 'Saving...' : isEdit ? 'Save Changes' : 'Add Task'}
               </button>
             </div>
           </div>

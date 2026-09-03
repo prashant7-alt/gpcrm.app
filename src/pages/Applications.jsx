@@ -9,6 +9,7 @@ import { createApplicantWithLogin } from '../lib/createApplicant'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { usePagination } from '../hooks/usePagination'
 import { useRefetchOnFocus, useRefreshHold } from '../hooks/useRefetchOnFocus'
+import { useFormDraft, hasFormDraft } from '../hooks/useFormDraft'
 
 const SUPABASE_URL = 'https://txwpmjtixdbebnbqorju.supabase.co'
 
@@ -48,11 +49,16 @@ export default function Applications() {
   const [loading,    setLoading]    = useState(true)
   const [deleting,   setDeleting]   = useState(null)
   const [updatingId, setUpdatingId] = useState(null)
-  const [showAdd,    setShowAdd]    = useState(false)
   const [saving,     setSaving]     = useState(false)
-  const [form,       setForm]       = useState({
-    name: '', email: '', phone: '', course: '', country: '', password: '',
-  })
+  // The "Add Applicant" draft survives navigating away & back (and reloads).
+  // `password` is deliberately never written to storage.
+  const [showAdd, setShowAdd] = useState(() => hasFormDraft('applications:add'))
+  const [form, setForm] = useFormDraft(
+    'applications:add',
+    { name: '', email: '', phone: '', course: '', country: '', password: '' },
+    showAdd,
+    { omit: ['password'] },
+  )
 
   useEffect(() => { load() }, [])
   useRefetchOnFocus(load)

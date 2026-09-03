@@ -5,6 +5,7 @@ import theme from '../theme'
 import { advanceApplicantStage } from '../lib/pipelineStages'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useRefetchOnFocus, useRefreshHold } from '../hooks/useRefetchOnFocus'
+import { readFormDraft, saveFormDraft, clearFormDraft } from '../hooks/useFormDraft'
 import DocViewerModal from '../components/DocViewerModal'
 
 // ─── ALL 12 DOCUMENT TYPES ────────────────────────────────────────────────────
@@ -205,11 +206,19 @@ export default function Documents() {
   const [addApplicantId,     setAddApplicantId]     = useState('')  // dropdown selection
   const [adding,             setAdding]             = useState(false)
 
-  const [editDoc,    setEditDoc]    = useState(null)
-  const [editStatus, setEditStatus] = useState('')
-  const [editNote,   setEditNote]   = useState('')
+  // The "Update Document" modal draft (status + note, not the file upload)
+  // survives navigating away & back and full reloads.
+  const editDraft = readFormDraft('documents:edit')
+  const [editDoc,    setEditDoc]    = useState(editDraft?.editDoc ?? null)
+  const [editStatus, setEditStatus] = useState(editDraft?.editStatus ?? '')
+  const [editNote,   setEditNote]   = useState(editDraft?.editNote ?? '')
   const [editFile,   setEditFile]   = useState(null)
   const [saving,     setSaving]     = useState(false)
+
+  useEffect(() => {
+    if (editDoc) saveFormDraft('documents:edit', { editDoc, editStatus, editNote })
+    else clearFormDraft('documents:edit')
+  }, [editDoc, editStatus, editNote])
 
   useEffect(() => { load() }, [])
   useRefetchOnFocus(load)
