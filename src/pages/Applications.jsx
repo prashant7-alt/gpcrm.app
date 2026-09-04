@@ -129,62 +129,50 @@ export default function Applications() {
     if (!confirmed) return
     setDeleting(applicant.id)
     try {
-      // Find the linked login by applicant_id, then by email.
-      let profileId = null
-      const byId = await supabase
-        .from('profiles').select('id').eq('applicant_id', applicant.id).maybeSingle()
-      profileId = byId.data?.id || null
+      // Call delete-user directly with applicant_id + email — the function
+      // already resolves the login by applicant_id first, then by email, so
+      // there's no need to look up the profile id here first (that was a
+      // redundant round-trip doing the exact same lookup the function does).
+      // It's a no-op success when there's genuinely no login to remove.
+      try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-user`, {
+          method:  'POST',
+          headers: await functionHeaders(),
+          body: JSON.stringify({
+            email:        applicant.email ? applicant.email.trim().toLowerCase() : null,
+            applicant_id: applicant.id,
+          }),
+        })
+        const result = await res.json()
 
-      if (!profileId && applicant.email) {
-        const byEmail = await supabase
-          .from('profiles').select('id').ilike('email', applicant.email.trim()).maybeSingle()
-        profileId = byEmail.data?.id || null
-      }
-
-      // Always call delete-user when we have an id OR an email. The function
-      // resolves the login by email too, so an account whose applicant_id was
-      // never linked still gets its sign-in revoked. Only skip it when there's
-      // genuinely nothing to look up.
-      if (profileId || applicant.email) {
-        let result = null
-        try {
-          const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-user`, {
-            method:  'POST',
-            headers: await functionHeaders(),
-            body: JSON.stringify({
-              user_id:      profileId || null,
-              email:        applicant.email ? applicant.email.trim().toLowerCase() : null,
-              applicant_id: applicant.id,
-            }),
-          })
-          result = await res.json()
-
-          if (!res.ok || !result?.success) {
-            alert(
-              `Could not remove this student's login: ${result?.message || 'Unknown error'}\n\n` +
-              `Nothing was deleted, so the student can still sign in. ` +
-              `Please try again, or check the delete-user function logs in Supabase.`
-            )
-            setDeleting(null)
-            return
-          }
-        } catch (fnErr) {
+        if (!res.ok || !result?.success) {
           alert(
-            `Network error while removing the student's login: ${fnErr.message}\n\n` +
-            `Nothing was deleted, so the student can still sign in. Please try again.`
+            `Could not remove this student's login: ${result?.message || 'Unknown error'}\n\n` +
+            `Nothing was deleted, so the student can still sign in. ` +
+            `Please try again, or check the delete-user function logs in Supabase.`
           )
           setDeleting(null)
           return
         }
+      } catch (fnErr) {
+        alert(
+          `Network error while removing the student's login: ${fnErr.message}\n\n` +
+          `Nothing was deleted, so the student can still sign in. Please try again.`
+        )
+        setDeleting(null)
+        return
       }
 
       // Clear child rows that FK to applicants.id before deleting the applicant.
       // student_documents has a real FK; payments / appointments key on loose
-      // email text (no FK) so they don't block the delete.
-      await supabase.from('student_documents').delete().eq('applicant_id', applicant.id)
-      if (applicant.email) {
-        await supabase.from('student_documents').delete().ilike('student_email', applicant.email.trim())
-      }
+      // email text (no FK) so they don't block the delete. These two deletes
+      // are independent, so run them together instead of one after the other.
+      await Promise.all([
+        supabase.from('student_documents').delete().eq('applicant_id', applicant.id),
+        applicant.email
+          ? supabase.from('student_documents').delete().ilike('student_email', applicant.email.trim())
+          : Promise.resolve(),
+      ])
 
       const { error: delErr } = await supabase.from('applicants').delete().eq('id', applicant.id)
       if (delErr) {

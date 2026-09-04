@@ -10,13 +10,15 @@ const SUPABASE_URL = 'https://txwpmjtixdbebnbqorju.supabase.co'
  * Shared by the Applications page ("Add Applicant") and the Visitors page
  * ("Convert to Applicant"). Mirrors the original inline flow in Applications.jsx:
  *   1. one email → one account (check applicants + profiles first)
- *   2. refresh the admin token before any write
- *   3. insert the applicant row
- *   4. call create-staff-user; roll the applicant row back if it fails
- *   5. link profiles.applicant_id, send the welcome email
+ *   2. insert the applicant row
+ *   3. call create-staff-user; roll the applicant row back if it fails
+ *   4. link profiles.applicant_id
+ *   5. kick off the Drive folder + welcome email in the background (both are
+ *      non-fatal / self-healing, so the caller doesn't wait on two external
+ *      APIs before seeing "done")
  *
  * Returns:
- *   { ok: true,  applicant, warning? }   // warning = non-fatal (link / email)
+ *   { ok: true,  applicant, warning? }   // warning = non-fatal (profile link only)
  *   { ok: false, message }               // caller shows this in an alert
  */
 export async function createApplicantWithLogin({ name, email, password, phone, course, country }) {
@@ -40,18 +42,11 @@ export async function createApplicantWithLogin({ name, email, password, phone, c
     return { ok: false, message: `"${emailNorm}" is already registered to ${who}${asRole}.\n\nOne email can only have one account. Use a different email, or delete the existing record first.` }
   }
 
-  // 2. Fresh token BEFORE touching the DB — create-staff-user rejects a stale
-  // token with "Invalid or expired session", and we don't want an applicant row
-  // we then can't attach a login to.
-  const { data: refreshed } = await supabase.auth.refreshSession()
-  if (!refreshed?.session) {
-    const { data: existing } = await supabase.auth.getSession()
-    if (!existing?.session) {
-      return { ok: false, message: 'Your session has expired. Sign out and sign back in, then try again.' }
-    }
-  }
-
-  // 3. Insert the applicant.
+  // 2. Insert the applicant. (No upfront refreshSession() call here —
+  // functionHeaders() already checks the token's expiry and refreshes only
+  // when it's actually within 2.5 min of expiring, right before the
+  // create-staff-user call below. An unconditional refresh on every submit
+  // was a wasted network round-trip in the common case.)
   const { data: newApplicant, error: appError } = await supabase
     .from('applicants')
     .insert({
@@ -107,23 +102,20 @@ export async function createApplicantWithLogin({ name, email, password, phone, c
         `policy on "profiles" allows updating applicant_id for the signed-in admin/staff user.`
     }
 
-    // 6. Create the student's Google Drive folder. Non-fatal: the folder is also
-    // created lazily on the first document upload, so a failure here (Drive
-    // unconfigured, token expired, network) just defers it — it must never roll
-    // back a student who already has a working login.
-    try {
-      await ensureStudentFolder(newApplicant.id)
-    } catch (driveErr) {
-      console.error('[createApplicant] Google Drive folder setup failed:', driveErr)
-      const note = `Google Drive folder setup is pending (${driveErr.message}). ` +
-        `It will be created automatically the first time a document is uploaded.`
-      warning = warning ? `${warning}\n\n${note}` : note
-    }
-
-    await sendWelcomeEmail({
+    // Kick off the Drive folder + welcome email without waiting on them — both
+    // are non-fatal by design (the folder is also created lazily on the first
+    // document upload; a failed email doesn't affect the login) so there's no
+    // reason to make the admin sit through two external API calls (Google
+    // Drive, EmailJS) that don't change whether this call succeeded.
+    ensureStudentFolder(newApplicant.id).catch(driveErr => {
+      console.error('[createApplicant] Google Drive folder setup failed (will retry on first upload):', driveErr)
+    })
+    sendWelcomeEmail({
       student_name:     nameNorm,
       student_email:    emailNorm,
       student_password: password,
+    }).then(res => {
+      if (!res.success) console.warn('[createApplicant] Welcome email failed:', res.error)
     })
 
     return { ok: true, applicant: newApplicant, warning }
