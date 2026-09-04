@@ -1,5 +1,6 @@
 import { supabase, functionHeaders } from '../supabase'
 import { sendWelcomeEmail } from '../emailService'
+import { ensureStudentFolder } from './googleDrive'
 
 const SUPABASE_URL = 'https://txwpmjtixdbebnbqorju.supabase.co'
 
@@ -104,6 +105,19 @@ export async function createApplicantWithLogin({ name, email, password, phone, c
         `Login was created but linking it to the applicant record failed:\n${linkError.message}\n\n` +
         `This student may show "No application found" until this is fixed. Check that the RLS ` +
         `policy on "profiles" allows updating applicant_id for the signed-in admin/staff user.`
+    }
+
+    // 6. Create the student's Google Drive folder. Non-fatal: the folder is also
+    // created lazily on the first document upload, so a failure here (Drive
+    // unconfigured, token expired, network) just defers it — it must never roll
+    // back a student who already has a working login.
+    try {
+      await ensureStudentFolder(newApplicant.id)
+    } catch (driveErr) {
+      console.error('[createApplicant] Google Drive folder setup failed:', driveErr)
+      const note = `Google Drive folder setup is pending (${driveErr.message}). ` +
+        `It will be created automatically the first time a document is uploaded.`
+      warning = warning ? `${warning}\n\n${note}` : note
     }
 
     await sendWelcomeEmail({

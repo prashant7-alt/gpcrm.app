@@ -20,6 +20,15 @@ verify_jwt = true
 import_map = "./functions/create-staff-user/deno.json"
 entrypoint = "./functions/create-staff-user/index.ts"
 
+# Google Drive document storage. verify_jwt = true -> the gateway requires a
+# valid Supabase JWT; the function then does its own role / ownership checks and
+# holds the Google OAuth credentials (never sent to the browser).
+[functions.google-drive]
+enabled = true
+verify_jwt = true
+import_map = "./functions/google-drive/deno.json"
+entrypoint = "./functions/google-drive/index.ts"
+
 [functions.esewa-sign]
 enabled = true
 verify_jwt = true

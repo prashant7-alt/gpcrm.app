@@ -78,7 +78,8 @@ serve(async (req) => {
       return json({ error: 'Signed amount does not match the invoice' }, 409)
     }
 
-    const SECRET_KEY = Deno.env.get('ESEWA_SECRET_KEY') ?? '8gBm/:&EnhH.1/q'
+    const SECRET_KEY = Deno.env.get('ESEWA_SECRET_KEY') ?? ''
+    if (!SECRET_KEY) return json({ error: 'ESEWA_SECRET_KEY is not configured' }, 500)
     const message = `total_amount=${total_amount},transaction_uuid=${transaction_uuid},product_code=${product_code}`
 
     const encoder = new TextEncoder()

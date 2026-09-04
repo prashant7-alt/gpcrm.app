@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import theme from '../theme'
 import { useIsMobile } from '../hooks/useIsMobile'
-import { User, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Percent } from 'lucide-react'
+import { User, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Percent, Cloud, RefreshCw } from 'lucide-react'
 import { COUNTRIES, COUNTRY_CODES, DEFAULT_VISA_RATES, fetchVisaRates } from '../lib/visaRates'
+import { driveHealth, migrateAllToDrive } from '../lib/googleDrive'
 
 const inputStyle = {
   width: '100%', padding: '10px 12px',
@@ -44,6 +45,42 @@ export default function Settings() {
   const [rates,       setRates]       = useState(DEFAULT_VISA_RATES)
   const [ratesMsg,    setRatesMsg]    = useState(null)   // { type, text }
   const [savingRates, setSavingRates] = useState(false)
+
+  // Document storage (Google Drive)
+  const [driveState,    setDriveState]    = useState(null)   // { ok, students_folder_id, ... } | { error }
+  const [driveChecking, setDriveChecking] = useState(false)
+  const [migrating,     setMigrating]     = useState(false)
+  const [migrateOut,    setMigrateOut]    = useState(null)   // { migrated, skipped, errors }
+
+  async function checkDrive() {
+    setDriveChecking(true)
+    setDriveState(null)
+    try {
+      const r = await driveHealth()
+      setDriveState(r)
+    } catch (e) {
+      setDriveState({ error: e.message })
+    } finally {
+      setDriveChecking(false)
+    }
+  }
+
+  async function runMigration() {
+    if (!window.confirm(
+      'Move every existing document file from Supabase Storage into Google Drive?\n\n' +
+      'This runs in batches and is safe to re-run — already-migrated files are skipped.',
+    )) return
+    setMigrating(true)
+    setMigrateOut({ migrated: 0, skipped: 0, errors: [] })
+    try {
+      const out = await migrateAllToDrive(setMigrateOut)
+      setMigrateOut(out)
+    } catch (e) {
+      setMigrateOut(o => ({ ...(o || { migrated: 0, skipped: 0, errors: [] }), fatal: e.message }))
+    } finally {
+      setMigrating(false)
+    }
+  }
 
   useEffect(() => { loadAccount() }, [])
   useEffect(() => { if (isAdmin) fetchVisaRates().then(setRates) }, [isAdmin])
@@ -154,6 +191,7 @@ export default function Settings() {
     { key: 'account',  label: 'My Account',      Icon: User },
     { key: 'password', label: 'Change Password', Icon: Lock },
     ...(isAdmin ? [{ key: 'visarates', label: 'Visa Rates', Icon: Percent }] : []),
+    ...(isAdmin ? [{ key: 'storage', label: 'Document Storage', Icon: Cloud }] : []),
   ]
 
   const sectionCard = {
@@ -480,6 +518,116 @@ export default function Settings() {
             <CheckCircle2 size={15} />
             {savingRates ? 'Saving...' : 'Save Rates'}
           </button>
+        </div>
+      )}
+
+      {activeTab === 'storage' && isAdmin && (
+        <div style={sectionCard}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <Cloud size={16} color={theme.primary} />
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: theme.textStrong, margin: 0 }}>
+              Document Storage
+            </h2>
+          </div>
+          <p style={{ fontSize: 13, color: theme.textLight, margin: '0 0 18px' }}>
+            Student document files are stored in the consultancy's Google Drive
+            (<code>Global Pathway CRM / Students</code>). Supabase keeps every record and
+            all metadata. Files are streamed through the server — never shared publicly.
+          </p>
+
+          {/* Connection check */}
+          <div style={{ marginBottom: 18 }}>
+            <button
+              onClick={checkDrive}
+              disabled={driveChecking}
+              style={{
+                padding: '8px 16px', background: theme.white,
+                border: `1px solid ${theme.inputBorder}`, borderRadius: 8,
+                fontSize: 13, fontWeight: 600, color: theme.textStrong,
+                cursor: driveChecking ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                display: 'inline-flex', alignItems: 'center', gap: 7,
+              }}
+            >
+              <RefreshCw size={14} className={driveChecking ? 'spin' : ''} />
+              {driveChecking ? 'Checking…' : 'Check Google Drive connection'}
+            </button>
+
+            {driveState && (
+              <div style={{
+                marginTop: 10, padding: '10px 14px', borderRadius: 8, fontSize: 13,
+                display: 'flex', alignItems: 'flex-start', gap: 7,
+                background: driveState.ok ? theme.status.success.bg : theme.status.danger.bg,
+                color:      driveState.ok ? theme.status.success.text : theme.status.danger.text,
+                border: `1px solid ${driveState.ok ? theme.status.success.border : theme.status.danger.border}`,
+              }}>
+                {driveState.ok
+                  ? <CheckCircle2 size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+                  : <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} />}
+                {driveState.ok ? (
+                  <span>
+                    Connected. Students folder <code>{driveState.students_folder_id}</code>.
+                    Max upload {driveState.max_upload_mb} MB.
+                    {!driveState.root_configured && (
+                      <> Set <code>GOOGLE_DRIVE_ROOT_FOLDER_ID</code> to that id to skip the lookup on cold starts.</>
+                    )}
+                  </span>
+                ) : (
+                  <span>{driveState.error}</span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* One-time migration */}
+          <div style={{
+            borderTop: `1px solid ${theme.border}`, paddingTop: 16,
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: theme.textStrong, marginBottom: 4 }}>
+              Migrate existing files to Google Drive
+            </div>
+            <p style={{ fontSize: 12.5, color: theme.textLight, margin: '0 0 12px' }}>
+              Moves every file still held in the Supabase Storage <code>student-docs</code> bucket
+              into the matching student's Drive folder, updates the records, and clears the bucket entry.
+              Runs in batches; safe to re-run.
+            </p>
+            <button
+              onClick={runMigration}
+              disabled={migrating}
+              style={{
+                padding: '9px 18px',
+                background: migrating ? theme.textMuted : theme.textStrong,
+                border: 'none', borderRadius: 8,
+                fontSize: 13, fontWeight: 700, color: theme.white,
+                cursor: migrating ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                display: 'inline-flex', alignItems: 'center', gap: 7,
+              }}
+            >
+              <RefreshCw size={14} className={migrating ? 'spin' : ''} />
+              {migrating ? 'Migrating…' : 'Run migration'}
+            </button>
+
+            {migrateOut && (
+              <div style={{
+                marginTop: 12, padding: '10px 14px', borderRadius: 8, fontSize: 13,
+                background: theme.pageBg, border: `1px solid ${theme.border}`, color: theme.textMid,
+              }}>
+                <div><strong>{migrateOut.migrated}</strong> migrated · <strong>{migrateOut.skipped}</strong> skipped</div>
+                {migrateOut.fatal && (
+                  <div style={{ color: theme.status.danger.text, marginTop: 4 }}>Stopped: {migrateOut.fatal}</div>
+                )}
+                {migrateOut.errors?.length > 0 && (
+                  <ul style={{ margin: '6px 0 0', paddingLeft: 18, color: theme.status.warning.text }}>
+                    {migrateOut.errors.slice(0, 20).map((e, i) => (
+                      <li key={i} style={{ fontSize: 12 }}>#{String(e.id)}: {e.reason}</li>
+                    ))}
+                    {migrateOut.errors.length > 20 && <li style={{ fontSize: 12 }}>…and {migrateOut.errors.length - 20} more</li>}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+
+          <style>{`@keyframes spin{to{transform:rotate(360deg)}} .spin{animation:spin 0.9s linear infinite}`}</style>
         </div>
       )}
 

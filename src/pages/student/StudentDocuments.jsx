@@ -18,6 +18,7 @@ import theme from '../../theme'
 import { supabase } from '../../supabase'
 import { useRefetchOnFocus, useRefreshHold } from '../../hooks/useRefetchOnFocus'
 import DocViewerModal from '../../components/DocViewerModal'
+import { uploadDocument, deleteDriveDocument, ACCEPT_ATTR } from '../../lib/googleDrive'
 import {
   ArrowLeft,
   FolderOpen,
@@ -132,42 +133,28 @@ export default function StudentDocuments() {
   }
 
   // ── Upload a file ──────────────────────────────────────
+  // The file goes to the student's Google Drive folder via the google-drive
+  // Edge Function; Supabase keeps the row + metadata. Nothing is public.
   async function handleUpload(doc, file) {
     if (!file) return
 
     setUploading(u => ({ ...u, [doc.id]: true }))
     setUploadSuccess(s => { const n = { ...s }; delete n[doc.id]; return n })
 
-    const ext  = file.name.split('.').pop()
-    const path = `${doc.student_name}/${doc.doc_type}-${Date.now()}.${ext}`
-      .replace(/\s+/g, '_')
-
-    const { error: upErr } = await supabase.storage
-      .from('student-docs')
-      .upload(path, file)
-
-    if (upErr) {
-      alert('Upload failed: ' + upErr.message)
-      setUploading(u => ({ ...u, [doc.id]: false }))
-      return
-    }
-
-    const { data: urlData } = supabase.storage
-      .from('student-docs')
-      .getPublicUrl(path)
-
-    await supabase
-      .from('student_documents')
-      .update({
-        file_url:   urlData.publicUrl,
-        status:     doc.status === 'Missing' ? 'Received' : doc.status,
-        updated_at: new Date().toISOString(),
+    try {
+      await uploadDocument({
+        documentId:  doc.id,
+        applicantId: doc.applicant_id,
+        docType:     doc.doc_type,
+        file,
       })
-      .eq('id', doc.id)
-
-    setUploading(u => ({ ...u, [doc.id]: false }))
-    setUploadSuccess(s => ({ ...s, [doc.id]: file.name }))
-    await reloadDocs()
+      setUploadSuccess(s => ({ ...s, [doc.id]: file.name }))
+      await reloadDocs()
+    } catch (e) {
+      alert('Upload failed: ' + (e?.message || e))
+    } finally {
+      setUploading(u => ({ ...u, [doc.id]: false }))
+    }
   }
 
   // ── Delete a file ──────────────────────────────────────
@@ -182,28 +169,16 @@ export default function StudentDocuments() {
 
     setDeleting(d => ({ ...d, [doc.id]: true }))
 
-    // Remove from Supabase Storage
-    if (doc.file_url) {
-      const path = doc.file_url.split('/student-docs/')[1]
-      if (path) {
-        await supabase.storage.from('student-docs').remove([decodeURIComponent(path)])
-      }
+    try {
+      // Trashes the Drive file and resets the row back to "Missing".
+      await deleteDriveDocument(doc.id)
+      setUploadSuccess(s => { const n = { ...s }; delete n[doc.id]; return n })
+      await reloadDocs()
+    } catch (e) {
+      alert('Could not delete the file: ' + (e?.message || e))
+    } finally {
+      setDeleting(d => ({ ...d, [doc.id]: false }))
     }
-
-    // Reset the DB row back to Missing with no file
-    await supabase
-      .from('student_documents')
-      .update({
-        file_url:   '',
-        status:     'Missing',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', doc.id)
-
-    // Clear any upload success badge for this doc
-    setUploadSuccess(s => { const n = { ...s }; delete n[doc.id]; return n })
-    setDeleting(d => ({ ...d, [doc.id]: false }))
-    await reloadDocs()
   }
 
   // ── Completion stats ───────────────────────────────────
@@ -400,7 +375,7 @@ export default function StudentDocuments() {
             const isUping   = uploading[doc.id]
             const isDeling  = deleting[doc.id]
             const success   = uploadSuccess[doc.id]
-            const hasFile   = !!doc.file_url
+            const hasFile   = !!doc.file_url || !!doc.google_drive_file_id
             const isVerified = doc.status === 'Verified'
 
             return (
@@ -568,6 +543,9 @@ export default function StudentDocuments() {
       {viewerDoc && (
         <DocViewerModal
           fileUrl={viewerDoc.file_url}
+          driveDocumentId={viewerDoc.storage_provider === 'google_drive' ? viewerDoc.id : undefined}
+          fileName={viewerDoc.original_filename}
+          mimeType={viewerDoc.mime_type}
           title={viewerDoc.doc_type}
           onClose={() => setViewerDoc(null)}
           onReplace={viewerDoc.status === 'Verified' ? undefined : replaceFromViewer}
@@ -651,7 +629,7 @@ function UploadControl({ doc, isUploading, successName, onUpload }) {
           : 'Choose file'}
         <input
           type="file"
-          accept=".pdf,.jpg,.jpeg,.png,.webp"
+          accept={ACCEPT_ATTR}
           onChange={e => setFile(e.target.files[0] || null)}
           style={{ display: 'none' }}
           disabled={isUploading}

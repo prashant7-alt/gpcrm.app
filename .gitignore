@@ -44,3 +44,6 @@ supabase sql code/
 src/supabaseAdmin.js
 *.pem
 *.key
+
+# Stray archives / build artifacts
+*.zip

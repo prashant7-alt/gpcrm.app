@@ -5,13 +5,17 @@
 // download, open-in-new-tab, and an optional "Replace file" section.
 //
 // Props:
-//   fileUrl      string   public URL of the file to show            (required)
-//   title        string   heading (usually the doc type)
-//   onClose      fn()      close the modal                           (required)
-//   onReplace    fn(file)  async — upload a replacement; omit to hide the
-//                          Replace section. Should resolve once done.
-//   replaceNote  string    shown instead of the Replace box (e.g. "Verified —
-//                          contact your counsellor to replace")
+//   fileUrl         string   public URL of the file (legacy Supabase Storage rows)
+//   driveDocumentId string   student_documents.id — when set, the bytes are
+//                            fetched through the google-drive Edge Function and
+//                            shown from a blob: URL (nothing is public).
+//   fileName        string   original filename (used for extension / download name)
+//   mimeType        string   stored mime type (used for extension detection)
+//   title           string   heading (usually the doc type)
+//   onClose         fn()     close the modal                           (required)
+//   onReplace       fn(file) async — upload a replacement; omit to hide the
+//                            Replace section. Should resolve once done.
+//   replaceNote     string   shown instead of the Replace box
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useRef, useCallback } from 'react'
@@ -20,8 +24,16 @@ import {
   X, ZoomIn, ZoomOut, Maximize2, Download, ExternalLink, Upload, Loader2, FileText,
 } from 'lucide-react'
 import theme from '../theme'
+import { fetchDocumentBlobUrl } from '../lib/googleDrive'
 
 const IMG_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif']
+const MIME_EXT = {
+  'application/pdf': 'pdf',
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
+  'image/gif': 'gif', 'image/bmp': 'bmp', 'image/svg+xml': 'svg', 'image/avif': 'avif',
+  'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+}
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n))
 
 function extOf(url = '') {
@@ -30,10 +42,13 @@ function extOf(url = '') {
   return dot === -1 ? '' : clean.slice(dot + 1).toLowerCase()
 }
 
-export default function DocViewerModal({ fileUrl, title, onClose, onReplace, replaceNote }) {
-  const ext    = extOf(fileUrl)
-  const isImg  = IMG_EXT.includes(ext)
-  const isPdf  = ext === 'pdf'
+export default function DocViewerModal({
+  fileUrl = '', driveDocumentId, fileName, mimeType,
+  title, onClose, onReplace, replaceNote,
+}) {
+  const ext = extOf(fileName || '') || MIME_EXT[mimeType] || extOf(fileUrl)
+  const isImg = IMG_EXT.includes(ext)
+  const isPdf = ext === 'pdf'
 
   const [zoom, setZoom]       = useState(1)
   const [pos, setPos]         = useState({ x: 0, y: 0 })
@@ -42,11 +57,34 @@ export default function DocViewerModal({ fileUrl, title, onClose, onReplace, rep
   const [replacing, setRep]   = useState(false)
   const [downloading, setDl]  = useState(false)
 
+  // For Drive-backed docs we resolve the bytes to a blob: URL through the
+  // Edge Function. Legacy rows keep using their public fileUrl directly.
+  const [resolvedUrl, setResolvedUrl] = useState(driveDocumentId ? null : fileUrl)
+  const [loadingFile, setLoadingFile] = useState(!!driveDocumentId)
+  const [loadErr, setLoadErr]         = useState(null)
+  const [reloadNonce, setReloadNonce] = useState(0)
+
   const dragStart = useRef({ x: 0, y: 0, px: 0, py: 0 })
   const fileInput = useRef(null)
 
-  // reset view whenever the file changes (e.g. after a replace)
-  useEffect(() => { setZoom(1); setPos({ x: 0, y: 0 }); setPick(null) }, [fileUrl])
+  useEffect(() => {
+    if (!driveDocumentId) { setResolvedUrl(fileUrl); return }
+    let cancelled = false
+    let made = null
+    setLoadingFile(true); setLoadErr(null)
+    fetchDocumentBlobUrl(driveDocumentId)
+      .then((url) => {
+        if (cancelled) { URL.revokeObjectURL(url); return }
+        made = url
+        setResolvedUrl(url)
+        setLoadingFile(false)
+      })
+      .catch((e) => { if (!cancelled) { setLoadErr(e.message || 'Could not load the file'); setLoadingFile(false) } })
+    return () => { cancelled = true; if (made) URL.revokeObjectURL(made) }
+  }, [driveDocumentId, fileUrl, reloadNonce])
+
+  // reset view whenever the shown file changes (e.g. after a replace)
+  useEffect(() => { setZoom(1); setPos({ x: 0, y: 0 }); setPick(null) }, [resolvedUrl])
 
   // Esc to close
   useEffect(() => {
@@ -81,17 +119,25 @@ export default function DocViewerModal({ fileUrl, title, onClose, onReplace, rep
 
   async function download() {
     setDl(true)
-    const name = (fileUrl.split('/').pop() || 'document').split('?')[0]
+    const guessName =
+      fileName ||
+      (resolvedUrl && !resolvedUrl.startsWith('blob:') ? decodeURIComponent(resolvedUrl.split('/').pop().split('?')[0]) : '') ||
+      `${title || 'document'}${ext ? '.' + ext : ''}`
     try {
-      const res  = await fetch(fileUrl)
-      const blob = await res.blob()
-      const url  = URL.createObjectURL(blob)
-      const a    = document.createElement('a')
-      a.href = url; a.download = decodeURIComponent(name)
+      let url
+      if (driveDocumentId) {
+        url = await fetchDocumentBlobUrl(driveDocumentId, { download: true })
+      } else {
+        const res = await fetch(fileUrl)
+        url = URL.createObjectURL(await res.blob())
+      }
+      const a = document.createElement('a')
+      a.href = url; a.download = guessName
       document.body.appendChild(a); a.click(); a.remove()
       setTimeout(() => URL.revokeObjectURL(url), 4000)
-    } catch {
-      window.open(fileUrl, '_blank', 'noopener')   // fallback
+    } catch (e) {
+      if (!driveDocumentId && fileUrl) window.open(fileUrl, '_blank', 'noopener')
+      else alert('Download failed: ' + (e?.message || e))
     } finally {
       setDl(false)
     }
@@ -103,6 +149,7 @@ export default function DocViewerModal({ fileUrl, title, onClose, onReplace, rep
     try {
       await onReplace(pickedFile)
       setPick(null)
+      setReloadNonce(n => n + 1)   // re-fetch the (now replaced) Drive file
     } catch (err) {
       alert('Replace failed: ' + (err?.message || err))
     } finally {
@@ -116,6 +163,8 @@ export default function DocViewerModal({ fileUrl, title, onClose, onReplace, rep
     background: theme.white, color: theme.textMid, fontSize: 12.5, fontWeight: 600,
     cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
   }
+
+  const canPreview = !!resolvedUrl && !loadingFile && !loadErr
 
   return createPortal(
     <div
@@ -159,10 +208,15 @@ export default function DocViewerModal({ fileUrl, title, onClose, onReplace, rep
           </div>
         )}
 
-        <button onClick={download} disabled={downloading} style={iconBtn}>
+        <button onClick={download} disabled={downloading || (!resolvedUrl && !driveDocumentId)} style={iconBtn}>
           {downloading ? <Loader2 size={14} className="spin" /> : <Download size={14} />} Download
         </button>
-        <a href={fileUrl} target="_blank" rel="noreferrer" style={{ ...iconBtn, textDecoration: 'none' }}>
+        <a
+          href={resolvedUrl || '#'}
+          target="_blank"
+          rel="noreferrer"
+          style={{ ...iconBtn, textDecoration: 'none', opacity: resolvedUrl ? 1 : 0.5, pointerEvents: resolvedUrl ? 'auto' : 'none' }}
+        >
           <ExternalLink size={14} /> New tab
         </a>
         <button onClick={onClose} style={{ ...iconBtn, borderColor: theme.status.danger.border, color: theme.status.danger.text }}>
@@ -179,9 +233,24 @@ export default function DocViewerModal({ fileUrl, title, onClose, onReplace, rep
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}
       >
-        {isImg && (
+        {loadingFile && (
+          <div style={{ textAlign: 'center', color: theme.white }}>
+            <Loader2 size={30} className="spin" style={{ marginBottom: 10 }} />
+            <div style={{ fontSize: 13 }}>Loading document…</div>
+          </div>
+        )}
+
+        {loadErr && (
+          <div style={{ textAlign: 'center', color: theme.white, padding: 32, maxWidth: 420 }}>
+            <FileText size={40} style={{ opacity: 0.7, marginBottom: 12 }} />
+            <div style={{ fontSize: 14, marginBottom: 6 }}>This document could not be loaded.</div>
+            <div style={{ fontSize: 12, opacity: 0.75 }}>{loadErr}</div>
+          </div>
+        )}
+
+        {canPreview && isImg && (
           <img
-            src={fileUrl}
+            src={resolvedUrl}
             alt={title || 'document'}
             draggable={false}
             onMouseDown={onMouseDown}
@@ -194,7 +263,7 @@ export default function DocViewerModal({ fileUrl, title, onClose, onReplace, rep
           />
         )}
 
-        {isPdf && (
+        {canPreview && isPdf && (
           <div style={{ width: '100%', height: '100%', overflow: 'auto', background: '#1c2230' }}>
             <div style={{
               width: `${100 / zoom}%`, height: `${100 / zoom}%`,
@@ -202,14 +271,14 @@ export default function DocViewerModal({ fileUrl, title, onClose, onReplace, rep
             }}>
               <iframe
                 title={title || 'PDF'}
-                src={`${fileUrl}#toolbar=1&navpanes=0`}
+                src={`${resolvedUrl}#toolbar=1&navpanes=0`}
                 style={{ width: '100%', height: '100%', border: 'none', background: theme.white }}
               />
             </div>
           </div>
         )}
 
-        {!isImg && !isPdf && (
+        {canPreview && !isImg && !isPdf && (
           <div style={{ textAlign: 'center', color: theme.white, padding: 32 }}>
             <FileText size={44} style={{ opacity: 0.7, marginBottom: 12 }} />
             <div style={{ fontSize: 14, marginBottom: 16 }}>
@@ -238,7 +307,7 @@ export default function DocViewerModal({ fileUrl, title, onClose, onReplace, rep
               <input
                 ref={fileInput}
                 type="file"
-                accept="image/*,application/pdf"
+                accept="image/*,application/pdf,.doc,.docx"
                 style={{ display: 'none' }}
                 onChange={e => setPick(e.target.files?.[0] || null)}
               />

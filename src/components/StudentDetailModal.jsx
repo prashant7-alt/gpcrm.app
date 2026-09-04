@@ -6,6 +6,7 @@ import { statusChip } from '../lib/statusColors'
 import { STAGE_ORDER } from '../lib/pipelineStages'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { PROFILE_SECTIONS, PROFILE_FIELD_KEYS } from '../lib/studentProfileSchema'
+import DocViewerModal from './DocViewerModal'
 import {
   X, Mail, Phone, Globe2, GraduationCap, CalendarDays, CreditCard,
   FolderOpen, CheckCircle2, Clock, IdCard, ExternalLink, Check,
@@ -91,6 +92,7 @@ export default function StudentDetailModal({ student, onClose }) {
   const [documents, setDocuments]       = useState([])
   const [appointments, setAppointments] = useState([])
   const [loginProfile, setLoginProfile] = useState(null)
+  const [viewerDoc, setViewerDoc]       = useState(null)
 
   const email = (student?.email || '').trim()
   const name  = (student?.name || '').trim()
@@ -194,6 +196,7 @@ export default function StudentDetailModal({ student, onClose }) {
   const anyExtended = loginProfile && PROFILE_FIELD_KEYS.some(k => loginProfile[k])
 
   return createPortal(
+    <>
     <div
       onClick={onClose}
       style={{
@@ -415,11 +418,12 @@ export default function StudentDetailModal({ student, onClose }) {
                   <div style={{ fontSize: 13, fontWeight: 600, color: theme.textDark }}>{d.doc_type || 'Document'}</div>
                   <div style={{ fontSize: 11.5, color: theme.textLight }}>Updated {fmtDate(d.updated_at)}</div>
                 </div>
-                {d.file_url ? (
-                  <a href={d.file_url} target="_blank" rel="noreferrer"
-                    style={{ fontSize: 12, color: theme.primary, display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}>
+                {(d.google_drive_file_id || d.file_url) ? (
+                  <button onClick={() => setViewerDoc(d)}
+                    style={{ fontSize: 12, color: theme.primary, display: 'inline-flex', alignItems: 'center', gap: 4,
+                      background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>
                     Open <ExternalLink size={12} />
-                  </a>
+                  </button>
                 ) : null}
                 <Pill value={d.status} />
               </div>
@@ -451,7 +455,19 @@ export default function StudentDetailModal({ student, onClose }) {
 
         </div>
       </div>
-    </div>,
+    </div>
+
+    {viewerDoc && (
+      <DocViewerModal
+        fileUrl={viewerDoc.file_url}
+        driveDocumentId={viewerDoc.storage_provider === 'google_drive' ? viewerDoc.id : undefined}
+        fileName={viewerDoc.original_filename}
+        mimeType={viewerDoc.mime_type}
+        title={`${student.name || ''} — ${viewerDoc.doc_type}`}
+        onClose={() => setViewerDoc(null)}
+      />
+    )}
+    </>,
     document.body,
   )
 }

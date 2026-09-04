@@ -16,17 +16,27 @@
 
 import emailjs from '@emailjs/browser'
 
-// ── EmailJS credentials ───────────────────────────────────────────────────────
-const SERVICE_ID  = 'service_c3scccw'
-const PUBLIC_KEY  = 'hZjBQERs-KUmUgybU'
+// ── EmailJS config ───────────────────────────────────────────────────────────
+// All values come from Vite env vars (see .env.example). The EmailJS "public
+// key" is designed to be shipped in the browser bundle, but the service and
+// template ids are kept out of source so they can differ per environment and
+// are never hardcoded here.
+const SERVICE_ID = import.meta.env.VITE_EMAILJS_SERVICE_ID
+const PUBLIC_KEY = import.meta.env.VITE_EMAILJS_PUBLIC_KEY
 
 const TEMPLATE = {
-  WELCOME:  'template_4t9wjct',
-  PAYMENT:  'template_8eq6dch',
+  WELCOME: import.meta.env.VITE_EMAILJS_TEMPLATE_WELCOME,
+  PAYMENT: import.meta.env.VITE_EMAILJS_TEMPLATE_PAYMENT,
+}
+
+if (!SERVICE_ID || !PUBLIC_KEY || !TEMPLATE.WELCOME || !TEMPLATE.PAYMENT) {
+  console.error(
+    'Missing VITE_EMAILJS_* env vars — welcome / payment emails will not be sent',
+  )
 }
 
 // initialise EmailJS once
-emailjs.init(PUBLIC_KEY)
+if (PUBLIC_KEY) emailjs.init(PUBLIC_KEY)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // sendWelcomeEmail

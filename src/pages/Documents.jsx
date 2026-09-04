@@ -7,6 +7,7 @@ import { useIsMobile } from '../hooks/useIsMobile'
 import { useRefetchOnFocus, useRefreshHold } from '../hooks/useRefetchOnFocus'
 import { readFormDraft, saveFormDraft, clearFormDraft } from '../hooks/useFormDraft'
 import DocViewerModal from '../components/DocViewerModal'
+import { uploadDocument, deleteDriveDocument, ACCEPT_ATTR } from '../lib/googleDrive'
 
 // ─── ALL 12 DOCUMENT TYPES ────────────────────────────────────────────────────
 // MUST match StudentDocumentUpload.jsx exactly — same order, same spelling
@@ -86,29 +87,19 @@ const labelStyle = {
 function DocActions({ doc, onEdit, onChanged, isMobile }) {
   const [busy, setBusy] = useState(false)
   const [viewing, setViewing] = useState(false)
-  const hasFile = !!doc.file_url
+  const hasFile = !!doc.file_url || !!doc.google_drive_file_id
 
   useRefreshHold(viewing)
 
   // Replace the file straight from the viewer (admin can replace at any status).
+  // Goes through the google-drive Edge Function — old version is kept in Drive.
   async function handleReplace(file) {
-    const ext  = file.name.split('.').pop()
-    const path = `${doc.applicant_id}/${doc.doc_type}-${Date.now()}.${ext}`.replace(/\s+/g, '_')
-
-    const { error: upErr } = await supabase.storage
-      .from('student-docs').upload(path, file, { upsert: true })
-    if (upErr) throw new Error(upErr.message)
-
-    const { data: urlData } = supabase.storage.from('student-docs').getPublicUrl(path)
-    const { error } = await supabase
-      .from('student_documents')
-      .update({
-        file_url:   urlData.publicUrl,
-        status:     doc.status === 'Missing' ? 'Received' : doc.status,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', doc.id)
-    if (error) throw new Error(error.message)
+    await uploadDocument({
+      documentId:  doc.id,
+      applicantId: doc.applicant_id,
+      docType:     doc.doc_type,
+      file,
+    })
     onChanged?.()
   }
 
@@ -116,16 +107,10 @@ function DocActions({ doc, onEdit, onChanged, isMobile }) {
     if (!window.confirm(`Delete the uploaded file for "${doc.doc_type}"?\nThe item will go back to "Missing".`)) return
     setBusy(true)
     try {
-      const path = doc.file_url.split('/student-docs/')[1]
-      if (path) {
-        await supabase.storage.from('student-docs').remove([decodeURIComponent(path)])
-      }
-      const { error } = await supabase
-        .from('student_documents')
-        .update({ file_url: '', status: 'Missing', updated_at: new Date().toISOString() })
-        .eq('id', doc.id)
-      if (error) { alert('Could not delete the file: ' + error.message); return }
+      await deleteDriveDocument(doc.id)
       onChanged?.()
+    } catch (e) {
+      alert('Could not delete the file: ' + e.message)
     } finally {
       setBusy(false)
     }
@@ -151,6 +136,9 @@ function DocActions({ doc, onEdit, onChanged, isMobile }) {
       {viewing && (
         <DocViewerModal
           fileUrl={doc.file_url}
+          driveDocumentId={doc.storage_provider === 'google_drive' ? doc.id : undefined}
+          fileName={doc.original_filename}
+          mimeType={doc.mime_type}
           title={`${doc.student_name || ''} — ${doc.doc_type}`}
           onClose={() => setViewing(false)}
           onReplace={handleReplace}
@@ -298,27 +286,22 @@ export default function Documents() {
     if (!editDoc) return
     setSaving(true)
 
-    let file_url = editDoc.file_url || ''
-
+    // The file itself goes to Google Drive via the Edge Function (which also
+    // sets the Drive/metadata columns and bumps Missing -> Received). The
+    // status + note text are a plain table update.
     if (editFile) {
-      const ext  = editFile.name.split('.').pop()
-      const path = `${editDoc.applicant_id}/${editDoc.doc_type}-${Date.now()}.${ext}`
-        .replace(/\s+/g, '_')
-
-      const { error: uploadError } = await supabase.storage
-        .from('student-docs')
-        .upload(path, editFile, { upsert: true })
-
-      if (uploadError) {
-        alert('File upload failed: ' + uploadError.message)
+      try {
+        await uploadDocument({
+          documentId:  editDoc.id,
+          applicantId: editDoc.applicant_id,
+          docType:     editDoc.doc_type,
+          file:        editFile,
+        })
+      } catch (e) {
+        alert('File upload failed: ' + e.message)
         setSaving(false)
         return
       }
-
-      const { data: urlData } = supabase.storage
-        .from('student-docs')
-        .getPublicUrl(path)
-      file_url = urlData.publicUrl
     }
 
     await supabase
@@ -326,7 +309,6 @@ export default function Documents() {
       .update({
         status:     editStatus,
         note:       editNote,
-        file_url,
         updated_at: new Date().toISOString(),
       })
       .eq('id', editDoc.id)
@@ -1084,10 +1066,10 @@ export default function Documents() {
 
             {/* File upload */}
             <div style={{ marginBottom: 22 }}>
-              <label style={labelStyle}>Upload File (PDF / Image)</label>
+              <label style={labelStyle}>Upload File (PDF, image, DOC/DOCX)</label>
               <input
                 type="file"
-                accept=".pdf,.jpg,.jpeg,.png,.webp"
+                accept={ACCEPT_ATTR}
                 onChange={e => setEditFile(e.target.files[0] || null)}
                 style={{ fontSize: 13, color: theme.textMid }}
               />
