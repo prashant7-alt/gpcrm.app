@@ -74,18 +74,10 @@ export default function Staff() {
 
     setSaving(true)
 
-    // Refresh our token first — a long-open admin tab expires it, and the
-    // create-staff-user function then rejects the call with "Invalid or expired
-    // session". If the refresh token is dead too, ask for a re-login.
-    const { data: refreshed } = await supabase.auth.refreshSession()
-    if (!refreshed?.session) {
-      const { data: existing } = await supabase.auth.getSession()
-      if (!existing?.session) {
-        alert('Your session has expired. Sign out and sign back in, then add the staff member again.')
-        setSaving(false)
-        return
-      }
-    }
+    // Note: no upfront refreshSession() call here — functionHeaders() already
+    // checks the token's expiry and refreshes only when needed (within 2.5 min
+    // of expiring), right before the Edge Function call below. An unconditional
+    // refresh on every click was a wasted network round-trip in the common case.
 
     // Reject an email that already has ANY account (staff or student) up front.
     const { data: dupProfile } = await supabase
@@ -167,29 +159,17 @@ export default function Staff() {
     )) return
     setDeleting(id)
     try {
-      // Find the linked login profile so we can revoke portal access too.
-      // A former staff whose `profiles` row is left behind keeps a working
-      // login AND still shows up wherever the app lists staff from
-      // `profiles` (e.g. the student chat).
-      let profileId = null
+      // Delete the auth login (+ its profile row) via the Edge Function first —
+      // it resolves the user by email itself (no need for us to look up the
+      // profile id up front) and is a no-op success if no login exists. If this
+      // fails, abort without removing anything else — otherwise the person
+      // keeps a usable login while disappearing from this page.
       if (email) {
-        const { data: prof } = await supabase
-          .from('profiles')
-          .select('id')
-          .ilike('email', email.trim())
-          .maybeSingle()
-        profileId = prof?.id || null
-      }
-
-      if (profileId) {
-        // Delete the auth user first. If this fails, abort without removing
-        // anything else — otherwise the person keeps a usable login while
-        // disappearing from this page.
         try {
           const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-user`, {
             method:  'POST',
             headers: await functionHeaders(),
-            body:    JSON.stringify({ user_id: profileId }),
+            body:    JSON.stringify({ email: email.trim() }),
           })
           const result = await res.json()
           if (!res.ok || !result?.success) {
@@ -208,7 +188,6 @@ export default function Staff() {
           setDeleting(null)
           return
         }
-        await supabase.from('profiles').delete().eq('id', profileId)
       }
 
       await supabase.from('staff').delete().eq('id', id)
