@@ -38,7 +38,7 @@ const GOOGLE_CLIENT_ID     = Deno.env.get('GOOGLE_CLIENT_ID') ?? ''
 const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET') ?? ''
 const GOOGLE_REFRESH_TOKEN = Deno.env.get('GOOGLE_REFRESH_TOKEN') ?? ''
 const CONFIGURED_ROOT_ID   = Deno.env.get('GOOGLE_DRIVE_ROOT_FOLDER_ID') ?? ''
-const MAX_UPLOAD_MB        = Math.max(1, Number(Deno.env.get('GOOGLE_DRIVE_MAX_UPLOAD_MB') ?? '10'))
+const MAX_UPLOAD_MB        = Math.max(1, Number(Deno.env.get('GOOGLE_DRIVE_MAX_UPLOAD_MB') ?? '30'))
 
 const ROOT_FOLDER_NAME     = 'Global Pathway CRM'
 const STUDENTS_FOLDER_NAME = 'Students'
