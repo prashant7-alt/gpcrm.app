@@ -34,22 +34,23 @@ export function useRefreshHold(active) {
 }
 
 /**
- * Keeps a page's data fresh WITHOUT a background timer. By default it only
- * re-runs `fn` when the user returns to the tab (window focus / tab becomes
- * visible) — never while they're mid-task — and even then it skips if:
+ * Keeps a page's data fresh so staff see colleagues' changes without reloading.
+ * It re-runs `fn` when the user returns to the tab (window focus / tab becomes
+ * visible) AND on a background timer (default 15s). Either way it skips the run
+ * — so a reload never wipes work in progress — whenever:
  *   - focus is in an input / textarea / select / contenteditable
  *   - text is selected
  *   - a modal/edit form registered a hold via useRefreshHold()
  *
- * Pass `intervalMs > 0` to also poll on a timer (opt-in, off by default).
+ * Pass `intervalMs = 0` to disable the background timer for a page (focus-only).
  *
  *   useEffect(() => { load() }, [])
  *   useRefetchOnFocus(load)
  *
  * @param {Function} fn          the loader to re-run (usually `load`)
- * @param {number}   intervalMs  optional background poll interval; 0 = disabled
+ * @param {number}   intervalMs  background poll interval; 0 = focus-only
  */
-export function useRefetchOnFocus(fn, intervalMs = 0) {
+export function useRefetchOnFocus(fn, intervalMs = 15000) {
   const fnRef = useRef(fn)
   fnRef.current = fn
 
