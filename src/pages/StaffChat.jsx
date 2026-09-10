@@ -70,6 +70,7 @@ export default function StaffChat() {
   const [search,     setSearch]     = useState('')
   const [unread,     setUnread]     = useState({})   // { [studentKey]: count }
   const [lastAt,     setLastAt]     = useState({})   // { [studentKey]: last message time }
+  const [convoMeta,  setConvoMeta]  = useState({})   // { [studentKey]: { at, fromMe, seen } }
   const [, setClock] = useState(0)                   // 60s re-render so "5 min ago" stays fresh
 
   useEffect(() => { selectedRef.current = selected }, [selected])
@@ -161,6 +162,7 @@ export default function StaffChat() {
   useEffect(() => {
     const id = setInterval(() => {
       loadUnread()
+      loadConvoMeta()
       if (selectedRef.current) loadMessages(selectedRef.current, { silent: true })
     }, 8000)
     return () => clearInterval(id)
@@ -174,6 +176,31 @@ export default function StaffChat() {
       .order('name')
     setStudents(data || [])
     loadUnread()
+    loadConvoMeta()
+  }
+
+  // The latest message in every conversation I'm part of, so each row in the
+  // list can show "Sent 5 min ago" / "Seen 5 min ago" / "Replied 2 min ago"
+  // in place of the student's email.
+  async function loadConvoMeta() {
+    if (!profile.email) return
+    const { data } = await supabase
+      .from('messages')
+      .select('sender_name, sender_email, receiver_name, receiver_email, created_at, is_read')
+      .or(`sender_email.eq.${profile.email},receiver_email.eq.${profile.email}`)
+      .order('created_at', { ascending: false })
+      .limit(400)
+
+    const meta = {}
+    for (const m of (data || [])) {
+      const iAmSender = same(m.sender_email, profile.email) || same(m.sender_name, profile.name)
+      const k = (iAmSender
+        ? (m.receiver_email || m.receiver_name || '')
+        : (m.sender_email   || m.sender_name   || '')).trim().toLowerCase()
+      if (!k || meta[k]) continue          // rows are newest-first → first hit wins
+      meta[k] = { at: m.created_at, fromMe: iAmSender, seen: !!m.is_read }
+    }
+    setConvoMeta(meta)
   }
 
   // Count unread messages addressed to this staff member, grouped by student,
@@ -275,6 +302,11 @@ export default function StaffChat() {
     if (error) { alert('Failed to send: ' + error.message); return }
     setNewMessage('')
     stickRef.current = true          // always follow your own outgoing message
+    // reflect "Sent just now" on the list row immediately
+    setConvoMeta(prev => ({
+      ...prev,
+      [keyOf(selected)]: { at: new Date().toISOString(), fromMe: true, seen: false },
+    }))
     loadMessages()
   }
 
@@ -334,7 +366,8 @@ export default function StaffChat() {
       const ka = keyOf(a), kb = keyOf(b)
       const ua = unread[ka] || 0, ub = unread[kb] || 0
       if (ua !== ub) return ub - ua                       // unread conversations first
-      const ta = lastAt[ka], tb = lastAt[kb]
+      const ta = lastAt[ka] || convoMeta[ka]?.at
+      const tb = lastAt[kb] || convoMeta[kb]?.at
       if (ta && tb) return new Date(tb) - new Date(ta)    // then most recent activity
       if (ta) return -1
       if (tb) return 1
@@ -423,6 +456,15 @@ export default function StaffChat() {
         {filteredStudents.map(s => {
           const isSelected  = selected?.id === s.id
           const unreadCount = unread[keyOf(s)] || 0
+          const meta        = convoMeta[keyOf(s)]
+          // Second line: unread badge text > last-message status > email.
+          const subLine = unreadCount > 0
+            ? `${unreadCount} new message${unreadCount > 1 ? 's' : ''}`
+            : meta
+              ? (meta.fromMe
+                  ? `${meta.seen ? 'Seen' : 'Sent'} ${relativeTime(meta.at)}`
+                  : `Replied ${relativeTime(meta.at)}`)
+              : s.email
           return (
             <div
               key={s.id}
@@ -461,9 +503,7 @@ export default function StaffChat() {
                   fontWeight: unreadCount > 0 ? 600 : 400,
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
-                  {unreadCount > 0
-                    ? `${unreadCount} new message${unreadCount > 1 ? 's' : ''}`
-                    : s.email}
+                  {subLine}
                 </div>
               </div>
               {unreadCount > 0 && (
