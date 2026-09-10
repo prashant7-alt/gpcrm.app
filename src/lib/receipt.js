@@ -3,8 +3,10 @@
 // the student portal, so every receipt looks the same.
 //
 //   openReceipt(payment)      -> opens a new window with the receipt + a
-//                                Print button (falls back to same-tab if the
-//                                browser blocks the popup)
+//                                Download PDF / Print button (falls back to
+//                                same-tab if the browser blocks the popup)
+//   downloadReceiptPDF(payment)-> opens the receipt and fires the print dialog
+//                                straight away (pick "Save as PDF")
 //   buildReceiptHTML(payment) -> the full HTML string (for embedding)
 //   receiptNumber(payment)    -> the "GP-XXXXXXXX" number
 //
@@ -69,9 +71,11 @@ export function buildReceiptHTML(payment) {
   .footer{padding:22px 36px 32px;border-top:1px solid ${palette.border};text-align:center}
   .footer .thanks{font-size:13px;font-weight:700;color:${palette.textStrong};margin-bottom:4px}
   .footer .small{font-size:11px;color:${palette.textFaint};line-height:1.6}
-  .actions{max-width:620px;margin:18px auto 0;display:flex;gap:10px;justify-content:flex-end}
+  .actions{max-width:620px;margin:18px auto 0;display:flex;gap:10px;justify-content:flex-end;align-items:center}
   .actions button{padding:9px 20px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;border:none}
+  .btn-pdf{background:${palette.navy};color:${palette.white}}
   .btn-print{background:${palette.blue};color:${palette.white}}.btn-close{background:${palette.surface};color:${palette.textMuted};border:1px solid ${palette.border}}
+  .actions .hint{margin-right:auto;font-size:11px;color:${palette.textFaint}}
   @media print{body{background:${palette.white};padding:0}.sheet{box-shadow:none;border-radius:0;max-width:100%}.actions{display:none}}
 </style></head><body>
 <div class="sheet"><div class="band"></div>
@@ -96,7 +100,12 @@ export function buildReceiptHTML(payment) {
   <div class="small">Receipt ${esc(rcpt)} &middot; Generated ${esc(issued)}<br/>System-generated document from Global Pathway Consultancy CRM. For queries, contact your counsellor.</div>
 </div>
 </div>
-<div class="actions"><button class="btn-close" onclick="window.close()">Close</button><button class="btn-print" onclick="window.print()">&#128424; Print Receipt</button></div>
+<div class="actions">
+  <span class="hint">Tip: choose &ldquo;Save as PDF&rdquo; as the destination to download.</span>
+  <button class="btn-close" onclick="window.close()">Close</button>
+  <button class="btn-print" onclick="window.print()">&#128424; Print</button>
+  <button class="btn-pdf" onclick="window.print()">&#11015; Download PDF</button>
+</div>
 </body></html>`
 }
 
@@ -105,7 +114,7 @@ export function buildReceiptHTML(payment) {
  * the popup, fall back to replacing the current tab (the user can print then
  * use Back).
  */
-export function openReceipt(payment) {
+export function openReceipt(payment, { print = false } = {}) {
   const html = buildReceiptHTML(payment)
   const win = window.open('', '_blank', 'width=720,height=900')
   if (win) {
@@ -113,9 +122,22 @@ export function openReceipt(payment) {
     win.document.write(html)
     win.document.close()
     win.focus()
+    if (print) {
+      // Give the new document a tick to lay out before the print dialog.
+      win.addEventListener('load', () => win.print())
+      setTimeout(() => { try { win.print() } catch { /* already printed */ } }, 400)
+    }
     return
   }
   // Popup blocked — use a data URL in the same tab as a fallback.
   const blob = new Blob([html], { type: 'text/html' })
   window.location.href = URL.createObjectURL(blob)
+}
+
+/**
+ * Open the receipt and immediately raise the print dialog. Choosing the
+ * "Save as PDF" destination downloads it as "Receipt GP-XXXXXXXX.pdf".
+ */
+export function downloadReceiptPDF(payment) {
+  openReceipt(payment, { print: true })
 }

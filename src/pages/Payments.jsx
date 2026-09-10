@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import theme from '../theme'
 import { statusChip } from '../lib/statusColors'
-import { openReceipt } from '../lib/receipt'
+import { openReceipt, downloadReceiptPDF } from '../lib/receipt'
 import { exportRows, asDate } from '../lib/exportCsv'
 import { sendPaymentConfirmedEmail } from '../emailService'
 import Pagination from '../components/Pagination'
@@ -180,13 +180,22 @@ function ViewModal({ payment, onClose, onMarkPaid, marking, isMobile }) {
           )}
 
           {payment.status === 'paid' && (
-            <button
-              onClick={() => { onClose(); setTimeout(() => openReceipt(payment), 100) }}
-              style={{ padding:'9px 20px', background:theme.primary, border:'none', borderRadius:8, fontSize:13, fontWeight:700, color:theme.white, cursor:'pointer', fontFamily:'inherit', width: isMobile ? '100%' : 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-            >
-              <Printer size={15} />
-              Print Receipt
-            </button>
+            <>
+              <button
+                onClick={() => { onClose(); setTimeout(() => downloadReceiptPDF(payment), 100) }}
+                style={{ padding:'9px 20px', background:theme.navy, border:'none', borderRadius:8, fontSize:13, fontWeight:700, color:theme.white, cursor:'pointer', fontFamily:'inherit', width: isMobile ? '100%' : 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+              >
+                <Download size={15} />
+                Download PDF
+              </button>
+              <button
+                onClick={() => { onClose(); setTimeout(() => openReceipt(payment), 100) }}
+                style={{ padding:'9px 20px', background:theme.primary, border:'none', borderRadius:8, fontSize:13, fontWeight:700, color:theme.white, cursor:'pointer', fontFamily:'inherit', width: isMobile ? '100%' : 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+              >
+                <Printer size={15} />
+                Print Receipt
+              </button>
+            </>
           )}
         </div>
 

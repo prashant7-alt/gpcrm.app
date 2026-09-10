@@ -5,7 +5,7 @@ import { supabase, functionHeaders } from '../../supabase'
 import StudentLayout from './StudentLayout'
 import theme from '../../theme'
 import { statusChip } from '../../lib/statusColors'
-import { openReceipt } from '../../lib/receipt'
+import { openReceipt, downloadReceiptPDF } from '../../lib/receipt'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { useRefetchOnFocus, useRefreshHold } from '../../hooks/useRefetchOnFocus'
 import {
@@ -22,6 +22,7 @@ import {
   ArrowRight,
   ArrowLeft,
   Printer,
+  Download,
 } from 'lucide-react'
 
 const QR_SRC = '/qr.png'            // generic / Khalti
@@ -547,19 +548,32 @@ export default function StudentPayments() {
                 )}
 
                 {p.status === 'paid' && (
-                  <button
-                    onClick={() => openReceipt(p)}
-                    style={{
-                      alignSelf: 'flex-start', marginTop: 2,
-                      display: 'inline-flex', alignItems: 'center', gap: 6,
-                      padding: '7px 14px', background: theme.primaryLight,
-                      border: `1px solid ${theme.border}`, borderRadius: 8,
-                      fontSize: 12, fontWeight: 600, color: theme.primary,
-                      cursor: 'pointer', fontFamily: 'inherit',
-                    }}
-                  >
-                    <Printer size={13} /> Print receipt
-                  </button>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
+                    <button
+                      onClick={() => downloadReceiptPDF(p)}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '7px 14px', background: theme.primary,
+                        border: 'none', borderRadius: 8,
+                        fontSize: 12, fontWeight: 700, color: theme.white,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                      }}
+                    >
+                      <Download size={13} /> Download PDF
+                    </button>
+                    <button
+                      onClick={() => openReceipt(p)}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '7px 14px', background: theme.primaryLight,
+                        border: `1px solid ${theme.border}`, borderRadius: 8,
+                        fontSize: 12, fontWeight: 600, color: theme.primary,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                      }}
+                    >
+                      <Printer size={13} /> Print receipt
+                    </button>
+                  </div>
                 )}
               </div>
             ) : (
@@ -614,19 +628,34 @@ export default function StudentPayments() {
                     </button>
                   )}
                   {p.status === 'paid' && (
-                    <button
-                      onClick={() => openReceipt(p)}
-                      title="Print receipt"
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 5,
-                        padding: '5px 10px', background: theme.primaryLight,
-                        border: `1px solid ${theme.border}`, borderRadius: 7,
-                        fontSize: 12, fontWeight: 600, color: theme.primary,
-                        cursor: 'pointer', fontFamily: 'inherit',
-                      }}
-                    >
-                      <Printer size={13} /> Print
-                    </button>
+                    <div style={{ display: 'inline-flex', gap: 6 }}>
+                      <button
+                        onClick={() => downloadReceiptPDF(p)}
+                        title="Download receipt as PDF"
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          padding: '5px 10px', background: theme.primary,
+                          border: 'none', borderRadius: 7,
+                          fontSize: 12, fontWeight: 700, color: theme.white,
+                          cursor: 'pointer', fontFamily: 'inherit',
+                        }}
+                      >
+                        <Download size={13} /> PDF
+                      </button>
+                      <button
+                        onClick={() => openReceipt(p)}
+                        title="Print receipt"
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          padding: '5px 10px', background: theme.primaryLight,
+                          border: `1px solid ${theme.border}`, borderRadius: 7,
+                          fontSize: 12, fontWeight: 600, color: theme.primary,
+                          cursor: 'pointer', fontFamily: 'inherit',
+                        }}
+                      >
+                        <Printer size={13} /> Print
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
