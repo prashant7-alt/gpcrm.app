@@ -24,6 +24,23 @@ const senderKeyOf = (m) => (m?.sender_email || m?.sender_name || '').trim().toLo
 const norm  = (v) => (v || '').trim().toLowerCase()
 const same  = (a, b) => norm(a) !== '' && norm(a) === norm(b)
 
+// Build the PostgREST `.or()` for "just this one conversation". Two students
+// can share a name, so when we have both emails we match on email ONLY —
+// mixing in name clauses pulls in every namesake's messages. Name matching
+// stays as a fallback for legacy rows that were saved without an email.
+const convoOr = (me, other) => {
+  if (norm(me?.email) && norm(other?.email)) {
+    return (
+      `and(sender_email.eq.${me.email},receiver_email.eq.${other.email}),` +
+      `and(sender_email.eq.${other.email},receiver_email.eq.${me.email})`
+    )
+  }
+  return (
+    `and(sender_name.eq.${me.name},receiver_name.eq.${other.name}),` +
+    `and(sender_name.eq.${other.name},receiver_name.eq.${me.name})`
+  )
+}
+
 export default function StaffChat() {
   const isMobile = useIsMobile()
 
@@ -86,20 +103,22 @@ export default function StaffChat() {
         event: 'INSERT', schema: 'public', table: 'messages',
       }, (payload) => {
         const msg = payload.new
-        // accept message if it belongs to this conversation (by name OR email)
-        const involvesSender   = same(msg.sender_name, profile.name)   || same(msg.sender_email, profile.email)
-        const involvesReceiver = same(msg.sender_name, selected.name)  || same(msg.sender_email, selected.email)
-        const involvesMe       = same(msg.receiver_name, profile.name) || same(msg.receiver_email, profile.email)
-        const involvesStudent  = same(msg.receiver_name, selected.name)|| same(msg.receiver_email, selected.email)
+        // Accept only if it belongs to THIS conversation. Prefer email — a
+        // shared student name would otherwise let a namesake's messages in.
+        const byEmail    = norm(selected.email) && norm(profile.email)
+        const fromMe      = byEmail ? same(msg.sender_email,   profile.email)  : same(msg.sender_name,   profile.name)
+        const toMe        = byEmail ? same(msg.receiver_email, profile.email)  : same(msg.receiver_name, profile.name)
+        const fromStudent = byEmail ? same(msg.sender_email,   selected.email) : same(msg.sender_name,   selected.name)
+        const toStudent   = byEmail ? same(msg.receiver_email, selected.email) : same(msg.receiver_name, selected.name)
 
-        if ((involvesSender && involvesStudent) || (involvesReceiver && involvesMe)) {
+        if ((fromMe && toStudent) || (fromStudent && toMe)) {
           setMessages(prev => {
             // avoid duplicate if loadMessages already added it
             if (prev.find(m => m.id === msg.id)) return prev
             return [...prev, msg]
           })
           // message from the student while their chat is open → clear the badge
-          if (involvesReceiver && involvesMe) markRead(selected)
+          if (fromStudent && toMe) markRead(selected)
           setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
         }
       })
@@ -169,30 +188,27 @@ export default function StaffChat() {
       delete next[k]
       return next
     })
-    await supabase
+    const q = supabase
       .from('messages')
       .update({ is_read: true })
       .eq('is_read', false)
-      .or(
-        `and(sender_email.eq.${student.email},receiver_email.eq.${profile.email}),` +
-        `and(sender_name.eq.${student.name},receiver_name.eq.${profile.name})`
-      )
+    if (norm(student.email) && norm(profile.email)) {
+      await q.eq('sender_email', student.email).eq('receiver_email', profile.email)
+    } else {
+      await q.eq('sender_name', student.name).eq('receiver_name', profile.name)
+    }
   }
 
   async function loadMessages(who = selected, { silent = false } = {}) {
     if (!who) return
     if (!silent) setLoading(true)
 
-    // query by BOTH name and email to catch all message combinations
+    // Match this conversation by email when we can (see convoOr) so students
+    // who share a name don't see each other's threads.
     const { data } = await supabase
       .from('messages')
       .select('*')
-      .or(
-        `and(sender_email.eq.${who.email},receiver_email.eq.${profile.email}),` +
-        `and(sender_email.eq.${profile.email},receiver_email.eq.${who.email}),` +
-        `and(sender_name.eq.${who.name},receiver_name.eq.${profile.name}),` +
-        `and(sender_name.eq.${profile.name},receiver_name.eq.${who.name})`
-      )
+      .or(convoOr(profile, who))
       .order('created_at', { ascending: true })
 
     // deduplicate by id (the broad OR can return same row multiple times)

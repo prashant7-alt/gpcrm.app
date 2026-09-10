@@ -20,6 +20,22 @@ const getInitials = (name) => {
 const norm = (v) => (v || '').trim().toLowerCase()
 const same = (a, b) => norm(a) !== '' && norm(a) === norm(b)
 
+// PostgREST `.or()` for a single conversation. Two people can share a name,
+// so when both sides have an email we match on email ONLY; name clauses stay
+// as a fallback for legacy rows saved without an email.
+const convoOr = (me, other) => {
+  if (norm(me?.email) && norm(other?.email)) {
+    return (
+      `and(sender_email.eq.${me.email},receiver_email.eq.${other.email}),` +
+      `and(sender_email.eq.${other.email},receiver_email.eq.${me.email})`
+    )
+  }
+  return (
+    `and(sender_name.eq.${me.name},receiver_name.eq.${other.name}),` +
+    `and(sender_name.eq.${other.name},receiver_name.eq.${me.name})`
+  )
+}
+
 // Shows the staff member's uploaded profile photo when we have one,
 // otherwise falls back to coloured initials.
 function StaffAvatar({ name, url, size = 36, fontSize = 13 }) {
@@ -90,11 +106,13 @@ export default function StudentChat() {
         event: 'INSERT', schema: 'public', table: 'messages',
       }, (payload) => {
         const msg = payload.new
-        // match by email (reliable) OR name (fallback) — case/space tolerant
-        const fromMe    = same(msg.sender_email, profile.email)  || same(msg.sender_name, profile.name)
-        const fromThem  = same(msg.sender_email, selected.email) || same(msg.sender_name, selected.name)
-        const toMe      = same(msg.receiver_email, profile.email)  || same(msg.receiver_name, profile.name)
-        const toThem    = same(msg.receiver_email, selected.email) || same(msg.receiver_name, selected.name)
+        // Prefer email — a shared staff name would otherwise leak a namesake's
+        // messages into this thread. Fall back to name only if an email is missing.
+        const byEmail  = norm(selected.email) && norm(profile.email)
+        const fromMe   = byEmail ? same(msg.sender_email,   profile.email)  : same(msg.sender_name,   profile.name)
+        const toMe     = byEmail ? same(msg.receiver_email, profile.email)  : same(msg.receiver_name, profile.name)
+        const fromThem = byEmail ? same(msg.sender_email,   selected.email) : same(msg.sender_name,   selected.name)
+        const toThem   = byEmail ? same(msg.receiver_email, selected.email) : same(msg.receiver_name, selected.name)
 
         if ((fromMe && toThem) || (fromThem && toMe)) {
           setMessages(prev => {
@@ -182,17 +200,12 @@ export default function StudentChat() {
     if (!who) return
     if (!silent) setLoading(true)
 
-    // Query by BOTH email AND name to catch all message combinations.
-    // Old messages may only have name; new messages should have both.
+    // Match this conversation by email when we can (see convoOr) so staff who
+    // share a name don't collapse into one thread.
     const { data } = await supabase
       .from('messages')
       .select('*')
-      .or(
-        `and(sender_email.eq.${profile.email},receiver_email.eq.${who.email}),` +
-        `and(sender_email.eq.${who.email},receiver_email.eq.${profile.email}),` +
-        `and(sender_name.eq.${profile.name},receiver_name.eq.${who.name}),` +
-        `and(sender_name.eq.${who.name},receiver_name.eq.${profile.name})`
-      )
+      .or(convoOr(profile, who))
       .order('created_at', { ascending: true })
 
     // Deduplicate — the broad OR can return the same row multiple times
