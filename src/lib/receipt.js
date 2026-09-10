@@ -101,18 +101,50 @@ export function buildReceiptHTML(payment) {
 </div>
 </div>
 <div class="actions">
-  <span class="hint">Tip: choose &ldquo;Save as PDF&rdquo; as the destination to download.</span>
-  <button class="btn-close" onclick="window.close()">Close</button>
-  <button class="btn-print" onclick="window.print()">&#128424; Print</button>
-  <button class="btn-pdf" onclick="window.print()">&#11015; Download PDF</button>
+  <span class="hint">Tip: choose &ldquo;Save as PDF&rdquo; as the print destination to download.</span>
+  <button class="btn-close" id="rcpt-close" type="button">Close</button>
+  <button class="btn-print" id="rcpt-print" type="button">&#128424; Print</button>
+  <button class="btn-pdf" id="rcpt-pdf" type="button">&#11015; Download PDF</button>
 </div>
 </body></html>`
 }
 
+// The app ships a strict CSP (`script-src 'self'`), which the receipt window
+// inherits — so inline `onclick=` handlers are blocked. Instead we wire the
+// buttons from here with addEventListener (allowed: same-origin, no inline
+// script). `win` is same-origin with the opener so `win.document` is reachable.
+function wireReceiptControls(win, { print = false } = {}) {
+  const bind = () => {
+    let doc
+    try { doc = win.document } catch { return false }
+    if (!doc || !doc.getElementById('rcpt-close')) return false
+    const on = (id, fn) => {
+      const el = doc.getElementById(id)
+      if (el) el.addEventListener('click', fn)
+    }
+    on('rcpt-close', () => { try { win.close() } catch { /* noop */ } })
+    on('rcpt-print', () => { try { win.focus(); win.print() } catch { /* noop */ } })
+    on('rcpt-pdf',   () => { try { win.focus(); win.print() } catch { /* noop */ } })
+    doc.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { try { win.close() } catch { /* noop */ } }
+    })
+    if (print) { try { win.focus(); win.print() } catch { /* noop */ } }
+    return true
+  }
+
+  // A document.write'd window is ready synchronously; a navigated blob URL is
+  // not, so retry briefly until the receipt DOM shows up.
+  if (bind()) return
+  const started = Date.now()
+  const timer = setInterval(() => {
+    if (bind() || Date.now() - started > 5000 || win.closed) clearInterval(timer)
+  }, 80)
+}
+
 /**
- * Open the receipt in a new window with a Print button. If the browser blocks
- * the popup, fall back to replacing the current tab (the user can print then
- * use Back).
+ * Open the receipt in a new window with Close / Print / Download PDF buttons.
+ * If the browser blocks the popup, fall back to the current tab (the buttons
+ * won't wire there, but the browser's own print — Ctrl/Cmd+P — still works).
  */
 export function openReceipt(payment, { print = false } = {}) {
   const html = buildReceiptHTML(payment)
@@ -122,16 +154,14 @@ export function openReceipt(payment, { print = false } = {}) {
     win.document.write(html)
     win.document.close()
     win.focus()
-    if (print) {
-      // Give the new document a tick to lay out before the print dialog.
-      win.addEventListener('load', () => win.print())
-      setTimeout(() => { try { win.print() } catch { /* already printed */ } }, 400)
-    }
+    wireReceiptControls(win, { print })
     return
   }
-  // Popup blocked — use a data URL in the same tab as a fallback.
-  const blob = new Blob([html], { type: 'text/html' })
-  window.location.href = URL.createObjectURL(blob)
+  // Popup blocked — try a new tab from a blob URL, else replace this tab.
+  const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
+  const tab = window.open(url, '_blank')
+  if (tab) wireReceiptControls(tab, { print })
+  else window.location.href = url
 }
 
 /**
