@@ -111,6 +111,7 @@ export default function StudentChat() {
     if (!selected) return
     stickRef.current = true          // opening a conversation jumps to the latest
     loadMessages()
+    markRead(selected)               // let staff see a "Seen" receipt
 
     // Realtime: listen for new messages in this conversation
     const channel = supabase
@@ -133,6 +134,8 @@ export default function StudentChat() {
             if (prev.find(m => m.id === msg.id)) return prev
             return [...prev, msg]
           })
+          // their message landed while I'm looking at it → mark it seen
+          if (fromThem && toMe) markRead(selected)
           // scroll handled by the [messages] effect — only if pinned to bottom
         }
       })
@@ -235,9 +238,22 @@ export default function StudentChat() {
     setMessages(prev => {
       const changed = prev.length !== deduped.length ||
         prev[prev.length - 1]?.id !== deduped[deduped.length - 1]?.id
+      if (changed && silent && deduped.length > prev.length) markRead(who)
       return changed ? deduped : prev
     })
     if (!silent) setLoading(false)
+  }
+
+  // Mark this staff member's messages to me as read, so their app can show a
+  // "Seen" receipt. Only touches messages addressed TO me — never my own.
+  async function markRead(who = selected) {
+    if (!who) return
+    const q = supabase.from('messages').update({ is_read: true }).eq('is_read', false)
+    if (norm(who.email) && norm(profile.email)) {
+      await q.eq('sender_email', who.email).eq('receiver_email', profile.email)
+    } else {
+      await q.eq('sender_name', who.name).eq('receiver_name', profile.name)
+    }
   }
 
   async function sendMessage() {

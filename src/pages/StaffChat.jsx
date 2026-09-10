@@ -70,8 +70,14 @@ export default function StaffChat() {
   const [search,     setSearch]     = useState('')
   const [unread,     setUnread]     = useState({})   // { [studentKey]: count }
   const [lastAt,     setLastAt]     = useState({})   // { [studentKey]: last message time }
+  const [, setClock] = useState(0)                   // 60s re-render so "5 min ago" stays fresh
 
   useEffect(() => { selectedRef.current = selected }, [selected])
+
+  useEffect(() => {
+    const id = setInterval(() => setClock(c => c + 1), 60000)
+    return () => clearInterval(id)
+  }, [])
 
   // Mount: load students + keep a permanent inbox listener so a student's
   // message bumps their row to the top with an unread badge, even when the
@@ -238,10 +244,12 @@ export default function StaffChat() {
 
     // Only update state when something actually changed, so a background
     // poll doesn't re-render / yank the scroll position while you're reading.
+    // The read-count is part of the signature so a "Seen" flip (same length,
+    // same last id) still refreshes the header receipt.
+    const sig = (arr) =>
+      `${arr.length}|${arr[arr.length - 1]?.id || ''}|${arr.reduce((n, m) => n + (m.is_read ? 1 : 0), 0)}`
     setMessages(prev => {
-      const changed = prev.length !== deduped.length ||
-        prev[prev.length - 1]?.id !== deduped[deduped.length - 1]?.id
-      if (!changed) return prev
+      if (sig(prev) === sig(deduped)) return prev
       // a fresh inbound message while this chat is open → clear its badge
       if (silent && deduped.length > prev.length) markRead(who)
       return deduped
@@ -295,6 +303,21 @@ export default function StaffChat() {
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
 
+  // "just now" / "5 min ago" / "3 hours ago" / "2 days ago" / "Sep 3"
+  const relativeTime = (ts) => {
+    if (!ts) return ''
+    const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000)
+    if (s < 45)  return 'just now'
+    if (s < 90)  return '1 min ago'
+    const m = Math.floor(s / 60)
+    if (m < 60)  return `${m} min ago`
+    const h = Math.floor(m / 60)
+    if (h < 24)  return `${h} hour${h > 1 ? 's' : ''} ago`
+    const d = Math.floor(h / 24)
+    if (d < 7)   return `${d} day${d > 1 ? 's' : ''} ago`
+    return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
+
   const groupedMessages = messages.reduce((groups, msg) => {
     const date = formatDate(msg.created_at)
     if (!groups[date]) groups[date] = []
@@ -324,6 +347,22 @@ export default function StaffChat() {
   const isFromMe = (msg) =>
     same(msg.sender_email, profile.email) ||
     same(msg.sender_name,  profile.name)
+
+  // Header status line: how long ago the latest message went out and whether
+  // the student has seen it (is_read flips when they open the conversation).
+  const lastMsg = messages[messages.length - 1]
+  let headerStatus = selected?.email || ''
+  let headerSeen   = false
+  if (selected && lastMsg) {
+    if (isFromMe(lastMsg)) {
+      headerSeen   = !!lastMsg.is_read
+      headerStatus = `Sent ${relativeTime(lastMsg.created_at)} · ${headerSeen ? 'Seen' : 'Not seen yet'}`
+    } else {
+      headerStatus = `Replied ${relativeTime(lastMsg.created_at)}`
+    }
+  } else if (selected && !loading) {
+    headerStatus = 'No messages yet'
+  }
 
   // ── Shared sub-renders (used by both desktop pane and mobile full-screen) ──
 
@@ -494,17 +533,24 @@ export default function StaffChat() {
               {getInitials(selected.name)}
             </div>
             <div style={{ minWidth: 0 }}>
-              <div style={{
-                fontSize: 14, fontWeight: 700, color: theme.textDark,
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>
+              <div
+                title={selected.email}
+                style={{
+                  fontSize: 14, fontWeight: 700, color: theme.textDark,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}
+              >
                 {selected.name}
               </div>
               <div style={{
-                fontSize: 12, color: theme.textLight,
+                fontSize: 12,
+                color: headerSeen ? theme.status.success.main : theme.textLight,
+                fontWeight: headerSeen ? 600 : 400,
+                display: 'flex', alignItems: 'center', gap: 4,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>
-                {selected.email}
+                {headerSeen && <Check size={12} style={{ flexShrink: 0 }} />}
+                {headerStatus}
               </div>
             </div>
           </div>
