@@ -220,8 +220,13 @@ export default function Settings() {
         </p>
       </div>
 
+      {/* On mobile the 4 admin tabs don't fit one equal-width row — the last
+          one (Document Storage) was clipped off-screen. Use a 2-column grid
+          there so every tab stays visible; desktop keeps the single row. */}
       <div style={{
-        display: 'flex', gap: 4,
+        display: isMobile ? 'grid' : 'flex',
+        gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : undefined,
+        gap: 4,
         marginBottom: 20,
         background: theme.surfaceAlt, borderRadius: 10,
         padding: 4,
@@ -231,8 +236,8 @@ export default function Settings() {
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             style={{
-              flex: 1,
-              padding: '9px 16px',
+              flex: isMobile ? undefined : 1,
+              padding: '9px 12px',
               borderRadius: 7, border: 'none',
               fontSize: 13, fontWeight: 500,
               cursor: 'pointer', fontFamily: 'inherit',
@@ -243,7 +248,7 @@ export default function Settings() {
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
             }}
           >
-            <tab.Icon size={15} />
+            <tab.Icon size={15} style={{ flexShrink: 0 }} />
             {tab.label}
           </button>
         ))}
