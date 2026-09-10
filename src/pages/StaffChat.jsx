@@ -46,7 +46,20 @@ export default function StaffChat() {
 
   const profile     = JSON.parse(localStorage.getItem('profile') || '{}')
   const bottomRef   = useRef(null)
+  const scrollRef   = useRef(null)
+  const stickRef    = useRef(true)   // auto-scroll only while pinned to the newest message
   const selectedRef = useRef(null)
+
+  // Is the message list scrolled (roughly) to the bottom right now?
+  const atBottom = () => {
+    const el = scrollRef.current
+    if (!el) return true
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 60
+  }
+  const scrollToBottom = (smooth = false) => {
+    const el = scrollRef.current
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
+  }
 
   const [students,   setStudents]   = useState([])
   const [selected,   setSelected]   = useState(null)
@@ -93,6 +106,7 @@ export default function StaffChat() {
 
   useEffect(() => {
     if (!selected) return
+    stickRef.current = true          // opening a conversation jumps to the latest
     loadMessages()
     markRead(selected)
 
@@ -119,7 +133,7 @@ export default function StaffChat() {
           })
           // message from the student while their chat is open → clear the badge
           if (fromStudent && toMe) markRead(selected)
-          setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+          // scroll handled by the [messages] effect — only if pinned to bottom
         }
       })
       .subscribe()
@@ -127,8 +141,11 @@ export default function StaffChat() {
     return () => { supabase.removeChannel(channel) }
   }, [selected])
 
+  // Keep the view on the newest message ONLY when the user is already at the
+  // bottom. If they've scrolled up to read history, leave the scroll alone —
+  // a background poll or an incoming message must not yank them down.
   useEffect(() => {
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+    if (stickRef.current) setTimeout(() => scrollToBottom(false), 50)
   }, [messages])
 
   // Fallback polling — Supabase Realtime may not be enabled on the `messages`
@@ -249,6 +266,7 @@ export default function StaffChat() {
     setSending(false)
     if (error) { alert('Failed to send: ' + error.message); return }
     setNewMessage('')
+    stickRef.current = true          // always follow your own outgoing message
     loadMessages()
   }
 
@@ -492,11 +510,15 @@ export default function StaffChat() {
           </div>
 
           {/* Messages scroll area */}
-          <div style={{
-            flex: 1, overflowY: 'auto', padding: isMobile ? '14px 12px' : '16px 18px',
-            display: 'flex', flexDirection: 'column', gap: 2,
-            background: theme.pageBg, minHeight: 0,
-          }}>
+          <div
+            ref={scrollRef}
+            onScroll={() => { stickRef.current = atBottom() }}
+            style={{
+              flex: 1, overflowY: 'auto', padding: isMobile ? '14px 12px' : '16px 18px',
+              display: 'flex', flexDirection: 'column', gap: 2,
+              background: theme.pageBg, minHeight: 0,
+            }}
+          >
             {loading && (
               <p style={{ fontSize: 13, color: theme.textMuted, textAlign: 'center', marginTop: 40 }}>
                 Loading messages...

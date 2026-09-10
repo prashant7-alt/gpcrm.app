@@ -79,7 +79,19 @@ export default function StudentChat() {
   const navigate     = useNavigate()
   const profile      = JSON.parse(localStorage.getItem('profile') || '{}')
   const bottomRef    = useRef(null)
+  const scrollRef    = useRef(null)
+  const stickRef     = useRef(true)   // auto-scroll only while pinned to the newest message
   const selectedRef  = useRef(null)
+
+  const atBottom = () => {
+    const el = scrollRef.current
+    if (!el) return true
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 60
+  }
+  const scrollToBottom = (smooth = false) => {
+    const el = scrollRef.current
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
+  }
 
   const [staff,       setStaff]       = useState([])
   const [selected,    setSelected]    = useState(null)
@@ -97,6 +109,7 @@ export default function StudentChat() {
 
   useEffect(() => {
     if (!selected) return
+    stickRef.current = true          // opening a conversation jumps to the latest
     loadMessages()
 
     // Realtime: listen for new messages in this conversation
@@ -120,8 +133,7 @@ export default function StudentChat() {
             if (prev.find(m => m.id === msg.id)) return prev
             return [...prev, msg]
           })
-          // FIX: timeout lets DOM render the new message before scrolling
-          setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+          // scroll handled by the [messages] effect — only if pinned to bottom
         }
       })
       .subscribe()
@@ -129,9 +141,11 @@ export default function StudentChat() {
     return () => { supabase.removeChannel(channel) }
   }, [selected])
 
-  // Scroll to bottom whenever messages update
+  // Follow the newest message ONLY when the user is already at the bottom.
+  // If they've scrolled up to read history, a poll or an incoming message
+  // must not yank them back down.
   useEffect(() => {
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+    if (stickRef.current) setTimeout(() => scrollToBottom(false), 50)
   }, [messages])
 
   // Fallback polling — realtime may not be enabled on the messages table, so
@@ -243,6 +257,7 @@ export default function StudentChat() {
     setSending(false)
     if (error) { alert('Failed to send: ' + error.message); return }
     setNewMessage('')
+    stickRef.current = true          // always follow your own outgoing message
     loadMessages()
   }
 
@@ -416,12 +431,16 @@ export default function StudentChat() {
           </div>
 
           {/* Messages scroll area */}
-          <div style={{
-            flex: 1, overflowY: 'auto', minHeight: 0,
-            padding: isMobile ? '14px 12px' : '16px 18px',
-            display: 'flex', flexDirection: 'column', gap: 4,
-            background: theme.pageBg,
-          }}>
+          <div
+            ref={scrollRef}
+            onScroll={() => { stickRef.current = atBottom() }}
+            style={{
+              flex: 1, overflowY: 'auto', minHeight: 0,
+              padding: isMobile ? '14px 12px' : '16px 18px',
+              display: 'flex', flexDirection: 'column', gap: 4,
+              background: theme.pageBg,
+            }}
+          >
             {loading && (
               <p style={{ fontSize: 13, color: theme.textMuted, textAlign: 'center', marginTop: 40 }}>
                 Loading messages...
