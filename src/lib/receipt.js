@@ -1,14 +1,16 @@
 // ── Payment receipt ─────────────────────────────────────────────────────
-// One shared, print-ready receipt used by both the staff Payments page and
-// the student portal, so every receipt looks the same.
+// One shared receipt used by both the staff Payments page and the student
+// portal, so every receipt looks the same.
 //
-//   openReceipt(payment)      -> opens a new window with the receipt + a
-//                                Download PDF / Print button (falls back to
-//                                same-tab if the browser blocks the popup)
-//   downloadReceiptPDF(payment)-> opens the receipt and fires the print dialog
-//                                straight away (pick "Save as PDF")
-//   buildReceiptHTML(payment) -> the full HTML string (for embedding)
-//   receiptNumber(payment)    -> the "GP-XXXXXXXX" number
+//   openReceipt(payment)       -> opens a preview window with Close / Print /
+//                                 Download PDF buttons (falls back to a new
+//                                 tab / same tab if the popup is blocked)
+//   downloadReceiptPDF(payment)-> generates a real .pdf file and downloads it
+//                                 straight away (no print dialog); jsPDF is
+//                                 loaded on demand so it stays out of the
+//                                 main bundle
+//   buildReceiptHTML(payment)  -> the full HTML string (for the preview window)
+//   receiptNumber(payment)     -> the "GP-XXXXXXXX" number
 //
 // Colours are pulled from src/theme.js so the receipt restyles with the app.
 
@@ -101,7 +103,7 @@ export function buildReceiptHTML(payment) {
 </div>
 </div>
 <div class="actions">
-  <span class="hint">Tip: choose &ldquo;Save as PDF&rdquo; as the print destination to download.</span>
+  <span class="hint">Print opens your browser&rsquo;s dialog &middot; Download PDF saves the file directly.</span>
   <button class="btn-close" id="rcpt-close" type="button">Close</button>
   <button class="btn-print" id="rcpt-print" type="button">&#128424; Print</button>
   <button class="btn-pdf" id="rcpt-pdf" type="button">&#11015; Download PDF</button>
@@ -113,7 +115,7 @@ export function buildReceiptHTML(payment) {
 // inherits — so inline `onclick=` handlers are blocked. Instead we wire the
 // buttons from here with addEventListener (allowed: same-origin, no inline
 // script). `win` is same-origin with the opener so `win.document` is reachable.
-function wireReceiptControls(win, { print = false } = {}) {
+function wireReceiptControls(win, payment, { print = false } = {}) {
   const bind = () => {
     let doc
     try { doc = win.document } catch { return false }
@@ -124,7 +126,7 @@ function wireReceiptControls(win, { print = false } = {}) {
     }
     on('rcpt-close', () => { try { win.close() } catch { /* noop */ } })
     on('rcpt-print', () => { try { win.focus(); win.print() } catch { /* noop */ } })
-    on('rcpt-pdf',   () => { try { win.focus(); win.print() } catch { /* noop */ } })
+    on('rcpt-pdf',   () => { downloadReceiptPDF(payment) })
     doc.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') { try { win.close() } catch { /* noop */ } }
     })
@@ -154,20 +156,144 @@ export function openReceipt(payment, { print = false } = {}) {
     win.document.write(html)
     win.document.close()
     win.focus()
-    wireReceiptControls(win, { print })
+    wireReceiptControls(win, payment, { print })
     return
   }
   // Popup blocked — try a new tab from a blob URL, else replace this tab.
   const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
   const tab = window.open(url, '_blank')
-  if (tab) wireReceiptControls(tab, { print })
+  if (tab) wireReceiptControls(tab, payment, { print })
   else window.location.href = url
 }
 
+// ── Real PDF (vector text, no print dialog) ─────────────────────────────
+const pdfDash = '-'
+
+async function buildReceiptDoc(payment) {
+  const { jsPDF } = await import('jspdf')
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+  const P = palette
+
+  const rcpt   = receiptNumber(payment)
+  const amount = Number(payment.amount || 0).toLocaleString()
+  const paidSource = payment.paid_at || payment.date || payment.created_at || Date.now()
+  const date   = longDate(paidSource)
+  const time   = payment.paid_at ? shortTime(payment.paid_at) : ''
+  const ref    = payment.txn_ref || payment.reference || payment.pidx || pdfDash
+  const isPaid = String(payment.status || '').toLowerCase() === 'paid'
+  const issued = `${longDate(Date.now())} at ${shortTime(Date.now())}`
+
+  const M = 18          // page margin
+  const R = 210 - M     // right edge (A4 is 210mm wide)
+  const W = R - M       // content width
+
+  // brand band
+  doc.setFillColor(P.navy); doc.rect(0, 0, 92, 3, 'F')
+  doc.setFillColor(P.blue); doc.rect(92, 0, 68, 3, 'F')
+  doc.setFillColor(P.teal); doc.rect(160, 0, 50, 3, 'F')
+
+  // header — brand mark + name
+  doc.setFillColor(P.navy)
+  doc.roundedRect(M, 14, 13, 13, 2, 2, 'F')
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(P.white)
+  doc.text('GP', M + 6.5, 22.3, { align: 'center' })
+  doc.setFontSize(13); doc.setTextColor(P.textStrong)
+  doc.text('Global Pathway', M + 17, 19.5)
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(P.textMuted)
+  doc.text('Consultancy CRM', M + 17, 24.5)
+
+  // header — receipt number + status pill
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(P.textFaint)
+  doc.text('RECEIPT NO.', R, 17, { align: 'right' })
+  doc.setFontSize(13); doc.setTextColor(P.textStrong)
+  doc.text(rcpt, R, 23, { align: 'right' })
+
+  const pillText = isPaid ? 'PAID' : 'PENDING CONFIRMATION'
+  const pc = isPaid ? status.success : status.warning
+  doc.setFontSize(7.5)
+  const pillW = doc.getTextWidth(pillText) + 7
+  const pillX = R - pillW, pillY = 26.5
+  doc.setFillColor(pc.bg)
+  doc.roundedRect(pillX, pillY, pillW, 5.5, 2.5, 2.5, 'F')
+  doc.setTextColor(pc.text)
+  doc.text(pillText, pillX + pillW / 2, pillY + 3.8, { align: 'center' })
+
+  doc.setDrawColor(P.border); doc.setLineWidth(0.3)
+  doc.line(M, 36, R, 36)
+
+  // amount
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(P.textFaint)
+  doc.text(isPaid ? 'AMOUNT RECEIVED' : 'AMOUNT', 105, 46, { align: 'center' })
+  doc.setFontSize(24); doc.setTextColor(P.textStrong)
+  doc.text(`Rs ${amount}`, 105, 57, { align: 'center' })
+
+  doc.setDrawColor(P.borderStrong)
+  doc.setLineDashPattern([1, 1], 0)
+  doc.line(M, 66, R, 66)
+  doc.setLineDashPattern([], 0)
+
+  // field grid (2 columns)
+  const fields = [
+    [isPaid ? 'RECEIVED FROM' : 'BILLED TO', payment.student_name || pdfDash],
+    ['PAYMENT TYPE',   payment.type || 'Payment'],
+    ['PAYMENT METHOD', payment.method || pdfDash],
+    [time ? 'DATE & TIME' : 'DATE', time ? `${date}  (${time})` : date],
+    ['TRANSACTION REFERENCE', ref],
+    ['STUDENT EMAIL', payment.student_email || pdfDash],
+  ]
+  const colW = (W - 10) / 2
+  const colX = [M, M + colW + 10]
+  let rowY = 78
+  fields.forEach(([label, value], i) => {
+    if (i % 2 === 0 && i > 0) rowY += 20
+    const x = colX[i % 2]
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(P.textFaint)
+    doc.text(label, x, rowY)
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(P.textStrong)
+    doc.text(doc.splitTextToSize(String(value), colW).slice(0, 2), x, rowY + 5)
+  })
+  let y = rowY + 22
+
+  if (payment.note) {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(P.textMuted)
+    const noteLines = doc.splitTextToSize(`Note: ${payment.note}`, W - 12)
+    const boxH = noteLines.length * 4.6 + 8
+    doc.setFillColor(P.surface); doc.setDrawColor(P.border); doc.setLineWidth(0.3)
+    doc.roundedRect(M, y, W, boxH, 2, 2, 'FD')
+    doc.text(noteLines, M + 6, y + 6)
+    y += boxH + 6
+  }
+
+  // footer
+  const fy = 262
+  doc.setDrawColor(P.border); doc.setLineWidth(0.3)
+  doc.line(M, fy, R, fy)
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(P.textStrong)
+  doc.text(
+    isPaid ? 'Thank you for your payment' : 'This is not proof of payment until confirmed',
+    105, fy + 8, { align: 'center' },
+  )
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(P.textFaint)
+  doc.text(`Receipt ${rcpt}   Generated ${issued}`, 105, fy + 14, { align: 'center' })
+  doc.text(
+    'System-generated document from Global Pathway Consultancy CRM. For queries, contact your counsellor.',
+    105, fy + 19, { align: 'center' },
+  )
+
+  return doc
+}
+
 /**
- * Open the receipt and immediately raise the print dialog. Choosing the
- * "Save as PDF" destination downloads it as "Receipt GP-XXXXXXXX.pdf".
+ * Generate the receipt as a real PDF and download it as
+ * "Receipt GP-XXXXXXXX.pdf". Falls back to the print dialog if jsPDF can't
+ * load for some reason.
  */
-export function downloadReceiptPDF(payment) {
-  openReceipt(payment, { print: true })
+export async function downloadReceiptPDF(payment) {
+  try {
+    const doc = await buildReceiptDoc(payment)
+    doc.save(`Receipt ${receiptNumber(payment)}.pdf`)
+  } catch (err) {
+    console.error('[receipt] PDF generation failed, falling back to print', err)
+    openReceipt(payment, { print: true })
+  }
 }
