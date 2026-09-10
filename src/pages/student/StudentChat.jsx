@@ -99,10 +99,27 @@ export default function StudentChat() {
   const [newMessage,  setNewMessage]  = useState('')
   const [loading,     setLoading]     = useState(false)
   const [sending,     setSending]     = useState(false)
+  const [convoMeta,   setConvoMeta]   = useState({})   // { [staffKey]: { at, fromMe, seen } }
+  const [, setClock]  = useState(0)                    // 60s re-render so "5 min ago" stays fresh
+
+  const keyOf = (x) => norm(x?.email || x?.name)
 
   useEffect(() => {
     if (!profile.id) { navigate('/student-login'); return }
     loadStaff()
+  }, [])
+
+  useEffect(() => {
+    const id = setInterval(() => setClock(c => c + 1), 60000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Refresh the per-conversation "last message" info on a short interval so the
+  // list/header stay current without a page refresh.
+  useEffect(() => {
+    loadConvoMeta()
+    const id = setInterval(loadConvoMeta, 8000)
+    return () => clearInterval(id)
   }, [])
 
   useEffect(() => { selectedRef.current = selected }, [selected])
@@ -256,6 +273,27 @@ export default function StudentChat() {
     }
   }
 
+  // Newest message per conversation, so each staff row + the header can show
+  // "Sent 5 min ago" / "Seen 5 min ago" / "Replied 2 min ago".
+  async function loadConvoMeta() {
+    if (!profile.email) return
+    const { data } = await supabase
+      .from('messages')
+      .select('sender_name, sender_email, receiver_name, receiver_email, created_at, is_read')
+      .or(`sender_email.eq.${profile.email},receiver_email.eq.${profile.email}`)
+      .order('created_at', { ascending: false })
+      .limit(400)
+
+    const meta = {}
+    for (const m of (data || [])) {
+      const iAmSender = same(m.sender_email, profile.email) || same(m.sender_name, profile.name)
+      const k = norm(iAmSender ? (m.receiver_email || m.receiver_name) : (m.sender_email || m.sender_name))
+      if (!k || meta[k]) continue          // rows are newest-first → first hit wins
+      meta[k] = { at: m.created_at, fromMe: iAmSender, seen: !!m.is_read }
+    }
+    setConvoMeta(meta)
+  }
+
   async function sendMessage() {
     if (!newMessage.trim() || !selected) return
     setSending(true)
@@ -274,6 +312,10 @@ export default function StudentChat() {
     if (error) { alert('Failed to send: ' + error.message); return }
     setNewMessage('')
     stickRef.current = true          // always follow your own outgoing message
+    setConvoMeta(prev => ({
+      ...prev,
+      [keyOf(selected)]: { at: new Date().toISOString(), fromMe: true, seen: false },
+    }))
     loadMessages()
   }
 
@@ -302,6 +344,29 @@ export default function StudentChat() {
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
 
+  // "just now" / "5 min ago" / "3 hours ago" / "2 days ago" / "Sep 3"
+  const relativeTime = (ts) => {
+    if (!ts) return ''
+    const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000)
+    if (s < 45)  return 'just now'
+    if (s < 90)  return '1 min ago'
+    const m = Math.floor(s / 60)
+    if (m < 60)  return `${m} min ago`
+    const h = Math.floor(m / 60)
+    if (h < 24)  return `${h} hour${h > 1 ? 's' : ''} ago`
+    const d = Math.floor(h / 24)
+    if (d < 7)   return `${d} day${d > 1 ? 's' : ''} ago`
+    return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
+
+  // One line describing the latest message in a conversation:
+  // "Sent 5 min ago" / "Seen 5 min ago" (my message) or "Replied 2 min ago".
+  const statusLine = (meta) => {
+    if (!meta) return ''
+    if (meta.fromMe) return `${meta.seen ? 'Seen' : 'Sent'} ${relativeTime(meta.at)}`
+    return `Replied ${relativeTime(meta.at)}`
+  }
+
   // Group messages by date for the date-divider display
   const groupedMessages = messages.reduce((groups, msg) => {
     const date = formatDate(msg.created_at)
@@ -314,6 +379,16 @@ export default function StudentChat() {
   const isFromMe = (msg) =>
     same(msg.sender_email, profile.email) ||
     same(msg.sender_name,  profile.name)
+
+  // Header status: time of the latest message + whether staff has seen mine.
+  const lastMsg    = messages[messages.length - 1]
+  const headerSeen = !!(selected && lastMsg && isFromMe(lastMsg) && lastMsg.is_read)
+  let headerStatus = ''
+  if (selected && lastMsg) {
+    headerStatus = isFromMe(lastMsg)
+      ? `Sent ${relativeTime(lastMsg.created_at)} · ${lastMsg.is_read ? 'Seen' : 'Not seen yet'}`
+      : `Replied ${relativeTime(lastMsg.created_at)}`
+  }
 
   // ── Shared sub-renders (used by both desktop pane and mobile full-screen) ──
 
@@ -361,7 +436,7 @@ export default function StudentChat() {
               {/* Avatar */}
               <StaffAvatar name={s.name} url={s.avatar_url} size={36} fontSize={13} />
 
-              <div style={{ minWidth: 0 }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{
                   fontSize: 13, fontWeight: isSelected && !isMobile ? 600 : 500,
                   color: isSelected && !isMobile ? theme.purple : theme.textStrong,
@@ -369,15 +444,27 @@ export default function StudentChat() {
                 }}>
                   {s.name}
                 </div>
-                {/* Real role from staff table — color-coded */}
-                <span style={{
-                  display: 'inline-block', marginTop: 2,
-                  padding: '1px 8px', borderRadius: 20,
-                  fontSize: 10, fontWeight: 600,
-                  background: rc.bg, color: rc.color,
-                }}>
-                  {s.role || 'Staff'}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, minWidth: 0 }}>
+                  {/* Role — so the student always knows who they're messaging */}
+                  <span style={{
+                    flexShrink: 0,
+                    padding: '1px 8px', borderRadius: 20,
+                    fontSize: 10, fontWeight: 600,
+                    background: rc.bg, color: rc.color,
+                  }}>
+                    {s.role || 'Staff'}
+                  </span>
+                  {convoMeta[keyOf(s)] && (
+                    <span style={{
+                      fontSize: 10,
+                      color: (convoMeta[keyOf(s)].fromMe && convoMeta[keyOf(s)].seen)
+                        ? theme.status.success.main : theme.textLight,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {statusLine(convoMeta[keyOf(s)])}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           )
@@ -434,15 +521,30 @@ export default function StudentChat() {
               }}>
                 {selected.name}
               </div>
-              <span style={{
-                display: 'inline-block', marginTop: 2,
-                padding: '1px 8px', borderRadius: 20,
-                fontSize: 10, fontWeight: 600,
-                background: roleColor(selected.role).bg,
-                color: roleColor(selected.role).color,
-              }}>
-                {selected.role || 'Staff'}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, minWidth: 0 }}>
+                {/* Role — so the student always knows who they're messaging */}
+                <span style={{
+                  flexShrink: 0,
+                  padding: '1px 8px', borderRadius: 20,
+                  fontSize: 10, fontWeight: 600,
+                  background: roleColor(selected.role).bg,
+                  color: roleColor(selected.role).color,
+                }}>
+                  {selected.role || 'Staff'}
+                </span>
+                {headerStatus && (
+                  <span style={{
+                    fontSize: 11,
+                    color: headerSeen ? theme.status.success.main : theme.textLight,
+                    fontWeight: headerSeen ? 600 : 400,
+                    display: 'flex', alignItems: 'center', gap: 4,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {headerSeen && <Check size={11} style={{ flexShrink: 0 }} />}
+                    {headerStatus}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
