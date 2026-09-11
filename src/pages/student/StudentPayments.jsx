@@ -385,7 +385,7 @@ export default function StudentPayments() {
     .reduce((s, p) => s + (p.amount || 0), 0)
   const totalPending = payments.filter(p => p.status === 'pending').length
 
-  const tableCols = '1.4fr 0.9fr 1.05fr 0.95fr 0.95fr 1.15fr 96px'
+  const tableCols = '1.3fr 0.85fr 1fr 0.9fr 0.9fr 1.05fr 172px'
 
   return (
     <StudentLayout>
