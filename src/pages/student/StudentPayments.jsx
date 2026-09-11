@@ -385,7 +385,7 @@ export default function StudentPayments() {
     .reduce((s, p) => s + (p.amount || 0), 0)
   const totalPending = payments.filter(p => p.status === 'pending').length
 
-  const tableCols = '1.3fr 0.85fr 1fr 0.9fr 0.9fr 1.05fr 172px'
+  const tableCols = '1.4fr 0.9fr 1.05fr 0.95fr 0.95fr 1.15fr 100px'
 
   return (
     <StudentLayout>
@@ -628,14 +628,14 @@ export default function StudentPayments() {
                     </button>
                   )}
                   {p.status === 'paid' && (
-                    <div style={{ display: 'inline-flex', gap: 6 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 5 }}>
                       <button
                         onClick={() => downloadReceiptPDF(p)}
                         title="Download receipt as PDF"
                         style={{
                           display: 'inline-flex', alignItems: 'center', gap: 5,
                           padding: '5px 10px', background: theme.primary,
-                          border: 'none', borderRadius: 7,
+                          border: 'none', borderRadius: 7, whiteSpace: 'nowrap',
                           fontSize: 12, fontWeight: 700, color: theme.white,
                           cursor: 'pointer', fontFamily: 'inherit',
                         }}
@@ -648,7 +648,7 @@ export default function StudentPayments() {
                         style={{
                           display: 'inline-flex', alignItems: 'center', gap: 5,
                           padding: '5px 10px', background: theme.primaryLight,
-                          border: `1px solid ${theme.border}`, borderRadius: 7,
+                          border: `1px solid ${theme.border}`, borderRadius: 7, whiteSpace: 'nowrap',
                           fontSize: 12, fontWeight: 600, color: theme.primary,
                           cursor: 'pointer', fontFamily: 'inherit',
                         }}
