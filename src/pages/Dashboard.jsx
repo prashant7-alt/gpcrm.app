@@ -251,6 +251,9 @@ export default function Dashboard() {
   const activeStudents = students.filter(s =>
     ['Counseling','Documentation','Applied','Visa Process','Class/Enrolled'].includes(s.stage)
   ).length
+    || applicants.filter(a =>
+      ['Counseling','Documentation','Applied','Visa Process','Class/Enrolled'].includes(a.status)
+    ).length
 
   const abroadCount = students.filter(s => s.stage === 'Abroad').length
     || applicants.filter(a => a.status === 'Abroad').length
