@@ -10,7 +10,6 @@
 // must NOT appear in the picker.
 export const ROLES = [
   { label: 'Admin',            value: 'admin',            access: 'Full access to everything' },
-  { label: 'Staff',            value: 'staff',            access: 'Dashboard, Applications, Students, Visitors, Appointments, Payments, Documents, Tasks, Chat' },
   { label: 'Counselor',        value: 'counselor',        access: 'Dashboard, Students, Appointments, Tasks, Chat' },
   { label: 'Visa Officer',     value: 'visa_officer',     access: 'Dashboard, Applications, Students, Appointments, Documents, Tasks, Chat' },
   { label: 'Receptionist',     value: 'receptionist',     access: 'Dashboard, Applications, Students, Visitors, Appointments, Payments, Tasks, Chat' },
