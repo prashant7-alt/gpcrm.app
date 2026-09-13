@@ -84,6 +84,13 @@ function dueDateInfo(dateStr, status) {
 export default function Tasks() {
   const isMobile = useIsMobile()
 
+  // Tasks are assigned by reception — only a receptionist can create/edit/
+  // delete/reassign one. Everyone else just sees the tasks assigned to them
+  // (the `tasks` RLS policy enforces this server-side too; this only drives
+  // which buttons show up).
+  const myProfile     = JSON.parse(localStorage.getItem('profile') || '{}')
+  const isReceptionist = myProfile.role === 'receptionist'
+
   const [tasks,    setTasks]    = useState([])
   const [staff,    setStaff]    = useState([])
   const [loading,  setLoading]  = useState(true)
@@ -122,25 +129,28 @@ export default function Tasks() {
       return
     }
 
-    // ✅ FIXED: assignable people now come from `profiles` ONLY.
-    // Previously this merged `staff` and `profiles` rows and de-duplicated
-    // by name text — but staff.id and profiles.id are unrelated UUIDs for
-    // the same person, so a real foreign key couldn't safely target
-    // either list. `profiles` already covers every non-student role
-    // (it's the login-tied, authoritative table), so it's the single
-    // consistent id space assignee_id now points at.
-    const { data: profileRows, error: pErr } = await supabase
-      .from('profiles')
-      .select('id, name, role')
-      .neq('role', 'student')
-      .order('name')
+    setTasks(t || [])
 
-    if (pErr) {
-      setLoadErr('Could not load staff: ' + pErr.message)
+    // Assignee picker is only shown to reception (they're the only ones who
+    // can assign a task) — skip the extra query for everyone else.
+    if (isReceptionist) {
+      // ✅ FIXED: assignable people now come from `profiles` ONLY.
+      // Previously this merged `staff` and `profiles` rows and de-duplicated
+      // by name text — but staff.id and profiles.id are unrelated UUIDs for
+      // the same person, so a real foreign key couldn't safely target
+      // either list. `profiles` already covers every non-student role
+      // (it's the login-tied, authoritative table), so it's the single
+      // consistent id space assignee_id now points at.
+      const { data: profileRows, error: pErr } = await supabase
+        .from('profiles')
+        .select('id, name, role')
+        .neq('role', 'student')
+        .order('name')
+
+      if (pErr) setLoadErr('Could not load staff: ' + pErr.message)
+      setStaff(profileRows || [])
     }
 
-    setTasks(t || [])
-    setStaff(profileRows || [])
     setLoading(false)
   }
 
@@ -281,19 +291,21 @@ export default function Tasks() {
         <div>
           <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: theme.textStrong, margin: 0 }}>Tasks</h1>
           <p style={{ fontSize: 13, color: theme.textLight, marginTop: 4 }}>
-            Assign and track tasks across your team
+            {isReceptionist ? 'Assign and track tasks across your team' : 'Tasks assigned to you'}
           </p>
         </div>
-        <button onClick={openAdd} style={{
-          padding: '9px 18px', background: theme.status.success.main,
-          border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600,
-          color: theme.white, cursor: 'pointer', fontFamily: 'inherit',
-          width: isMobile ? '100%' : 'auto',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-        }}>
-          <Plus size={15} />
-          Add Task
-        </button>
+        {isReceptionist && (
+          <button onClick={openAdd} style={{
+            padding: '9px 18px', background: theme.status.success.main,
+            border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600,
+            color: theme.white, cursor: 'pointer', fontFamily: 'inherit',
+            width: isMobile ? '100%' : 'auto',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+          }}>
+            <Plus size={15} />
+            Add Task
+          </button>
+        )}
       </div>
 
       {/* load error */}
@@ -524,18 +536,22 @@ export default function Tasks() {
                                 display: 'flex', alignItems: 'center', gap: 4,
                               }}><Undo2 size={11} /> Reopen</button>
                             )}
-                            <button onClick={() => openEdit(task)} style={{
-                              width: 28, height: 28, background: theme.pageBg,
-                              border: `1px solid ${theme.border}`, borderRadius: 6,
-                              cursor: 'pointer',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            }}><Pencil size={13} color={theme.textLight} /></button>
-                            <button onClick={() => deleteTask(task.id)} disabled={deleting === task.id} style={{
-                              width: 28, height: 28, background: theme.status.danger.bg,
-                              border: `1px solid ${theme.status.danger.border}`, borderRadius: 6,
-                              cursor: 'pointer', color: theme.status.danger.main,
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            }}><Trash2 size={13} /></button>
+                            {isReceptionist && (
+                              <>
+                                <button onClick={() => openEdit(task)} style={{
+                                  width: 28, height: 28, background: theme.pageBg,
+                                  border: `1px solid ${theme.border}`, borderRadius: 6,
+                                  cursor: 'pointer',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                }}><Pencil size={13} color={theme.textLight} /></button>
+                                <button onClick={() => deleteTask(task.id)} disabled={deleting === task.id} style={{
+                                  width: 28, height: 28, background: theme.status.danger.bg,
+                                  border: `1px solid ${theme.status.danger.border}`, borderRadius: 6,
+                                  cursor: 'pointer', color: theme.status.danger.main,
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                }}><Trash2 size={13} /></button>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
